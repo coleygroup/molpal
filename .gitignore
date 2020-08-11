@@ -18,3 +18,4 @@
 *.h5
 
 !outline.txt
+submit_molpal.py
