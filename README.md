@@ -2,7 +2,7 @@
 # Efficient Exploration of Virtual Chemical <br/> Libraries through Active Learning 
 
 ## Overview
-This repository contains the source of MolPAL, a framework for the accelerated discovery of compounds in high throughput virtual screening environments. Additionally, this repository contains pyscreener, a python program for conducting high throughput virtual screens of small molecules through docking simulations. It currently supports the most commonly used AutoDock Vina family of programs: Vina, Smina, PSOVina, QVina2)
+This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high throughput virtual screening environments.
 
 At the core of MolPAL is the __Explorer__ class. The Explorer is an abstraction of a batched, Bayesian optimization routine on a discrete domain of inputs and it relies on five classes
 1. __MoleculePool__: A `MoleculePool` defines the virtual library (i.e., domain of inputs)
@@ -16,6 +16,7 @@ At the core of MolPAL is the __Explorer__ class. The Explorer is an abstraction 
 - [Table of Contents](#table-of-contents)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Directory Structure](#directory-structure)
 - [Running MolPAL](#running-molpal)
   * [Novel Targets](#novel-targets)
   * [Hyperparameter Optimization](#hyperparameter-optimization)
@@ -63,6 +64,30 @@ The following packages are _optional_ to install before running MolPAL:
 - optuna (1.4; if planning to perform hyperparameter optimization)
 - [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
 
+## Directory Structure
+
+molpal
+├── acquirer
+│   ├── acquirer.py
+│   └── metrics.py
+├── args.py
+├── encoders.py
+├── explorer.py
+├── models
+│   ├── base.py
+│   ├── mpnmodels.py
+│   ├── mpnn
+│   ├── nnmodels.py
+│   ├── sklmodels.py
+│   └── utils.py
+├── objectives
+│   ├── base.py
+│   ├── docking.py
+│   ├── lookup.py
+└── pools
+    ├── cluster.py
+    ├── fingerprints.py
+    └── pools.py
 
 ## Running MolPAL
 
