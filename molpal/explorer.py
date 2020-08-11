@@ -21,6 +21,8 @@ class Explorer:
 
     Attributes (constant)
     ----------
+    name : str
+        the name this explorer will use for all outputs
     pool : MoleculePool
         the pool of inputs to explore
     acq : Acquirer
@@ -28,9 +30,10 @@ class Explorer:
         distribution over the inputs
     obj : Objective
         an objective calculates the objective function of a set of inputs
-    k : int
-        the number of top scoring molecules to consider when calculating a
-        the current average
+    retrain_from_scratch : bool
+        whether the model will be retrained from scratch at each iteration.
+        If False, train the model online. 
+        NOTE: The definition of 'online' is model-specific.
     recent_avgs : Deque[float]
         a queue containing the <window_size> most recent averages
     delta : float
@@ -38,19 +41,21 @@ class Explorer:
         average and the moving average in order to continue exploration
     max_epochs : int
         the maximum number of batches to explore
-    max_explore : int
-        the maximum number of inputs to explore
-    save_final : bool
+    root : str
+        the directory under which to organize all outputs
+    tmp : str
+        the temporary directory of the filesystem
+    write_final : bool
         whether the list of explored inputs and their scores should be written
         to a file at the end of exploration
-    save_intermediate : bool
+    write_intermediate : bool
         whether the list of explored inputs and their scores should be written
         to a file after each round of exploration
-    m : int
-        the default number of top-scoring inputs to write when saving results
     write_preds : bool
         whether the predictions should be written after each exploration batch
-    
+    verbose : int
+        the level of output this Explorer prints
+
     Attributes (stateful)
     ----------
     model : Model
@@ -78,49 +83,58 @@ class Explorer:
         a parallel list to the pool containing the variance in the predicted
         score for an input. Will be empty if model does not provide variance
     
+
+    Properties
+    ----------
+    k : int
+    max_explore : int
+
     Parameters
     ----------
-    k : Union[int, float]
-        the number of molecules to consider when calculating the current 
-        average, expressed either as a specific number or as a 
-        fraction of the pool from which to calculate that number.
-        NOTE: Specifying either a fraction greater than 1 or or a number larger
-              than the pool size will default to using the full pool.
+    name : str
+    k : Union[int, float] (Default = 0.01)
+    window_size : int (Default = 3)
+        the number of top-k averages from which to calculate a moving average
+    delta : float (Default = 0.01)
+    max_epochs : int (Default = 50)
     max_explore : Union[int, float] (Default = 1.)
-        either the maximum number of molecules or maximum fraction of the
-        pool to explore.
-    m : Union[int, float] (Default = 1.)
-        the default number of top-scoring inputs to write when saving results
-        expressed either as a specific number or as a fraction of the pool 
-        from which to calculate that number
-        NOTE: Specifying either a fraction greater than 1 or or a number larger
-              than the pool size will default to using the full pool.
-    state_dict : Optional[str] (Default = None)
-        the filepath of a pickled state_dict from which to load an intermediate
-        explorer state, if desired
+    root : str (Default = '.')
+    tmp : str (Default = $TMP or '.')
+    write_final : bool (Default = True)
+    write_intermediate : bool (Default = False)
+    save_preds : bool (Default = False)
+    retrain_from_scratch : bool (Default = False)
+    previous_scores : Optional[str] (Default = None)
+        the filepath of a CSV file containing previous scoring data which will
+        be treated as the initialization batch (instead of randomly selecting
+        from the bool.)
+    scores_csvs : Optional[List[str]] (Default = None)
+        a list of filepaths containing CSVs with previous scoring data. These
+        CSVs will be read in and the model trained on the data in the order
+        in which the CSVs are provide. This is useful for mimicking the
+        intermediate state of a previous Explorer instance
+    verbose : int (Default = 0)
     **kwargs
-        a dictionary containing the keyword arguments to initialize an Encoder,
-        MoleculePool, Acquirer, Model, and Objective class
+        the keyword arguments to initialize an Encoder, MoleculePool, Acquirer, 
+        Model, and Objective class
 
     Raises
     ------
     ValueError
         if k is less than 0
-        if m is less than 0
         if max_explore is less than 0
     """
     def __init__(self, name: str,
-                 k: Union[int, float],
-                 window_size: int, delta: float,
-                 root: str = '.', tmp: str = os.environ.get('TMP', '.'),
-                 verbose: int = 0,
+                 k: Union[int, float] = 0.01,
+                 window_size: int = 3, delta: float = 0.01,
                  max_epochs: int = 50, max_explore: Union[int, float] = 1.,
+                 root: str = '.', tmp: str = os.environ.get('TMP', '.'),
                  write_final: bool = True, write_intermediate: bool = False,
-                 save_state: bool = False, save_preds: bool = False, 
-                 m : Union[int, float] = 1., retrain_from_scratch: bool = False,
+                 save_preds: bool = False, 
+                 retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
-                 scores_csvs: Optional[List[str]] = None,  
-                 **kwargs):
+                 scores_csvs: Optional[List[str]] = None,
+                 verbose: int = 0, **kwargs):
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
@@ -140,29 +154,24 @@ class Explorer:
         self.acq.stochastic_preds = 'stochastic' in self.model.provides
         self.retrain_from_scratch = retrain_from_scratch
 
-        if k < 0:
-            raise ValueError(f'k(={k}) must be greater than 0!')
-        if isinstance(k, float):
-            k = int(k * len(self.pool))
-        self.k = min(k, len(self.pool))
+        # if k < 0:
+        #     raise ValueError(f'k(={k}) must be greater than 0!')
+        # if isinstance(k, float):
+        #     k = int(k * len(self.pool))
+        # self.k = min(k, len(self.pool))
+        self.k = k
         self.delta = delta
 
-        if max_explore < 0.:
-            raise ValueError(f'max_explore must be greater than 0!')
-        if isinstance(max_explore, float):
-            max_explore = int(len(self.pool) * max_explore)
-        self.max_explore = min(max_explore, len(self.pool))
+        # if max_explore < 0.:
+        #     raise ValueError(f'max_explore must be greater than 0!')
+        # if isinstance(max_explore, float):
+        #     max_explore = int(len(self.pool) * max_explore)
+        # self.max_explore = min(max_explore, len(self.pool))
+        self.max_explore = max_explore
         self.max_epochs = max_epochs
-
-        if m < 0.:
-            raise ValueError(f'm must be greater than 0!')
-        if isinstance(m, float):
-            m = int(m * len(self.pool))
-        self.m = min(m, len(self.pool))
 
         self.write_final = write_final
         self.write_intermediate = write_intermediate
-        self.save_state = save_state
         self.save_preds = save_preds
 
         # state variables (not including model)
@@ -180,6 +189,50 @@ class Explorer:
             self.load_scores(previous_scores)
         elif scores_csvs:
             self.load(scores_csvs)
+
+    @property
+    def k(self) -> int:
+        """The number of top-scoring inputs from which to determine
+        the average.
+        
+        Returned as an integer but can be set either as an integer or as
+        a fraction of the pool.
+        NOTE: Specifying either a fraction greater than 1 or or a number larger
+              than the pool size will default to using the full pool.
+        l"""
+        k = self.__k
+        if isinstance(k, float):
+            k = int(k * len(self.pool))
+            
+        return min(k, len(self.pool))
+
+    @k.setter
+    def k(self, k: Union[int, float]):
+        if k < 0:
+            raise ValueError(f'k(={k}) must be greater than 0!')
+        self.__k = k
+
+    @property
+    def max_explore(self) -> int:
+        """The maximum number of inputs to explore
+        
+        Returned as an integer but can be set either as an integer or as
+        a fraction of the pool.
+        NOTE: Specifying either a fraction greater than 1 or or a number larger
+              than the pool size will default to using the full pool.
+        """
+        max_explore = self.__max_explore
+        if isinstance(max_explore, float):
+            max_explore = int(max_explore * len(self.pool))
+        
+        return max_explore
+    
+    @max_explore.setter
+    def max_explore(self, max_explore: Union[int, float]):
+        if max_explore < 0.:
+            raise ValueError(f'max_explore(={max_explore}) must be greater than 0!')
+
+        self.__max_explore = max_explore
 
     def explore(self):
         self.run()
@@ -379,7 +432,7 @@ class Explorer:
 
         return [(x, y) for y, x in selected]
 
-    def write_scores(self, m: Optional[int] = None, 
+    def write_scores(self, m: Union[int, float] = 1., 
                      final: bool = False) -> None:
         """Write the top M scores to a CSV file
 
@@ -388,12 +441,12 @@ class Explorer:
 
         Parameters
         ----------
-        m : Optional[int] (Default = None)
-            the number of top inputs to write. If None, write all inputs
+        m : Union[int, float] (Default = 1.)
+            the number of top inputs to write. By default, writes all inputs
         final : bool (Default = False)
             whether the explorer has finished.
         """
-        m = min(m or self.m, len(self))
+        m = min(m, len(self))
 
         p_data = Path(f'{self.root}/{self.name}/data')
         if not p_data.is_dir():

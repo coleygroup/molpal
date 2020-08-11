@@ -11,7 +11,8 @@ except ImportError:
     from typing_extensions import Protocol
 
 import numpy as np
-import rdkit.Chem.AllChem as Chem
+import rdkit.Chem.rdMolDescriptors as fps
+from rdkit.Chem.rdmolfiles import MolFromSmiles
 from rdkit.DataStructs.cDataStructs import ExplicitBitVect
 
 try:
@@ -84,7 +85,7 @@ class MorganFingerprinter(Encoder[smi, ExplicitBitVect]):
     """Encode SMILES strings into ExplicitBitVects using the Morgan
     fingerprint"""
     def __init__(self, radius: int = 2, length: int = 2048, **kwargs):
-        self._encode = partial(Chem.GetMorganFingerprintAsBitVect,
+        self._encode = partial(fps.GetMorganFingerprintAsBitVect,
                                radius=radius, nBits=length, useChirality=True)
         super().__init__(**kwargs)
 
@@ -92,7 +93,7 @@ class MorganFingerprinter(Encoder[smi, ExplicitBitVect]):
         return self._encode.keywords.get('nBits')
 
     def encode(self, x: smi) -> ExplicitBitVect:
-        return self._encode(Chem.MolFromSmiles(x))
+        return self._encode(MolFromSmiles(x))
 
     def write(self, x: smi) -> bytes:
         return self.encode(x).ToBinary()
@@ -112,7 +113,7 @@ class RDKFingerprinter(Encoder[smi, ExplicitBitVect]):
     def __init__(self, radius: int = 2, length: int = 2048, **kwargs):
         min_path = 1
         max_path = min_path + radius
-        self._encode = partial(Chem.RDKFingerprint, minPath=min_path, 
+        self._encode = partial(fps.RDKFingerprint, minPath=min_path, 
                                maxPath=max_path, fpSize=length)
         super().__init__(**kwargs)
 
@@ -120,7 +121,7 @@ class RDKFingerprinter(Encoder[smi, ExplicitBitVect]):
         return self._encode.keywords.get('fpSize')
 
     def encode(self, x: smi) -> ExplicitBitVect:
-        return self._encode(Chem.MolFromSmiles(x))
+        return self._encode(MolFromSmiles(x))
 
     def write(self, x: smi) -> bytes:
         return self.encode(x).ToBinary()
@@ -140,7 +141,7 @@ class AtomPairFingerprinter(Encoder[smi, ExplicitBitVect]):
     def __init__(self, radius: int = 2, length: int = 2048, **kwargs):
         min_length = 1
         max_length = min_length + radius
-        self._encode = partial(Chem.GetHashedAtomPairFingerprintAsBitVect,
+        self._encode = partial(fps.GetHashedAtomPairFingerprintAsBitVect,
                                minLength=min_length, maxLength=max_length, 
                                nBits=length)
         super().__init__(**kwargs)
@@ -149,7 +150,7 @@ class AtomPairFingerprinter(Encoder[smi, ExplicitBitVect]):
         return self._encode.keywords.get('nBits')
 
     def encode(self, x: smi) -> ExplicitBitVect:
-        return self._encode(Chem.MolFromSmiles(x))
+        return self._encode(MolFromSmiles(x))
 
     def write(self, x: smi) -> bytes:
         return self.encode(x).ToBinary()
@@ -167,7 +168,7 @@ class MACCSFingerprinter(Encoder[smi, ExplicitBitVect]):
     """Encode SMILES strings into ExplicitBitVects using the MACCS key
     fingerprint"""
     def __init__(self, **kwargs):
-        self._encode = Chem.GetMACCSKeysFingerprint
+        self._encode = fps.GetMACCSKeysFingerprint
         super().__init__(**kwargs)
 
     def __len__(self) -> int:
@@ -175,7 +176,7 @@ class MACCSFingerprinter(Encoder[smi, ExplicitBitVect]):
         return 167
 
     def encode(self, x: smi) -> ExplicitBitVect:
-        return self._encode(Chem.MolFromSmiles(x))
+        return self._encode(MolFromSmiles(x))
 
     def write(self, x: smi) -> bytes:
         return self.encode(x).ToBinary()
@@ -202,7 +203,7 @@ class MAP4Fingerprinter(Encoder[smi, np.ndarray]):
         return self.length
     
     def encode(self, x: smi) -> np.ndarray:
-        return self._encoder.calculate(Chem.MolFromSmiles(x))
+        return self._encoder.calculate(MolFromSmiles(x))
     
     @classmethod
     def uncompress(cls, x_comp: ExplicitBitVect) -> np.ndarray:
