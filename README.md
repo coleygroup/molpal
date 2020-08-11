@@ -65,7 +65,7 @@ The following packages are _optional_ to install before running MolPAL:
 - [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
 
 ## Directory Structure
-
+<pre>
 molpal
 ├── acquirer
 │   ├── acquirer.py
@@ -88,6 +88,7 @@ molpal
     ├── cluster.py
     ├── fingerprints.py
     └── pools.py
+</pre>
 
 ## Running MolPAL
 
