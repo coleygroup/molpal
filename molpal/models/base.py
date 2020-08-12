@@ -60,7 +60,21 @@ class Model(ABC):
     @abstractmethod
     def train(self, xs: Iterable[T], ys: Sequence[float],
               featurize: Callable[[T], T_feat], retrain: bool = False) -> bool:
-        """Train the model on an iterable of input data"""
+        """Train the model on an iterable of input data
+        
+        Parameters
+        ----------
+        xs : Iterable[T]
+            an iterable of inputs in their identifier representation
+        ys : Sequence[float]
+            a parallel sequence of scalars that correspond to the regression
+            target for each x
+        featurize : Callable[[T], T_feat]
+            a function that transforms an input from its identifier to its
+            feature representation
+        retrain : bool (Deafult = False)
+            whether the model should be completely retrained
+        """
         # TODO: hyperparameter optimizations in inner loop?
 
     @abstractmethod

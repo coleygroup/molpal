@@ -1,3 +1,7 @@
+"""This module contains the Model ABC and various implementations thereof. A
+model is used to predict an input's objective function based on prior
+training data."""
+
 from typing import Optional, Type
 
 from .base import Model

@@ -37,7 +37,7 @@ def get_needs(metric: str) -> Set[str]:
         'ei': {'means', 'vars'},
         'pi': {'means', 'vars'},
         'thompson': {'means', 'vars'},
-        'threshold': set()
+        'threshold': {'means'}
     }.get(metric, set())
 
 def calc(metric: str, *args, **kwargs) -> np.ndarray:
@@ -90,7 +90,8 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
     """
     I = Y_mean - current_max + xi
     Y_sd = np.sqrt(Y_var)
-    Z = I / Y_sd
+    with np.errstate(divide='ignore'):
+        Z = I / Y_sd
     E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
     # if the expected variance is 0, the expected improvement is the 
@@ -114,7 +115,8 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
         the probability of improvement acquisition scores
     """
     I = Y_mean - current_max + xi
-    Z = I / np.sqrt(Y_var)
+    with np.errstate(divide='ignore'):
+        Z = I / np.sqrt(Y_var)
     P_imp = norm.cdf(Z)
 
     # if expected variance is 0, probability of improvement is 0 or 1 depending

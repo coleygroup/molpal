@@ -4,11 +4,10 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import gzip
 from itertools import islice, repeat
-# import multiprocessing as mp
 import os
 from pathlib import Path
-from typing import (Collection, Iterator, List,
-                    Optional, Sequence, Tuple, Type, Union)
+from typing import (Collection, Iterator, List, Optional, 
+                    Sequence, Tuple, Type, Union)
 
 import h5py
 import numpy as np
@@ -17,7 +16,7 @@ from tqdm import tqdm
 
 from .cluster import cluster_fps_h5
 from . import fingerprints
-from ..encoders import Encoder, MorganFingerprinter
+from ..encoders import Encoder, AtomPairFingerprinter
 
 # a Mol is a SMILES string, a fingerprint, and an optional cluster ID
 Mol = Tuple[str, np.ndarray, Optional[int]]
@@ -75,7 +74,7 @@ class MoleculePool(Sequence[Mol]):
             library file
         2. the encoder used to generate the fingerprints is the same
             as the one passed to the model
-    enc : Type[Encoder] (Default = MorganFingerprinter)
+    enc : Type[Encoder] (Default = AtomPairFingerprinter)
         the encoder to use when calculating fingerprints
     njobs : int (Default = -1)
         the number of jobs to parallelize fingerprint calculation over.
@@ -99,7 +98,7 @@ class MoleculePool(Sequence[Mol]):
     def __init__(self, library: str, title_line: bool = True,
                  delimiter: str = ',', smiles_col: Optional[int] = None,
                  fps: Optional[str] = None,
-                 enc: Type[Encoder] = MorganFingerprinter(), njobs: int = 4, 
+                 enc: Type[Encoder] = AtomPairFingerprinter(), njobs: int = 4, 
                  cache: bool = False, validated: bool = False,
                  cluster: bool = False, ncluster: int = 100,
                  path: str = '.', verbose: int = 0, **kwargs):
@@ -552,7 +551,7 @@ def smi_to_mol(smi):
 class EagerMoleculePool(MoleculePool):
     """Alias for a MoleculePool"""
 
-encoder = MorganFingerprinter()
+encoder = AtomPairFingerprinter()
 def smi_to_fp(smi):
     return encoder.encode_and_uncompress(smi)
 
@@ -609,11 +608,12 @@ class LazyMoleculePool(MoleculePool):
 
     def gen_batch_enc_mols(self) -> Iterator[np.ndarray]:
         global encoder; encoder = self.encoder
+        # smi_to_fp = partial(smi_to_fp, encoder=encoder)
 
         job_chunk_size = self.chunk_size // self.njobs
         smis = iter(self.gen_smis())
 
-        # maintain a buffer of fp chunks for faster iteration
+        # buffer of chunk of fps into memory for faster iteration
         smis_chunks = iter(lambda: list(islice(smis, self.chunk_size)), [])
         with ProcessPoolExecutor(max_workers=self.njobs) as pool:
             for smis_chunk in smis_chunks:

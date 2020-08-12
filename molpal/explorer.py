@@ -493,7 +493,10 @@ class Explorer:
         for scores_csv in scores_csvs:
             scores = self._read_scores(scores_csv)
             self.new_scores = dict(set(self.scores) ^ set(scores))
-            self._update_model()
+            if not self.retrain_from_scratch:
+                # training at each iteration is a waste if retraining from
+                # scratch (because it's not acquiring anything here)
+                self._update_model()
             self.scores = scores
             self.epoch += 1
 
@@ -501,6 +504,9 @@ class Explorer:
             if len(self.scores) >= self.k:
                 self.recent_avgs.append(self.top_k_avg)
         
+        if self.retrain_from_scratch:
+            self._update_model()
+
         self._update_predictions()
 
         if self.verbose > 0:

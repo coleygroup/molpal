@@ -129,6 +129,7 @@ class NN:
                 )
             ],
             steps_per_epoch=n_train/batch_size,
+            verbose=0
         )
         return True
 
@@ -176,15 +177,16 @@ class NN:
         n_val = len(xs) - n_train
         batch_size = min(n_train, self.batch_size)
 
+        X = np.stack([featurize(x) for x in xs])
         Y = self._normalize(ys)
         
         def train_gen():
-            for x, y in zip(xs[:n_train], Y[:n_train]):
-                yield featurize(x), y
+            for x, y in zip(X[:n_train], Y[:n_train]):
+                yield x, y
 
         def val_gen():
-            for x, y in zip(xs[n_train:], Y[n_train:]):
-                yield featurize(x), y
+            for x, y in zip(X[n_train:], Y[n_train:]):
+                yield x, y
         
         train_data = tf.data.Dataset.from_generator(
             train_gen,

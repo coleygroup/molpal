@@ -153,21 +153,24 @@ class MPNN:
 
         return train_data, val_data
 
-    def predict(self, xs: Sequence[str]) -> ndarray:
-        test_data = MoleculeDataset([
-            MoleculeDatapoint(
-                smiles=x,
-                #row=OrderedDict({'smiles': x}),
-            ) for x in xs
-        ])
+    def predict(self, xs: Iterable[str]) -> ndarray:
+        # test_data = MoleculeDataset([
+        #     MoleculeDatapoint(
+        #         smiles=x,
+        #         #row=OrderedDict({'smiles': x}),
+        #     ) for x in xs
+        # ])
 
-        test_data_loader = MoleculeDataLoader(
-            dataset=test_data,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers
-        )
+        # test_data_loader = MoleculeDataLoader(
+        #     dataset=test_data,
+        #     batch_size=self.batch_size,
+        #     num_workers=self.num_workers
+        # )
 
-        return mpnn.predict(self.model, test_data_loader, scaler=self.scaler)
+        batch_graphs = mpnn.utils.batch_graphs(
+            smis=xs, minibatch_size=50, n_workers=self.num_workers)
+
+        return mpnn.predict(self.model, batch_graphs, scaler=self.scaler)
     
     # def save(self, path) -> None:
     #     Path(path).mkdir(parents=True, exist_ok=True)

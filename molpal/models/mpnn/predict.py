@@ -6,10 +6,10 @@ from torch import nn
 from tqdm import tqdm
 
 from chemprop.data import MoleculeDataLoader, MoleculeDataset, StandardScaler
-from chemprop.features import BatchMolGraph
+from chemprop.features import BatchMolGraph, mol2graph
 
 def predict(model: nn.Module,
-            data_loader: Iterable[BatchMolGraph],
+            batch_graphs: Iterable[BatchMolGraph],
             disable_progress_bar: bool = False,
             scaler: Optional[StandardScaler] = None) -> np.ndarray:
     """Predict the output values of a dataset
@@ -34,13 +34,14 @@ def predict(model: nn.Module,
     model.eval()
 
     pred_batches = []
-    for batch in tqdm(data_loader, desc='Inference', 
-                      unit='minibatch', leave=False):
-        mol_batch = batch.batch_graph()
-        features_batch = batch.features()
+    for batch_graph in tqdm(batch_graphs, desc='Inference', 
+                            unit='minibatch', leave=False):
+        # mol_batch = batch.batch_graph()
+        # features_batch = batch.features()
 
         with torch.no_grad():
-            pred_batch = model(mol_batch, features_batch)
+            # pred_batch = model(mol_batch, features_batch)
+            pred_batch = model(batch_graph)
 
         pred_batches.append(pred_batch.data.cpu().numpy())
     preds = np.concatenate(pred_batches)
