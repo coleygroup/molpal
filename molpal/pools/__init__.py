@@ -1,4 +1,5 @@
-from .pools import MoleculePool, EagerMoleculePool, LazyMoleculePool
+from .base import MoleculePool, EagerMoleculePool
+from .lazypool import LazyMoleculePool
 
 def pool(pool: str, **kwargs):
     try:

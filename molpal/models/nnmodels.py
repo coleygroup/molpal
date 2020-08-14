@@ -12,6 +12,7 @@ import tensorflow_addons as tfa
 from tensorflow import keras
 
 from .base import Model
+from .utils import feature_matrix
 
 tf.get_logger().setLevel('ERROR')
 
@@ -26,38 +27,65 @@ class NN:
     ----------
     model : keras.Sequential
         the underlying model on which to train and perform inference with
+    optimizer : keras.optimizers.Adam
+        the model optimizer
+    loss : Callable
+        the loss function to use
     input_size : int
         the dimension of the model inputs
     output_dim : int
         the dimension of the model outputs
     batch_size : int
         the size to batch training into
-    layer_sizes : List[int] (Default = [100, 100])
-        the size of each hidden layer in the network
-    dropout : Optional[float] (Default = None)
+    dropout : Optional[float]
         If specified, add a dropout hidden layer with the specified dropout
         rate after each hidden layer
     dropout_at_predict : bool (Default = False)
-        If true, peform stochastic dropout during both training and evaluation
+       Whether to perform stochastic dropout during prediction
+    mean : float
+        the mean of the unnormalized data
+    std : float
+        the standard deviation of the unnormalized data
+    n_workers : int
+        the number of workers over which to parallelize feature matrix 
+        calculation
+    
+    Parameters
+    ----------
+    input_size : int
+    output_size : int
+    batch_size : int (Default = 4096)
+    layer_sizes : Optional[Sequence[int]] (Default = None)
+        the sizes of the hidden layers in the network. If None, default to
+        a two hidden layers with 100 neurons each.
+    dropout : Optional[float] (Default = None)
+    dropout_at_predict : bool (Default = False)
     activation : Optional[str] (Default = 'relu')
         the name of the activation function to use
+    njobs : int (Default = 0)
+        the number of workers over which to parallelize feature matrix 
+        calculation
     """
 
-    def __init__(self, input_size: int, output_size: int, batch_size: int,
-                 layer_sizes: List[int] = [100, 100],
+    def __init__(self, input_size: int, output_size: int, 
+                 batch_size: int = 4096, 
+                 layer_sizes: Optional[Sequence[int]] = None,
                  dropout: Optional[float] = None,
                  dropout_at_predict: bool = False,
-                 activation: Optional[str] = 'relu'):
+                 activation: Optional[str] = 'relu',
+                 njobs: int = 0):
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
 
+        layer_sizes = layer_sizes or [100, 100]
         self.model, self.optimizer, self.loss = self.build(
             layer_sizes, dropout, dropout_at_predict, activation
         )
 
         self.mean = 0
         self.std = 0
+        self.n_workers = njobs
 
     def build(self, layer_sizes, dropout, dropout_at_predict, activation):
         """Build the model, optimizer, and loss function"""
@@ -177,7 +205,7 @@ class NN:
         n_val = len(xs) - n_train
         batch_size = min(n_train, self.batch_size)
 
-        X = np.stack([featurize(x) for x in xs])
+        X = feature_matrix(xs, featurize, self.n_workers)
         Y = self._normalize(ys)
         
         def train_gen():
@@ -245,11 +273,12 @@ class NNModel(Model):
     """
 
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, **kwargs):
+                 dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout)
+                                   batch_size=test_batch_size, dropout=dropout,
+                                   njobs=njobs)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -281,25 +310,17 @@ class NNEnsembleModel(Model):
 
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, ensemble_size: int = 5,
-                 bootstrap_ensemble: Optional[bool] = False, **kwargs):
+                 bootstrap_ensemble: Optional[bool] = False,
+                 njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
-
-        self.bootstrap_ensemble = bootstrap_ensemble # TODO: Actually use this
-
         self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout)
+                                   batch_size=test_batch_size, dropout=dropout,
+                                   njobs=njobs)
 
         self.ensemble_size = ensemble_size
-        self.models = [self.build_model()
-                       for _ in range(self.ensemble_size)]
+        self.models = [self.build_model() for _ in range(self.ensemble_size)]
 
-        # self.models = [
-        #     NN(input_size=input_size,
-        #        output_size=1,
-        #        batch_size=test_batch_size,
-        #        dropout=dropout) 
-        #     for _ in range(ensemble_size)
-        # ]
+        self.bootstrap_ensemble = bootstrap_ensemble # TODO: Actually use this
 
         super().__init__(test_batch_size, **kwargs)
 
@@ -314,8 +335,9 @@ class NNEnsembleModel(Model):
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]],
               featurize: Callable[[T], ndarray], retrain: bool = False):
         if retrain:
-            self.models = [self.build_model() 
-                           for _ in range(self.ensemble_size)]
+            self.models = [
+                self.build_model() for _ in range(self.ensemble_size)
+            ]
 
         return all([model.train(xs, ys, featurize) for model in self.models])
 
@@ -340,17 +362,12 @@ class NNTwoOutputModel(Model):
     its own uncertainty at the same time"""
 
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, **kwargs):
+                 dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        # self.model = NN(
-        #     input_size=input_size,
-        #     output_size=2,
-        #     batch_size=test_batch_size,
-        #     dropout=dropout,
-        # )
         self.build_model = partial(NN, input_size=input_size, output_size=2,
-                                   batch_size=test_batch_size, dropout=dropout)
+                                   batch_size=test_batch_size, dropout=dropout,
+                                   njobs=njobs)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -388,20 +405,12 @@ class NNDropoutModel(Model):
 
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.2, dropout_size: int = 10, 
-                 **kwargs):
+                 njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
-
-        # self.model = NN(
-        #     input_size=input_size,
-        #     output_size=1,
-        #     batch_size=test_batch_size,
-        #     dropout=dropout,
-        #     dropout_at_predict=True,
-        # )
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   dropout_at_predict=True)
+                                   dropout_at_predict=True, njobs=njobs)
         self.model = self.build_model()
         
         self.dropout_size = dropout_size

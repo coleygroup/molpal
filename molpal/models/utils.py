@@ -6,7 +6,6 @@ from typing import Callable, Iterable, Iterator, List, Type, TypeVar
 import numpy as np
 from tqdm import tqdm
 
-from ..encoders import Encoder, AtomPairFingerprinter
 T = TypeVar('T')
 
 # TODO: allow model class that tries many options and chooses
@@ -34,6 +33,6 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
 
 # weird global definitions are necessary to allow for pickling and
 # parallelization of feature_matrix generation
-_featurize_ = None
+_featurize = None
 def __featurize(x):
     return _featurize(x)

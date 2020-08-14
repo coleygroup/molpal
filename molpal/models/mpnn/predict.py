@@ -35,7 +35,7 @@ def predict(model: nn.Module,
 
     pred_batches = []
     for batch_graph in tqdm(batch_graphs, desc='Inference', 
-                            unit='minibatch', leave=False):
+                            unit='minibatch', smoothing=0., leave=False):
         # mol_batch = batch.batch_graph()
         # features_batch = batch.features()
 

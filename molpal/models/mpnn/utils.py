@@ -4,7 +4,7 @@ from typing import Iterable, Iterator, Optional
 from torch import clamp, log, nn
 
 from chemprop.data import MoleculeDatapoint, MoleculeDataset
-from chemprop.features import BatchMolGraph
+from chemprop.features import BatchMolGraph, mol2graph
 
 from ..utils import batches
 

@@ -1,12 +1,14 @@
+from concurrent.futures import ProcessPoolExecutor as Pool
 import csv
 from functools import partial
 import gzip
+from itertools import islice
 import multiprocessing as mp
 import os
 from pathlib import Path
 import sys
 import timeit
-from typing import List, Optional, Set, TextIO, Tuple, Type
+from typing import Iterable, Iterator, List, Optional, Set, TextIO, Tuple, Type
 
 import h5py
 import numpy as np
@@ -18,50 +20,15 @@ from molpal.encoders import Encoder, AtomPairFingerprinter
 try:
     MAX_CPU = len(os.sched_getaffinity(0))
 except AttributeError:
-    MAX_CPU = mp.cpu_count()
+    MAX_CPU = os.cpu_count()
 
 # the encoder needs to be defined at the top level of the module
 # in order for it to be pickle-able in parse_line_partial
 encoder: Type[Encoder] = AtomPairFingerprinter()
 
-def find_smiles_col(fid: TextIO, delimiter: str) -> int:
-    """Attepmt to find the smiles column in file f
-
-    Parameters
-    ----------
-    fid : TextIO
-        a file object corresponding a CSV file
-    delimiter : str
-        the column separator for the CSV file
-
-    Returns
-    -------
-    i : int
-        the index of the first column containing a valid SMILES string, if one
-        exists
-
-    Raises
-    ------
-    ValueError
-        if no valid SMILES string is detected, file is not a valid .smi file
-        or a bad separator was supplied
-    """
-    pos = fid.tell()
-
-    reader = csv.reader(fid, delimiter=delimiter)
-    row = next(reader)
-
-    fid.seek(pos)
-
-    for i, token in enumerate(row):
-        mol = Chem.MolFromSmiles(token)
-        if mol:
-            return i
-
-    # should have found a valid smiles string in the line
-    raise ValueError(f'"{fid.name}" is not a valid .smi file or a bad '
-                     + 'delimiter(={delimiter}) was supplied for this file.\n'
-                     + f'Example row: {delimiter.join(row)}')
+def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
+    it = iter(it)
+    return iter(lambda: list(islice(it, chunk_size)), [])
 
 def parse_line(row: List[str], smiles_col: int) -> Optional[np.ndarray]:
     """Parse a line to get the fingerprint of the respective SMILES string 
@@ -88,10 +55,9 @@ def parse_line(row: List[str], smiles_col: int) -> Optional[np.ndarray]:
         return None
 
 def parse_smiles_par(filepath: str, delimiter: str = ',',
-                     smiles_col: Optional[int] = None, title_line: bool = True,
-                     validate: bool = False,
+                     smiles_col: int = 0, title_line: bool = True,
                      encoder_: Type[Encoder] = AtomPairFingerprinter(),
-                     njobs: int = -1, path: str = '.') -> Tuple[str, Set[int]]:
+                     njobs: int = 0, path: str = '.') -> Tuple[str, Set[int]]:
     """Parses a .smi type file to generate an hdf5 file containing the feature
     matrix of the corresponding molecules.
 
@@ -108,15 +74,13 @@ def parse_smiles_par(filepath: str, delimiter: str = ',',
         column containign a valid SMILES string
     title_line : bool (Default = True)
         does the file contain a title line?
-    validate : bool (Default = False)
-        should the SMILES strings be validated first?
     encoder : Type[Encoder] (Default = AtomPairFingerprinter)
         an Encoder object which generates the feature representation of a mol
     njobs : int (Default = -1)
         how many jobs to parellize file parsing over, A value of
         -1 defaults to using all cores, -2: all except 1 core, etc...
     path : str
-        the path to which the hdf5 file should be written
+        the path under which the hdf5 file should be written
 
     Returns
     -------
@@ -130,7 +94,7 @@ def parse_smiles_par(filepath: str, delimiter: str = ',',
     if os.stat(filepath).st_size == 0:
         raise ValueError(f'"{filepath} is empty!"')
 
-    njobs = _fix_njobs(njobs)
+    # njobs = _fix_njobs(njobs)
     global encoder; encoder = encoder_
 
     basename = Path(filepath).stem.split('.')[0]
@@ -138,64 +102,67 @@ def parse_smiles_par(filepath: str, delimiter: str = ',',
 
     if Path(filepath).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
-        # will want to compress hdf5 file if input is already compressed
-        compression = None # 'gzip'
     else:
         open_ = open
-        compression = None
 
     with open_(filepath) as fid, \
-            mp.Pool(processes=njobs) as pool, \
+            Pool(max_workers=njobs) as pool, \
                 h5py.File(fps_h5, 'w') as h5f:
         reader = csv.reader(fid, delimiter=delimiter)
-        
-        if title_line:
-            fid.readline()
-        
-        # find_smiles_col also determines if fid/sep are a valid file/delimiter 
-        # combo before reading the whole file
-        if smiles_col:
-            find_smiles_col(fid, delimiter)
-        else:
-            smiles_col = find_smiles_col(fid, delimiter)
 
-        n_mols = sum(1 for _ in reader)
-        fid.seek(0)
+        n_mols = sum(1 for _ in reader); fid.seek(0)
         if title_line:
-            fid.readline()
+            next(reader)
+            n_mols -= 1
 
-        chunksize = 1024
+        CHUNKSIZE = 1024
 
         fps_dset = h5f.create_dataset(
-            'fps', (n_mols, len(encoder)), compression=compression,
-            chunks=(chunksize, len(encoder)), dtype='int8'
+            'fps', (n_mols, len(encoder)),
+            chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
         )
         
-        semaphore = mp.Semaphore((njobs+2) * chunksize)
-        def gen_rows(reader: csv.reader, sem: mp.Semaphore):
-            for row in reader:
-                sem.acquire()
-                yield row
+        # semaphore = mp.Semaphore((njobs+2) * chunksize)
+        # def gen_rows(reader: csv.reader, sem: mp.Semaphore):
+        #     for row in reader:
+        #         sem.acquire()
+        #         yield row
 
-        parse_line_partial = partial(parse_line, smiles_col=smiles_col)
-        rows = gen_rows(reader, semaphore)
+        # parse_line_partial = partial(parse_line, smiles_col=smiles_col)
+        parse_line_ = partial(parse_line, smiles_col=smiles_col)
+        # rows = gen_rows(reader, semaphore)
+
+        batch_size = CHUNKSIZE*njobs
+        n_batches = n_mols // batch_size + 1
 
         invalid_rows = set()
+        i = 0
         offset = 0
+        for rows_batch in tqdm(batches(reader, batch_size), total=n_batches,
+                               desc='Precalculating fps', unit='batch'):
+            fps = pool.map(parse_line_, rows_batch, CHUNKSIZE)
+            for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
+                while fp is None:
+                    invalid_rows.add(i+offset)
+                    offset += 1
+                    fp = next(fps)
 
-        fps = pool.imap(parse_line_partial, rows, chunksize)
-        for i, fp in tqdm(enumerate(fps), total=n_mols,
-                          desc='Preculating fingerprints'):
-            while fp is None:
-                # i+offset is the row in the original file
-                # we do this instead of incrementing i to maintain a contiguous
-                # set of fingerprints in the fps dataset
-                invalid_rows.add(i+offset)
-                offset += 1
-                fp = next(fps)
+                fps_dset[i] = fp
+                i += 1
 
-            fps_dset[i] = fp
-            semaphore.release()
+        # fps = pool.imap(parse_line_partial, rows, chunksize)
+        # for i, fp in tqdm(enumerate(fps), total=n_mols,
+        #                   desc='Preculating fingerprints'):
+        #     while fp is None:
+        #         # i+offset is the row in the original file
+        #         # we do this instead of incrementing i to maintain a contiguous
+        #         # set of fingerprints in the fps dataset
+        #         invalid_rows.add(i+offset)
+        #         offset += 1
+        #         fp = next(fps)
+
+        #     fps_dset[i] = fp
+        #     semaphore.release()
 
         # original dataset size included potentially invalid SMILES
         n_mols_valid = n_mols - len(invalid_rows)

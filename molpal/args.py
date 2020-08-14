@@ -83,7 +83,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         help='whether there is no title line in the library file')
     parser.add_argument('--delimiter', default=',',
                         help='the column separator in the library file')
-    parser.add_argument('--smiles-col',
+    parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library file')
     parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
                         help='an hdf5 file containing the precalculated feature representations of the molecules')

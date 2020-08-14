@@ -7,6 +7,7 @@ import numpy as np
 from numpy import ndarray
 
 from .base import Model
+from .utils import feature_matrix
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -45,7 +46,7 @@ class RFModel(Model):
     def train(self, xs: Iterable[T], ys: Iterable[float],
               featurize: Callable[[T], ndarray], retrain: bool = True):
         # retrain means nothing for this model- internally it always retrains
-        X = np.stack([featurize(x) for x in xs])
+        X = feature_matrix(xs, featurize, self.n_jobs)
         Y = np.array(ys)
 
         self.model.fit(X, Y)

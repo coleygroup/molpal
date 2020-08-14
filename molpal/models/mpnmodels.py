@@ -61,7 +61,12 @@ class MPNN:
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
                  final_lr: float = 1e-4, log_frequency: int = 10,
                  njobs: int = 1):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            print('CUDA availalable. Utilizing...')
+            self.device = 'cuda' 
+        else:
+            self.device = 'cpu'
+
         self.num_workers = njobs
 
         self.model = mpnn.MoleculeModel(

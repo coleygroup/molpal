@@ -446,6 +446,8 @@ class Explorer:
         final : bool (Default = False)
             whether the explorer has finished.
         """
+        if isinstance(m, float):
+            m = int(m * len(self))
         m = min(m, len(self))
 
         p_data = Path(f'{self.root}/{self.name}/data')
@@ -454,9 +456,9 @@ class Explorer:
 
         if final:
             m = len(self)
-            p_scores = Path(p_data / f'top_{m}_compounds_final.csv')
+            p_scores = Path(p_data / f'all_explored_final.csv')
         else:
-            p_scores = Path(p_data / f'top_{m}_compounds_iter_{self.epoch}.csv')
+            p_scores = Path(p_data / f'top_{m}_explored_iter_{self.epoch}.csv')
 
         top_m = self.top_explored(m)
 
