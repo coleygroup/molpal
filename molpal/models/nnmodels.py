@@ -3,8 +3,12 @@ underlying model"""
 
 from functools import partial
 import logging
+import os
 from typing import (Callable, Iterable, List, NoReturn,
                     Optional, Sequence, Tuple, TypeVar)
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+logging.getLogger('tensorflow').setLevel(logging.FATAL)
 
 import numpy as np
 from numpy import ndarray
@@ -16,7 +20,7 @@ from tensorflow import keras
 from .base import Model
 from .utils import feature_matrix
 
-tf.get_logger().setLevel(logging.ERROR)
+# tf.get_logger().setLevel(logging.ERROR)
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')

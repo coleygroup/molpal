@@ -1,5 +1,5 @@
 # MolPAL: Molecular Pool-based Active Learning
-# Efficient Exploration of Virtual Chemical <br/> Libraries through Active Learning 
+# Efficient Exploration of Virtual Chemical <br/> Libraries through Active Learning
 
 ## Overview
 This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high throughput virtual screening environments.
@@ -20,7 +20,6 @@ At the core of MolPAL is the __Explorer__ class. The Explorer is an abstraction 
 - [Running MolPAL](#running-molpal)
   * [Novel Targets](#novel-targets)
   * [Hyperparameter Optimization](#hyperparameter-optimization)
-- [Running pyscreener](#running-pyscreener)
 - [Future Directions](#future-directions)
 
 ## Requirements
@@ -45,7 +44,8 @@ The easiest way to install all dependencies necessary to run MolPAL is to use co
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
-### manual
+### manual (FIX ME)
+
 The following packages are __necessary__ to install before running MolPAL:
 - [chemprop](https://github.com/chemprop/chemprop) (0.0.2)
 - h5py (2.10)
@@ -76,7 +76,7 @@ molpal
 ├── models
 │   ├── base.py
 │   ├── mpnmodels.py
-│   ├── mpnn
+│   ├── mpnn/
 │   ├── nnmodels.py
 │   ├── sklmodels.py
 │   └── utils.py
@@ -87,7 +87,8 @@ molpal
 └── pools
     ├── cluster.py
     ├── fingerprints.py
-    └── pools.py
+    └── base.py
+    └── lazypool.py
 </pre>
 
 ## Running MolPAL
@@ -123,7 +124,7 @@ There a few required settings to specify before running MolPAL, and they are hig
   * `--lookup-path`: the filepath of a CSV file containing score information for each input
 
 `--library`: the filepath of a CSV file containing the virtual library as SMILES strings
-- (optional) `--fps`: the filepath of an hdf5 file containing the precomputed fingerprints of your virtual library. MolPAL relies on the assumption that the ordering of the fingerprints in this file is exactly the same as that of the library file and that the encoder used to generate these fingerprints is exactly the same as the one used for model training. MolPAL handles writing this file for you if unspecified, so this option is mostly useful for avoiding the overhead at startup if running MolPAL again with the same library/encoder settings.
+- (optional) `--fps`: the filepath of an hdf5 file containing the precomputed fingerprints of your virtual library. MolPAL relies on the assumption that the ordering of the fingerprints in this file is exactly the same as that of the library file and that the encoder used to generate these fingerprints is exactly the same as the one used for model training. MolPAL handles writing this file for you if unspecified, so this option is mostly useful for avoiding the overhead at startup of running MolPAL again with the same library/encoder settings.
 
 #### Optional Settings
 MolPAL has a number of different model architectures, encodings, acquisition metrics, and stopping criteria to choose from. Many of these choices have default settings that were arrived at through hyperparameter optimization, but your circumstances may call for modifying these choices. To see the full list, run MolPAL with either the `-h` or `--help` flags. A few common options to specify are shown below.
@@ -139,16 +140,12 @@ MolPAL has a number of different model architectures, encodings, acquisition met
 `--model`: the type of model to use. Choices include `rf`, `gp`, `nn`, and `mpn`. (Default = `rf`)  
   - `--conf-method`: the confidence estimation method to use for the NN or MPN models. Choices include `ensemble`, `dropout`, `mve`, and `none`. (Default = 'none'). NOTE: the MPN model does not support ensembling
 
-`--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the threshold value for `threshold`.) 
+`--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the β value for `ucb`.) 
 
 ### Hyperparameter Optimization
-While the default settings of MolPAL were chosen based on hyperparameter optimization with Optuna, they were calculated based on the context of structure-based discovery our computational resources. It is possible that these settings are not optimal for your particular problem. To adapt libary_explorer to new circumstances, we recommend first generating a dataset that is representative of your particular problem then peforming hyperparameter optimization of your own using the LookupObjective class. This class acts as an Oracle for your particular objective function, enabling both consistent and, more importantly, near-instant calculation of the objective function for a particular input to save time during hyperparameter optimization.
-
-## Running pyscreener
+While the default settings of MolPAL were chosen based on hyperparameter optimization with Optuna, they were calculated based on the context of structure-based discovery our computational resources. It is possible that these settings are not optimal for your particular problem. To adapt MolPAL to new circumstances, we recommend first generating a dataset that is representative of your particular problem then peforming hyperparameter optimization of your own using the LookupObjective class. This class acts as an Oracle for your particular objective function, enabling both consistent and near-instant calculation of the objective function for a particular input, saving time during hyperparameter optimization.
 
 ## Future Directions
 Though MolPAL was originally intended for use with protein-ligand docking screens, it was designed with modularity in mind and is easily extendable to other settings as well. All that is required to adapt MolPAL to a new problem is to write a custom `Objective` subclass that implements the `calc` method. This method takes a sequence SMILES strings as an input and returns a mapping from SMILES string -> objective function value to be utilized by the Explorer. _To this end, we are currently exploring the extension of MolPAL to subsequent stages of virtual discovery (mmPBSA, MD, etc.)_ If you make use of the MolPAL library by implementing a new `Objective` subclass, we would be happy to include your work in the main branch.
-
-Related to this, we are looking at implementing distributed computing support into calculations of the objective function. Currently, `Objective` subclasses are implemented using python's multiprocessing module, but this limits parallelization to cores local to the current machine. This severely underutilizes available resources in most HPC setups, so we are looking to address this. We are planning right now to use the [Dask](https://dask.org/) library to address this shortcoming, but we welcome any input or advice from those who have experience in this area.
 
 Lastly, the `Explorer` class was written with abstraction at its core and is thus generalizable to problems outside of virtual chemical discovery. We plan to utilize this fact by further developing the MolPAL library into a general library for batched, Bayesian optimization (after further algorithmic work is performed.)

@@ -90,6 +90,9 @@ class Acquirer:
         metrics.seed(seed)
         self.verbose = verbose
 
+    def __len__(self) -> int:
+        return self.size
+
     @property
     def metric(self):
         return self.__metric
@@ -108,7 +111,7 @@ class Acquirer:
         return metrics.get_needs(self.__metric_type)
     
     @property
-    def init_size(self):
+    def init_size(self) -> int:
         if isinstance(self.__init_size, float):
             return math.ceil(self.size * self.__init_size)
 
@@ -124,7 +127,7 @@ class Acquirer:
         self.__init_size = init_size
 
     @property
-    def batch_size(self):
+    def batch_size(self) -> int:
         if isinstance(self.__batch_size, float):
             return math.ceil(self.size * self.__batch_size)
 
@@ -194,7 +197,7 @@ class Acquirer:
 
     def acquire_batch(self, xs: Iterable[T],
                       y_means: Iterable[float], y_vars: Iterable[float],
-                      size: int, explored: Mapping[T, float],
+                      explored: Mapping[T, float],
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
                       epoch: Optional[int] = None, is_random: bool = False,
@@ -265,7 +268,7 @@ class Acquirer:
                 else:
                     heapq.heappushpop(heap, (u, x))
         else:
-            # this is broken for e-greedy/other approaches
+            # this is broken for e-greedy/pi/etc. approaches
 
             # clustered acquisition maintains m independent heaps that
             # operate similarly to the above
@@ -359,15 +362,12 @@ class Acquirer:
 
     @classmethod
     def _calc_temp(cls, epoch: int, temp_i, temp_f) -> float:
-        """Calculate the temperature of the system based on an exponential
-        decay as a function of the current iteration of acquisition"""
+        """Calculate the temperature of the system"""
         return temp_i * math.exp(-epoch/0.75) + temp_f
 
     @classmethod
     def _calc_decay(cls, global_max: float, local_max: float,
                     temp: float) -> float:
-        """Calculate the decay factor of a given heap as an exponential decay
-        of the difference between this heap's predicted maximum value and the
-        global predicted maximum value, scaled by the current temperature"""
+        """Calculate the decay factor of a given heap"""
         return math.exp(-(global_max - local_max)/temp)
 
