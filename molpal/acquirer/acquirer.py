@@ -209,8 +209,6 @@ class Acquirer:
             the predicted input values
         y_vars : Iterable[float]
             the variances of the predicted input values
-        size : int
-            the size of the input generator
         explored : Mapping[T, float]
             the set of explored inputs and their associated scores
         cluster_ids : Optional[Iterable[int]] (Default = None)

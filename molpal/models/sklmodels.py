@@ -5,12 +5,13 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from numpy import ndarray
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 
 from .base import Model
 from .utils import feature_matrix
 
 T = TypeVar('T')
-T_feat = TypeVar('T_feat')
 
 class RFModel(Model):
     """A Random Forest model ensemble for estimating mean and variance
@@ -19,15 +20,23 @@ class RFModel(Model):
     ----------
     n_jobs : int
         the number of jobs to parallelize training and prediction over
+    model : RandomForestRegressor
+        the underlying model on which to train and perform inference
+    
+    Parameters
+    ----------
+    test_batch_size : Optional[int] (Default = 10000)
+        the size into which testing data should be batched
+    njobs : int (Default = -1)
+        the number of jobs training/inference should be distributed over
     """
-    from sklearn.ensemble import RandomForestRegressor
 
     def __init__(self, test_batch_size: Optional[int] = 10000,
                  njobs: int = -1, **kwargs):
         test_batch_size = test_batch_size or 10000
         self.n_jobs = njobs
 
-        self.model = self.RandomForestRegressor(
+        self.model = RandomForestRegressor(
             n_estimators=100,
             n_jobs=self.n_jobs,
             max_depth=8,
@@ -43,7 +52,7 @@ class RFModel(Model):
     def type_(self):
         return 'rf'
 
-    def train(self, xs: Iterable[T], ys: Iterable[float],
+    def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = True):
         # retrain means nothing for this model- internally it always retrains
         X = feature_matrix(xs, featurize, self.n_jobs)
@@ -80,16 +89,32 @@ class RFModel(Model):
         self.model = pickle.load(open(model_path, 'wb'))
     
 class GPModel(Model):
-    """Gaussian process model"""
-    from sklearn.gaussian_process import GaussianProcessRegressor, kernels
-
-    def __init__(self, gp_kernel: str = 'dotproduct',
+    """Gaussian process model
+    
+    Attributes
+    ----------
+    model : GaussianProcessRegressor
+    kernel : kernels.Kernel
+        the GP kernel that will be used
+    njobs : int
+    
+    Parameters
+    ----------
+    gp_kernel : str (Default = 'dotproduct')
+        the type of GP kernel to use
+    njobs : int (Default = 0)
+        the number of jobs to parallelize feature matrix generation over
+    test_batch_size : Optional[int] (Default = 1000)
+        the size into which testing data should be batched
+    """
+    def __init__(self, gp_kernel: str = 'dotproduct', njobs: int = 0,
                  test_batch_size: Optional[int] = 1000, **kwargs):
         test_batch_size = test_batch_size or 1000
         self.model = None
         self.kernel = {
-            'dotproduct': self.kernels.DotProduct
+            'dotproduct': kernels.DotProduct
         }[gp_kernel]()
+        self.njobs = njobs
 
         super().__init__(test_batch_size, **kwargs)
 
@@ -101,13 +126,12 @@ class GPModel(Model):
     def type_(self):
         return 'gp'
 
-    def train(self, xs: Iterable[T], ys: Iterable[float], 
+    def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
-        # xs = [featurize(x) for x in xs]
-        X = np.stack([featurize(x) for x in xs])
+        X = feature_matrix(xs, featurize, self.njobs)
         Y = np.array(ys)
 
-        self.model = self.GaussianProcessRegressor(kernel=self.kernel)
+        self.model = GaussianProcessRegressor(kernel=self.kernel)
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
@@ -123,9 +147,9 @@ class GPModel(Model):
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
         X = np.stack(xs, axis=0)
-        Y_mean, Y_std = self.model.predict(X, return_std=True)
+        Y_mean, Y_sd = self.model.predict(X, return_std=True)
 
-        return Y_mean, np.power(Y_std, 2)
+        return Y_mean, np.power(Y_sd, 2)
 
     def save(self, path) -> None:
         Path(path).mkdir(parents=True, exist_ok=True)

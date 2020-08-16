@@ -1,6 +1,8 @@
+"""This module contains Model implementations that utilize an NN model as their 
+underlying model"""
+
 from functools import partial
 import logging
-from pathlib import Path
 from typing import (Callable, Iterable, List, NoReturn,
                     Optional, Sequence, Tuple, TypeVar)
 
@@ -14,7 +16,7 @@ from tensorflow import keras
 from .base import Model
 from .utils import feature_matrix
 
-tf.get_logger().setLevel('ERROR')
+tf.get_logger().setLevel(logging.ERROR)
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -47,9 +49,9 @@ class NN:
     std : float
         the standard deviation of the unnormalized data
     n_workers : int
-        the number of workers over which to parallelize feature matrix 
+        the number of workers over which to parallelize feature matrix
         calculation
-    
+
     Parameters
     ----------
     input_size : int
@@ -57,18 +59,17 @@ class NN:
     batch_size : int (Default = 4096)
     layer_sizes : Optional[Sequence[int]] (Default = None)
         the sizes of the hidden layers in the network. If None, default to
-        a two hidden layers with 100 neurons each.
+        two hidden layers with 100 neurons each.
     dropout : Optional[float] (Default = None)
     dropout_at_predict : bool (Default = False)
     activation : Optional[str] (Default = 'relu')
         the name of the activation function to use
     njobs : int (Default = 0)
-        the number of workers over which to parallelize feature matrix 
-        calculation
+        the number of workers over which to parallelize
+        feature matrix calculation
     """
-
-    def __init__(self, input_size: int, output_size: int, 
-                 batch_size: int = 4096, 
+    def __init__(self, input_size: int, output_size: int,
+                 batch_size: int = 4096,
                  layer_sizes: Optional[Sequence[int]] = None,
                  dropout: Optional[float] = None,
                  dropout_at_predict: bool = False,
@@ -133,32 +134,45 @@ class NN:
 
         return model, optimizer, loss
 
-    def train(self, xs: Iterable[T], ys: Iterable[float], 
-              featurize: Callable[[T], ndarray]):
-        """Train the model on xs and ys with the given featurizer"""
-        data_tuple = self.make_datasets(xs, ys, featurize)
-        n_train, n_val, train_data, val_data, batch_size = data_tuple
+    def train(self, xs: Iterable[T], ys: Iterable[float],
+              featurize: Callable[[T], ndarray]) -> bool:
+        """Train the model on xs and ys with the given featurizer
+
+        Parameters
+        ----------
+        xs : Sequence[T]
+            an sequence of inputs in their identifier representations
+        ys : Sequence[float]
+            a parallel sequence of target values for these inputs
+        featurize : Callable[[T], ndarray]
+            a function that transforms an identifier into its uncompressed
+            feature representation
+        
+        Returns
+        -------
+        True
+        """
+        # data_tuple = self.make_datasets(xs, ys, featurize)
+        # n_train, n_val, train_data, val_data, batch_size = data_tuple
 
         # reinitialize optimizer for each training iteration
         self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
+        X = feature_matrix(xs, featurize, self.n_workers)
+        Y = self._normalize(ys)
+
         self.model.fit(
-            x=train_data,
-            validation_data=val_data,
-            validation_steps=n_val/batch_size,
-            validation_freq=2,
-            epochs=50,
+            X, Y,
+            batch_size=self.batch_size, validation_split=0.2, epochs=50,
+            validation_freq=2, verbose=2,
             callbacks=[
                 keras.callbacks.EarlyStopping(
-                    monitor='val_loss', patience=5, verbose=2,
-                    restore_best_weights=True),
-                tfa.callbacks.TQDMProgressBar(
-                    leave_epoch_progress=False
-                )
-            ],
-            steps_per_epoch=n_train/batch_size,
-            verbose=0
+                    monitor='val_loss', patience=5,
+                    verbose=2, restore_best_weights=True),
+                tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
+            ]
         )
+
         return True
 
     def predict(self, xs: Sequence[ndarray]) -> ndarray:
@@ -172,65 +186,6 @@ class NN:
             Y_pred[:, 1] = Y_pred[:, 1] * self.std**2
 
         return Y_pred
-
-    def make_datasets(self, xs: Sequence[T], ys: Sequence[float], 
-                      featurize: Callable[[T], ndarray]
-                      ) -> Tuple[int, int, Dataset, Dataset, int]:
-        """Converts iterables of training data into tensorflow datasets
-        
-        Parameters
-        ----------
-        xs : Sequence[T]
-            an sequence of inputs in their identifier representations
-        ys : Sequence[float]
-            a parallel sequence of target values for these inputs
-        featurize : Callable[[T], ndarray]
-            a function that transforms an identifier into its uncompressed
-            feature representation
-        
-        Returns
-        -------
-        n_train : int
-            the size of the training dataset
-        n_val : int
-            the size of the validation dataset
-        train_data : Dataset
-            a tensforflow dataset object of the training data
-        val_data : Dataset
-            a tensorflow dataset object of the validation data
-        batch_size : int
-            the size of each training batch
-        """
-        n_train = int(len(xs) * 0.8)
-        n_val = len(xs) - n_train
-        batch_size = min(n_train, self.batch_size)
-
-        X = feature_matrix(xs, featurize, self.n_workers)
-        Y = self._normalize(ys)
-        
-        def train_gen():
-            for x, y in zip(X[:n_train], Y[:n_train]):
-                yield x, y
-
-        def val_gen():
-            for x, y in zip(X[n_train:], Y[n_train:]):
-                yield x, y
-        
-        train_data = tf.data.Dataset.from_generator(
-            train_gen,
-            (tf.float32, tf.float32),
-            ([self.input_size,], [])
-        ).repeat().batch(batch_size, drop_remainder=False)
-
-        val_data = tf.data.Dataset.from_generator(
-            val_gen,
-            (tf.float32, tf.float32),
-            ([self.input_size,], [])
-        ).repeat().batch(batch_size, drop_remainder=False)
-
-        logging.info(f'Training on {n_train}, validating on {n_val}')
-
-        return n_train, n_val, train_data, val_data, batch_size
     
     def save(self, path) -> None:
         self.model.save(path)
@@ -251,19 +206,20 @@ class NNModel(Model):
     Attributes
     ----------
     model : Type[NN]
-        the underlying neural nets to train and perform inference with
-    test_batch_size : Optional[int]
-        the size into which inputs should be batched 
-        during training and inference
-
+        the underlying neural net on which to train and perform inference
+    
     Parameters
     ----------
     input_size : int
-        the size of the input dimension of the NNs
+        the size of the input dimension of the NN
+    test_batch_size : Optional[int] (Defulat = 4096)
+        the size into which inputs should be batched
+        during training and inference
     dropout : Optional[float] (Default = 0.0)
-        the dropout probability during training (and during prediction)
-    ensemble_size : int, optional
-        the number of separate neural nets to train and perform prediction with
+        the dropout probability during training
+    njobs : int (Default = 0)
+        the number of workers over which to parallelize
+        feature matrix calculation
     
     See also
     --------
@@ -271,7 +227,6 @@ class NNModel(Model):
     NNEnsembleModel
     NNTwoOutputModel
     """
-
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
@@ -291,7 +246,7 @@ class NNModel(Model):
     def type_(self):
         return 'nn'
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]],
+    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
@@ -306,8 +261,30 @@ class NNModel(Model):
 
 class NNEnsembleModel(Model):
     """A feed-forward neural network ensemble model for estimating mean
-    and variance."""
-
+    and variance.
+    
+    Attributes
+    ----------
+    models : List[Type[NN]]
+        the underlying neural nets on which to train and perform inference
+    
+    Parameters
+    ----------
+    input_size : int
+        the size of the input dimension of the NN
+    test_batch_size : Optional[int] (Defulat = 4096)
+        the size into which inputs should be batched
+        during training and inference
+    dropout : Optional[float] (Default = 0.0)
+        the dropout probability during training
+    ensemble_size : int (Default = 5)
+        the number of separate models to train
+    njobs : int (Default = 0)
+        the number of workers over which to parallelize
+        feature matrix calculation
+    bootstrap_ensemble : bool
+        NOTE: UNUSED
+    """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, ensemble_size: int = 5,
                  bootstrap_ensemble: Optional[bool] = False,
@@ -332,7 +309,7 @@ class NNEnsembleModel(Model):
     def provides(self):
         return {'means', 'vars'}
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]],
+    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
               featurize: Callable[[T], ndarray], retrain: bool = False):
         if retrain:
             self.models = [
@@ -359,7 +336,26 @@ class NNEnsembleModel(Model):
 
 class NNTwoOutputModel(Model):
     """Feed forward neural network with two outputs so it learns to predict
-    its own uncertainty at the same time"""
+    its own uncertainty at the same time
+    
+    Attributes
+    ----------
+    model : Type[NN]
+        the underlying neural net on which to train and perform inference
+    
+    Parameters
+    ----------
+    input_size : int
+        the size of the input dimension of the NN
+    test_batch_size : Optional[int] (Defulat = 4096)
+        the size into which inputs should be batched
+        during training and inference
+    dropout : Optional[float] (Default = 0.0)
+        the dropout probability during training
+    njobs : int (Default = 0)
+        the number of workers over which to parallelize
+        feature matrix calculation
+    """
 
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
@@ -380,7 +376,7 @@ class NNTwoOutputModel(Model):
     def provides(self):
         return {'means', 'vars'}
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]],
+    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
@@ -401,10 +397,32 @@ class NNTwoOutputModel(Model):
         return np.log(1 + np.exp(xs*in_range))*in_range + xs*(1 - in_range)
 
 class NNDropoutModel(Model):
-    """Feed forward neural network that uses MC dropout for UQ"""
+    """Feed forward neural network that uses MC dropout for UQ
+    
+    Attributes
+    ----------
+    model : Type[NN]
+        the underlying neural net on which to train and perform inference
+    dropout_size : int
+
+    Parameters
+    ----------
+    input_size : int
+        the size of the input dimension of the NN
+    test_batch_size : Optional[int] (Defulat = 4096)
+        the size into which inputs should be batched
+        during training and inference
+    dropout : Optional[float] (Default = 0.0)
+        the dropout probability during training
+    njobs : int (Default = 0)
+        the number of workers over which to parallelize
+        feature matrix calculation
+    dropout_size : int (Default = 10)
+        the number of passes to make through the network during inference
+    """
 
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.2, dropout_size: int = 10, 
+                 dropout: Optional[float] = 0.2, dropout_size: int = 10,
                  njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
@@ -412,7 +430,6 @@ class NNDropoutModel(Model):
                                    batch_size=test_batch_size, dropout=dropout,
                                    dropout_at_predict=True, njobs=njobs)
         self.model = self.build_model()
-        
         self.dropout_size = dropout_size
 
         super().__init__(test_batch_size, **kwargs)
@@ -425,7 +442,7 @@ class NNDropoutModel(Model):
     def provides(self):
         return {'means', 'vars', 'stochastic'}
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]],
+    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
@@ -441,6 +458,7 @@ class NNDropoutModel(Model):
         return np.mean(predss, axis=1), np.var(predss, axis=1)
 
     def _get_predss(self, xs: Sequence) -> ndarray:
+        """Get the predictions for each dropout pass"""
         predss = np.zeros((len(xs), self.dropout_size))
         for j in tqdm(range(self.dropout_size), leave=False,
                       desc='bootstrap prediction', unit='pass'):

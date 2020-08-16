@@ -38,7 +38,7 @@ class LazyMoleculePool(MoleculePool):
         Not recommended for use in open constructs. I.e., don't explicitly
         call this method unless you plan to exhaust the full iterator.
         """
-        self._mol_generator = zip(self.gen_smis(), self.gen_enc_mols())
+        self._mol_generator = zip(self.smis(), self.fps())
         
         return self
 
@@ -48,25 +48,25 @@ class LazyMoleculePool(MoleculePool):
 
         return next(self._mol_generator)
 
-    def get_enc_mol(self, idx: int) -> np.ndarray:
+    def get_fp(self, idx: int) -> np.ndarray:
         smi = self.get_smi(idx)
         return self.encoder.encode_and_uncompress(smi)
 
-    def get_enc_mols(self, idxs: Sequence[int]) -> np.ndarray:
+    def get_fps(self, idxs: Sequence[int]) -> np.ndarray:
         smis = self.get_smis(idxs)
         return np.array([self.encoder.encode_and_uncompress(smi)
                          for smi in smis])
 
-    def gen_enc_mols(self) -> Iterator[np.ndarray]:
-        for fps_chunk in self.gen_batch_enc_mols():
+    def fps(self) -> Iterator[np.ndarray]:
+        for fps_chunk in self.fps_batches():
             for fp in fps_chunk:
                 yield fp
 
-    def gen_batch_enc_mols(self) -> Iterator[np.ndarray]:
+    def fps_batches(self) -> Iterator[np.ndarray]:
         global encoder; encoder = self.encoder
 
         job_chunk_size = self.chunk_size // self.njobs
-        smis = iter(self.gen_smis())
+        smis = iter(self.smis())
 
         # buffer of chunk of fps into memory for faster iteration
         smis_chunks = iter(lambda: list(islice(smis, self.chunk_size)), [])

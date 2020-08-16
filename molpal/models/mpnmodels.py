@@ -1,20 +1,19 @@
+"""This module contains Model implementations that utilize the MPNN model as 
+their underlying model"""
+
 from argparse import Namespace
-from collections import OrderedDict
-from math import sqrt
-from pathlib import Path
-from typing import (Callable, Iterable, List, NoReturn,
-                    Optional, Sequence, Tuple, TypeVar)
+from functools import partial
+from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
 import torch.cuda
-from torch import nn
 
 from chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
                                 MoleculeDataLoader)
 from chemprop.data.scaler import StandardScaler
-from chemprop.data.utils import split_data, get_data_from_smiles
+from chemprop.data.utils import split_data
 import chemprop.utils
 
 from .base import Model
@@ -62,7 +61,6 @@ class MPNN:
                  final_lr: float = 1e-4, log_frequency: int = 10,
                  njobs: int = 1):
         if torch.cuda.is_available():
-            print('CUDA availalable. Utilizing...')
             self.device = 'cuda' 
         else:
             self.device = 'cpu'
@@ -96,18 +94,19 @@ class MPNN:
         self.scaler = None
 
     def train(self, xs: Iterable[str], ys: Sequence[float]) -> bool:
+        """Train the model on the inputs xs with the given targets ys"""
         train_data, val_data = self.make_datasets(xs, ys)
         n_xs = len(train_data) + len(val_data)
         self.train_args.train_data_size = n_xs
 
         train_data_loader = MoleculeDataLoader(
             dataset=train_data,
-            batch_size=self.train_args.batch_size,
+            batch_size=self.batch_size,
             num_workers=self.num_workers
         )
         val_data_loader = MoleculeDataLoader(
             dataset=val_data,
-            batch_size=self.train_args.batch_size,
+            batch_size=self.batch_size,
             num_workers=self.num_workers
         )
 
@@ -140,12 +139,13 @@ class MPNN:
 
         return True
 
-    def make_datasets(self, xs: Iterable[str], ys: Sequence[float]
-        ) -> Tuple[MoleculeDataset, MoleculeDataset]:
+    def make_datasets(
+            self, xs: Iterable[str], ys: Sequence[float]
+            ) -> Tuple[MoleculeDataset, MoleculeDataset]:
         """Split xs and ys into train and validation datasets"""
 
         data = MoleculeDataset([
-            MoleculeDatapoint(smiles=x, targets=[y]) 
+            MoleculeDatapoint(smiles=x, targets=[y])
             for x, y in zip(xs, ys)
         ])
         train_data, val_data, _ = split_data(data=data, sizes=(0.8, 0.2, 0.0))
@@ -159,6 +159,7 @@ class MPNN:
         return train_data, val_data
 
     def predict(self, xs: Iterable[str]) -> ndarray:
+        """Generate predictions for the inputs xs"""
         # test_data = MoleculeDataset([
         #     MoleculeDatapoint(
         #         smiles=x,
@@ -190,21 +191,12 @@ class MPNN:
 class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
-
-    def __init__(self, test_batch_size: Optional[int] = 100000, 
-                 init_lr: float = 1e-4, max_lr: float = 1e-3,
-                 final_lr: float = 1e-4, njobs: int = 1, **kwargs):
+    def __init__(self, test_batch_size: Optional[int] = 100000,
+                 njobs: int = 1, **kwargs):
         test_batch_size = test_batch_size or 100000
 
-        self.model = MPNN(njobs=njobs)
-        # self.minibatch_size = 50
-        # self.model = MPNN(
-        #     batch_size=self.minibatch_size,
-        #     init_lr=init_lr,
-        #     max_lr=max_lr,
-        #     final_lr=final_lr,
-        #     njobs=njobs
-        # )
+        self.build_model = partial(MPNN, njobs=njobs)
+        self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
 
@@ -216,7 +208,11 @@ class MPNModel(Model):
     def type_(self):
         return 'mpn'
 
-    def train(self, xs: Iterable[str], ys: Sequence[float], *args) -> bool:
+    def train(self, xs: Iterable[str], ys: Sequence[float], *,
+              retrain: bool = False, **kwargs) -> bool:
+        if retrain:
+            self.model = self.build_model()
+
         return self.model.train(xs, ys)
 
     def get_means(self, xs: Sequence[str]) -> ndarray:
@@ -230,21 +226,15 @@ class MPNDropoutModel(Model):
     """Message-passing network model that predicts means and variances through
     stochastic dropout during model inference"""
 
-    def __init__(self, test_batch_size: Optional[int] = 100000, 
+    def __init__(self, test_batch_size: Optional[int] = 100000,
                  dropout: float = 0.2, dropout_size: int = 10,
-                 init_lr: float = 1e-4, max_lr: float = 1e-3,
-                 final_lr: float = 1e-4, njobs: int = 1, **kwargs):
+                 njobs: int = 1, **kwargs):
         test_batch_size = test_batch_size or 100000
-        self.minibatch_size = 50
-        self.model = MPNN(
-            batch_size=self.minibatch_size,
-            uncertainty_method='dropout',
-            dropout=dropout,
-            init_lr=init_lr,
-            max_lr=max_lr,
-            final_lr=final_lr,
-            njobs=njobs
-        )
+
+        self.build_model = partial(MPNN, uncertainty_method='dropout',
+                                   dropout=dropout, njobs=njobs)
+        self.model = self.build_model()
+
         self.dropout_size = dropout_size
 
         super().__init__(test_batch_size, **kwargs)
@@ -257,7 +247,11 @@ class MPNDropoutModel(Model):
     def provides(self):
         return {'means', 'vars', 'stochastic'}
 
-    def train(self, xs: Iterable[str], ys: Sequence[float], *args) -> bool:
+    def train(self, xs: Iterable[str], ys: Sequence[float], *,
+              retrain: bool = False, **kwargs) -> bool:
+        if retrain:
+            self.model = self.build_model()
+
         return self.model.train(xs, ys)
 
     def get_means(self, xs: Sequence[str]) -> ndarray:
@@ -279,20 +273,12 @@ class MPNTwoOutputModel(Model):
     """Message-passing network model that predicts means and variances
     through mean-variance estimation"""
 
-    def __init__(self, test_batch_size: Optional[int] = 100000, 
-                 init_lr: float = 1e-4, max_lr: float = 1e-3,
-                 final_lr: float = 1e-4, njobs: int = 1, **kwargs):
-        test_batch_size=test_batch_size or 100000
-        self.minibatch_size = 50
-        self.model = MPNN(
-            batch_size=self.minibatch_size,
-            uncertainty_method='mve',
-            init_lr=init_lr,
-            max_lr=max_lr,
-            final_lr=final_lr,
-            njobs=njobs,
-            dataset_type='regression'
-        )
+    def __init__(self, test_batch_size: Optional[int] = 100000,
+                 njobs: int = 1, **kwargs):
+        test_batch_size = test_batch_size or 100000
+
+        self.build_model = partial(MPNN, uncertainty_method='mve', njobs=njobs)
+        self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
 
@@ -304,7 +290,11 @@ class MPNTwoOutputModel(Model):
     def provides(self):
         return {'means', 'vars'}
 
-    def train(self, xs: Iterable[str], ys: Sequence[float], *args) -> bool:
+    def train(self, xs: Iterable[str], ys: Sequence[float], *,
+              retrain: bool = False, **kwargs) -> bool:
+        if retrain:
+            self.model = self.build_model()
+
         return self.model.train(xs, ys)
 
     def get_means(self, xs: Sequence[str]) -> ndarray:
@@ -316,10 +306,11 @@ class MPNTwoOutputModel(Model):
         return means.flatten(), variances.flatten()
 
     def _get_predictions(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+        """Get both the means and the variances for the xs"""
         means, variances = self.model.predict(xs)
         return means, variances
 
-# def combine_sds(sd1: float, mu1: float, n1: int, 
+# def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):
 
 #     var1 = sd1**2
@@ -328,7 +319,7 @@ class MPNTwoOutputModel(Model):
 #     mu_combined = (n1*mu1 + n2*mu2) / n_total
 
 #     sd_combined = sqrt(
-#         (n1*(var1 + (mu1-mu_combined)**2) + n2*(var2 + (mu2-mu_combined)**2)) 
+#         (n1*(var1 + (mu1-mu_combined)**2) + n2*(var2 + (mu2-mu_combined)**2))
 #         / n_total
 #     )
 #     return sd_combined

@@ -1,10 +1,10 @@
+"""This module contains the Model abstract base class. All custom models must
+implement this interface in order to interact properly with an Explorer"""
+
 from abc import ABC, abstractmethod
-from itertools import islice
-from pathlib import Path
 from typing import (Callable, Iterable, List,
                     Optional, Sequence, Set, Tuple, TypeVar)
 
-import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
 
@@ -19,7 +19,7 @@ class Model(ABC):
 
     This is an abstract base class and cannot be instantiated by itself.
 
-    Attributes (class)
+    Properties
     ----------
     provides : Set[str]
         the types of values this class of model provides
@@ -27,8 +27,8 @@ class Model(ABC):
         - 'vars': this model provides a variance for the predicted mean
         - 'stochastic': this model generates predicted values sthocastically
     type_ : str
-        the underlying architecture of model. E.g., 'nn' for all models that 
-        use the NN class
+        the underlying architecture of model.
+        E.g., 'nn' for all models that use the NN class
 
     Attributes (instance)
     ----------
@@ -39,7 +39,6 @@ class Model(ABC):
         already batched
     additional, class-specific instance attributes
     """
-
     def __init__(self, test_batch_size: int, njobs: int = 1, **kwargs):
         self.test_batch_size = test_batch_size
         self.njobs = njobs
@@ -58,9 +57,9 @@ class Model(ABC):
         """The underlying architecture of the Model"""
 
     @abstractmethod
-    def train(self, xs: Iterable[T], ys: Sequence[float],
+    def train(self, xs: Iterable[T], ys: Sequence[float], *,
               featurize: Callable[[T], T_feat], retrain: bool = False) -> bool:
-        """Train the model on an iterable of input data
+        """Train the model on the input data
         
         Parameters
         ----------
@@ -97,7 +96,7 @@ class Model(ABC):
             an iterable of input identifiers that correspond to the
             uncompressed input representations
         x_feats : Iterable[T_feat]
-            an iterable of either batches or individual uncompressed feature 
+            an iterable of either batches or individual uncompressed feature
             representations corresponding to the input identifiers
         batched_size : Optional[int] (Default = None)
             the size of the batches if xs is an iterable of batches
@@ -131,12 +130,12 @@ class Model(ABC):
 
         if mean_only:
             for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
-                                desc='Batching test data', unit='batch'):
+                                 desc='Batching test data', unit='batch'):
                 batch_means = self.get_means(batch_xs)
                 means.extend(batch_means)
         else:
             for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
-                                desc='Batching test data', unit='batch'):
+                                 desc='Batching test data', unit='batch'):
                 batch_means, batch_vars = self.get_means_and_vars(batch_xs)
                 means.extend(batch_means)
                 variances.extend(batch_vars)

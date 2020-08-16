@@ -282,8 +282,8 @@ class Explorer:
             the current average score
         """
         ligands = self.acq.acquire_initial(
-            xs=self.pool.gen_smis(),
-            cluster_ids=self.pool.gen_cluster_ids(),
+            xs=self.pool.smis(),
+            cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
 
@@ -331,9 +331,9 @@ class Explorer:
         self._update_predictions()
 
         ligands = self.acq.acquire_batch(
-            xs=self.pool.gen_smis(), y_means=self.y_preds, y_vars=self.y_vars,
-            size=len(self.pool), explored={**self.scores, **self.failed},
-            cluster_ids=self.pool.gen_cluster_ids(),
+            xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
+            explored={**self.scores, **self.failed},
+            cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, epoch=self.epoch,
         )
 
@@ -424,7 +424,7 @@ class Explorer:
         k = k or self.k
 
         selected = []
-        for x, y in zip(self.pool.gen_smis(), self.y_preds):
+        for x, y in zip(self.pool.smis(), self.y_preds):
             if len(selected) < k:
                 heapq.heappush(selected, (y, x))
             else:
@@ -523,7 +523,7 @@ class Explorer:
             writer = csv.writer(fid)
             writer.writerow(['smiles', 'predicted_score[, predicted_variance]'])
             writer.writerows(
-                zip_longest(self.pool.gen_smis(), self.y_preds, self.y_vars)
+                zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
             )
     
     def _clean_and_update_scores(self, new_scores: Dict[str, Optional[float]]):
@@ -571,7 +571,8 @@ class Explorer:
             xs, ys = zip(*self.new_scores.items())
             retrain = False
 
-        self.model.train(xs, ys, self.enc.encode_and_uncompress, retrain)
+        self.model.train(xs, ys, retrain=retrain,
+                         featurize=self.enc.encode_and_uncompress)
         self.new_scores = {}
         self.new_model = True
 
@@ -594,8 +595,8 @@ class Explorer:
             return
 
         self.y_preds, self.y_vars = self.model.apply(
-            x_ids=self.pool.gen_smis(), 
-            x_feats=self.pool.gen_enc_mols(), 
+            x_ids=self.pool.smis(), 
+            x_feats=self.pool.fps(), 
             batched_size=None, size=len(self.pool), 
             mean_only='vars' not in self.acq.needs
         )
