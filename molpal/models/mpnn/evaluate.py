@@ -80,12 +80,11 @@ def evaluate(model: nn.Module, data_loader: MoleculeDataLoader, num_tasks: int,
     :param logger: Logger.
     :return: A list with the score for each task based on `metric_func`.
     """
-    def batch_graphs(data_loader):
-        for batch in data_loader:
-            yield batch.batch_graph()
+    # def batch_graphs(data_loader):
+    #     for batch in data_loader:
+    #         yield batch.batch_graph()
 
-    preds = predict(model=model, batch_graphs=batch_graphs(data_loader), 
-                    scaler=scaler)
+    preds = predict(model, data_loader, scaler=scaler)
                     
     results = evaluate_predictions(
         preds=preds, targets=data_loader.targets, num_tasks=num_tasks,

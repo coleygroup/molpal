@@ -8,13 +8,15 @@ from itertools import zip_longest
 import os
 from operator import itemgetter
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
 from . import acquirer
 from . import encoders
 from . import models
 from . import objectives
 from . import pools
+
+T = TypeVar('T')
 
 class Explorer:
     """An Explorer explores a pool of inputs using Bayesian optimization
@@ -63,14 +65,14 @@ class Explorer:
         observed data
     epoch : int
         the current epoch of exploration
-    scores : Dict[str, float]
-        a dictionary mapping a molecule's SMILES string to its corresponding
+    scores : Dict[T, float]
+        a dictionary mapping an input's identifier to its corresponding
         objective function value
-    failed : Dict[str, None]
+    failed : Dict[T, None]
         a dictionary containing the inputs for which the objective function
         failed to evaluate
-    new_scores : Dict[str, float]
-        a dictionary mapping a molecule's SMILES string to its corresponding
+    new_scores : Dict[T, float]
+        a dictionary mapping an input's identifier to its corresponding
         objective function value for the most recent batch of labeled inputs
     new_model : bool
         whether the predictions are currently out-of-date with the model
@@ -188,7 +190,8 @@ class Explorer:
         if previous_scores:
             self.load_scores(previous_scores)
         elif scores_csvs:
-            self.load(scores_csvs)
+            # self.load(scores_csvs)
+            self.load_(scores_csvs)
 
     @property
     def k(self) -> int:
@@ -299,7 +302,7 @@ class Explorer:
             self.recent_avgs.append(self.top_k_avg)
 
         if self.write_intermediate:
-            self.write_scores()
+            self.write_scores(include_failed=True)
         
         self.epoch += 1            
 
@@ -349,7 +352,7 @@ class Explorer:
             self.recent_avgs.append(self.top_k_avg)
 
         if self.write_intermediate:
-            self.write_scores()
+            self.write_scores(include_failed=True)
         
         self.epoch += 1
 
@@ -433,7 +436,7 @@ class Explorer:
         return [(x, y) for y, x in selected]
 
     def write_scores(self, m: Union[int, float] = 1., 
-                     final: bool = False) -> None:
+                     final: bool = False, include_failed: bool = False) -> None:
         """Write the top M scores to a CSV file
 
         Writes a CSV file of the top-k explored inputs with the input ID and
@@ -445,6 +448,9 @@ class Explorer:
             the number of top inputs to write. By default, writes all inputs
         final : bool (Default = False)
             whether the explorer has finished.
+        include_failed : bool (Defulat = False)
+            whether to include the inputs for which objective function
+            evaluation failed
         """
         if isinstance(m, float):
             m = int(m * len(self))
@@ -466,19 +472,23 @@ class Explorer:
             writer = csv.writer(fid)
             writer.writerow(['smiles', 'score'])
             writer.writerows(top_m)
+            if include_failed:
+                writer.writerows(self.failed.items())
         
         if self.verbose > 0:
             print(f'Results were written to "{p_scores}"')
 
     def load_scores(self, previous_scores: str) -> None:
-        """Load the scores CSV located at saved_scores"""
-
+        """Load the scores CSV located at saved_scores.
+        
+        If this is being called during initialization, treat the data as the
+        initialization batch.
+        """
         if self.verbose > 0:
             print(f'Loading scores from "{previous_scores}" ... ', end='')
 
         self.scores = self._read_scores(previous_scores)
         
-        # skip initial batch acquisition (because it doesn't make sense)
         if self.epoch == 0:
             self.epoch = 1
         
@@ -514,6 +524,34 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
 
+    ########################################
+    ######### SPECIAL LOAD FUNCTION ########
+    ######### TODO: REMOVE ME       ########
+    def load_(self, scores_csvs: List[str]) -> None:
+        """Mimic the intermediate state of a previous explorer run by loading
+        the data from the list of output files"""
+
+        if self.verbose > 0:
+            print(f'Mimicking previous state ... ', end='')
+        
+        scores = self._read_scores(scores_csvs[-1])
+        self.scores = scores
+        self.epoch += len(scores_csvs)
+
+        self.top_k_avg = self.avg()
+        if len(self.scores) >= self.k:
+            self.recent_avgs.append(self.top_k_avg)
+        
+        self._update_model()
+        self._update_predictions()
+
+        if self.verbose > 0:
+            print('Done!')
+            print(f'Resuming at epoch {self.epoch}')
+    ########################################
+    ########################################
+    ########################################
+
     def write_preds(self) -> None:
         preds_path = Path(f'{self.root}/{self.name}/preds')
         if not preds_path.is_dir():
@@ -526,7 +564,7 @@ class Explorer:
                 zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
             )
     
-    def _clean_and_update_scores(self, new_scores: Dict[str, Optional[float]]):
+    def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update new_scores, 
         scores, and failed attributes accordingly
 

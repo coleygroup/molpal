@@ -5,7 +5,7 @@ from itertools import islice
 from typing import Callable, Iterable, Iterator, List, TypeVar
 
 import numpy as np
-# from tqdm import tqdm
+from tqdm import tqdm
 
 T = TypeVar('T')
 
@@ -21,7 +21,9 @@ def get_model_types() -> List[str]:
 def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
                    n_workers: int = 0) -> np.ndarray:
     """Calculate the fature matrix of xs with the given featurization
-    function using parallel processing"""
+    functiong"""
+    xs = tqdm(xs, desc='Featurizing', smoothing=0.)
+    
     if n_workers <= 1:
         X = [featurize(x) for x in xs]
     else:

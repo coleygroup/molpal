@@ -160,23 +160,17 @@ class MPNN:
 
     def predict(self, xs: Iterable[str]) -> ndarray:
         """Generate predictions for the inputs xs"""
-        # test_data = MoleculeDataset([
-        #     MoleculeDatapoint(
-        #         smiles=x,
-        #         #row=OrderedDict({'smiles': x}),
-        #     ) for x in xs
-        # ])
+        test_data = MoleculeDataset([MoleculeDatapoint(smiles=x) for x in xs])
+        data_loader = MoleculeDataLoader(
+            dataset=test_data,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers
+        )
 
-        # test_data_loader = MoleculeDataLoader(
-        #     dataset=test_data,
-        #     batch_size=self.batch_size,
-        #     num_workers=self.num_workers
-        # )
+        # batch_graphs = mpnn.utils.batch_graphs(
+        #     smis=xs, minibatch_size=50, n_workers=self.num_workers)
 
-        batch_graphs = mpnn.utils.batch_graphs(
-            smis=xs, minibatch_size=50, n_workers=self.num_workers)
-
-        return mpnn.predict(self.model, batch_graphs, scaler=self.scaler)
+        return mpnn.predict(self.model, test_data_loader, scaler=self.scaler)
     
     # def save(self, path) -> None:
     #     Path(path).mkdir(parents=True, exist_ok=True)

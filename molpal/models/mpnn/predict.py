@@ -9,7 +9,7 @@ from chemprop.data import MoleculeDataLoader, MoleculeDataset, StandardScaler
 from chemprop.features import BatchMolGraph, mol2graph
 
 def predict(model: nn.Module,
-            batch_graphs: Iterable[BatchMolGraph],
+            data_loader: Iterable[MoleculeDataLoader],
             disable_progress_bar: bool = False,
             scaler: Optional[StandardScaler] = None) -> np.ndarray:
     """Predict the output values of a dataset
@@ -34,9 +34,8 @@ def predict(model: nn.Module,
     model.eval()
 
     pred_batches = []
-    for batch_graph in tqdm(batch_graphs, desc='Inference', 
-                            unit='minibatch', smoothing=0., leave=False):
-        # mol_batch = batch.batch_graph()
+    for batch in data_loader:
+        batch_graph = batch.batch_graph()
         # features_batch = batch.features()
 
         with torch.no_grad():

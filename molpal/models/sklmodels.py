@@ -55,7 +55,7 @@ class RFModel(Model):
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = True):
         # retrain means nothing for this model- internally it always retrains
-        X = feature_matrix(xs, featurize, self.n_jobs)
+        X = feature_matrix(xs, featurize, 1)#self.n_jobs)
         Y = np.array(ys)
 
         self.model.fit(X, Y)
@@ -128,7 +128,7 @@ class GPModel(Model):
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
-        X = feature_matrix(xs, featurize, self.njobs)
+        X = feature_matrix(xs, featurize, 1)#self.njobs)
         Y = np.array(ys)
 
         self.model = GaussianProcessRegressor(kernel=self.kernel)

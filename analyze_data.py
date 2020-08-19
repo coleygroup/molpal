@@ -1,6 +1,6 @@
 from collections import Counter, defaultdict
 import csv
-from itertools import chain
+from itertools import chain, islice
 import math
 from operator import itemgetter
 from pathlib import Path
@@ -50,10 +50,10 @@ def recursive_conversion(nested_dict):
 def read_data(p_data, k):
     with open(p_data) as fid:
         reader = csv.reader(fid); next(reader)
-
-        data = [(row[0], -float(row[1])) for row in reader]
+        # the data files are always sorted
+        data = [(row[0], -float(row[1])) for row in islice(reader, k)]
     
-    return sorted(data, key=itemgetter(1))[:k]
+    return sorted(data, key=itemgetter(1))
 
 def compare_results(found: List[Tuple], true: List[Tuple],
                     avg: bool = True, smis: bool = True, scores: bool = True
@@ -97,6 +97,34 @@ def compare_results(found: List[Tuple], true: List[Tuple],
 
     return f_avg, f_smis, f_scores
 
+def calculate_metric_results(it_rep_results):
+    avg_means_sds = [[]] * len(it_rep_results)
+    smis_means_sds = [[]] * len(it_rep_results)
+    scores_means_sds = [[]] * len(it_rep_results)
+    for i in it_rep_results:
+        rep_results = zip(*it_rep_results[i].values())
+        fs_avgs, fs_smis, fs_scores = rep_results
+
+        avg_means_sds[i] = (mean_and_sd(fs_avgs))
+        smis_means_sds[i] = (mean_and_sd(fs_smis))
+        scores_means_sds[i] = (mean_and_sd(fs_scores))
+
+    avg_means, avg_sds = zip(*avg_means_sds)
+    avg_means = list(map(PrettyPct, avg_means))
+    avg_sds = list(map(PrettyPct, avg_sds))
+
+    smis_means, smis_sds = zip(*smis_means_sds)
+    smis_means = list(map(PrettyPct, smis_means))
+    smis_sds = list(map(PrettyPct, smis_sds))
+
+    scores_means, scores_sds = zip(*scores_means_sds)
+    scores_means = list(map(PrettyPct, scores_means))
+    scores_sds = list(map(PrettyPct, scores_sds))
+
+    return ((avg_means, avg_sds),
+            (smis_means, smis_sds),
+            (scores_means, scores_sds))
+
 def main():
     true = pickle.load(open(sys.argv[1], 'rb'))
     parent_dir = Path(sys.argv[2])
@@ -111,87 +139,65 @@ def main():
     results = nested_dict()
     random = nested_dict()
 
-    metrics = set()
-    models = set()
-    iters = set()
     for child in tqdm(parent_dir.iterdir(), desc='Analyzing runs', unit='run'):
         if not child.is_dir():
             continue
 
         fields = str(child.stem).split('_')
-        _, model, metric, _, repeat, *_ = fields
+        _, model, metric, _, rep, *_ = fields
+        rep = int(rep)
         # _, model, metric, _, _, repeat, *_ = fields
         
-        models.add(model)
-        metrics.add(metric)
-
         p_data = child / 'data'
         for p_iter in tqdm(p_data.iterdir(), desc='Analyzing iterations',
                            leave=False):
             try:
                 it = int(p_iter.stem.split('_')[-1])
-                iters.add(it)
             except ValueError:
                 continue
 
             found = read_data(p_iter, k)
-
-            results[model][metric][it][repeat] = compare_results(found, true)
             if metric == 'random':
-                random[it][repeat] = results[model][metric][it][repeat]
+                random[it][rep] = compare_results(found, true)
+            else:
+                results[model][metric][it][rep] = compare_results(found, true)
+            
 
-    results = recursive_conversion(results)
+    d_model_metric_it_rep_results = recursive_conversion(results)
     random = recursive_conversion(random)
 
     d_model_results = {}
-    for model in models:
-        d_metric_it_rep = results[model]
+    for model in d_model_metric_it_rep_results:
+        d_metric_it_rep_results = d_model_metric_it_rep_results[model]
 
         d_metric_avg = {}
         d_metric_smis = {}
         d_metric_scores = {}
 
-        for metric in metrics:
-            if metric == 'random':
-                # the random results are model-independent but have only
-                # been run for one model, so a hack is necessary here
-                d_it_rep = random
-            else:
-                d_it_rep = d_metric_it_rep[metric]
+        for metric in d_metric_it_rep_results:
+            d_it_rep_results = d_metric_it_rep_results[metric]
 
-            avg_means_sds = []
-            smis_means_sds = []
-            scores_means_sds = []
-            for it in range(len(iters)):
-                fractions = zip(*d_it_rep[it].values())
-                fs_avgs, fs_smis, fs_scores = fractions
+            avg, smis, scores = calculate_metric_results(d_it_rep_results)
 
-                avg_means_sds.append(mean_and_sd(fs_avgs))
-                smis_means_sds.append(mean_and_sd(fs_smis))
-                scores_means_sds.append(mean_and_sd(fs_scores))
-
-            avg_means, avg_sds = zip(*avg_means_sds)
-            avg_means = list(map(PrettyPct, avg_means))
-            avg_sds = list(map(PrettyPct, avg_sds))
-            d_metric_avg[metric] = avg_means, avg_sds
-
-            smis_means, smis_sds = zip(*smis_means_sds)
-            smis_means = list(map(PrettyPct, smis_means))
-            smis_sds = list(map(PrettyPct, smis_sds))
-            d_metric_smis[metric] = smis_means, smis_sds
-
-            scores_means, scores_sds = zip(*scores_means_sds)
-            scores_means = list(map(PrettyPct, scores_means))
-            scores_sds = list(map(PrettyPct, scores_sds))
-            d_metric_scores[metric] = scores_means, scores_sds
+            d_metric_avg[metric] = avg[0], avg[1]
+            d_metric_smis[metric] = smis[0], smis[1]
+            d_metric_scores[metric] = scores[0], scores[1]
 
         d_model_results[model] = {
             'avg': d_metric_avg,
             'smis': d_metric_smis,
             'scores': d_metric_scores
         }
-
     pprint.pprint(d_model_results, compact=True)
+
+    if random:
+        avg, smis, scores = calculate_metric_results(random)
+        random = {
+            'avg': (avg[0], avg[1]),
+            'smis': (smis[0], smis[1]),
+            'scores': (scores[0], scores[1])
+        }
+        pprint.pprint(random, compact=True)
 
 if __name__ == "__main__":
     main()

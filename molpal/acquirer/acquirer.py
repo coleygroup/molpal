@@ -269,6 +269,7 @@ class Acquirer:
                     heapq.heappushpop(heap, (u, x))
         else:
             # this is broken for e-greedy/pi/etc. approaches
+            # the random indices are not distributed evenly amongst clusters
 
             # clustered acquisition maintains m independent heaps that
             # operate similarly to the above
@@ -281,8 +282,7 @@ class Acquirer:
 
             for x, y_pred, u, cid in tqdm(zip(xs, Y_mean, U, cluster_ids),
                                           total=U.size, desc='Acquiring'):
-                if y_pred > global_pred_max:
-                    global_pred_max = y_pred
+                global_pred_max = max(y_pred, global_pred_max)
 
                 if x in explored:
                     continue
@@ -302,7 +302,7 @@ class Acquirer:
             heaps = [heap for heap, _ in d_cid_heap.values()]
             heap = list(chain(*heaps))
 
-        if self.verbose > 0:
+        if self.verbose > 1:
             print(f'Selected {len(heap)} new samples')
         if self.verbose > 2:
             total = default_timer() - begin
