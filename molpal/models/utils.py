@@ -21,20 +21,17 @@ def get_model_types() -> List[str]:
 def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
                    n_workers: int = 0) -> np.ndarray:
     """Calculate the fature matrix of xs with the given featurization
-    functiong"""
-    xs = tqdm(xs, desc='Featurizing', smoothing=0.)
-    
+    function"""
     if n_workers <= 1:
-        X = [featurize(x) for x in xs]
+        X = [featurize(x) for x in tqdm(xs, desc='Featurizing', smoothing=0.)]
     else:
-        global _featurize; _featurize = featurize
         with Pool(max_workers=n_workers) as pool:
-            X = list(pool.map(__featurize, xs))
+            global featurize_; featurize_ = featurize
+            X = list(tqdm(pool.map(__featurize, xs), desc='Featurizing'))
     
     return np.array(X)
 
-# weird global definitions are necessary to allow for pickling and
-# parallelization of feature_matrix generation
-_featurize = None
+# local featurize function isn't pickleable so it must be wrapped inside a
+# global function to enable parallel feature matrix construction
 def __featurize(x):
-    return _featurize(x)
+    return featurize_(x)

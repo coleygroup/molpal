@@ -54,6 +54,79 @@ def parse_line(row: List[str], smiles_col: int) -> Optional[np.ndarray]:
     except:
         return None
 
+def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
+                        encoder: Type[Encoder] = AtomPairFingerprinter(),
+                        name: str = 'fps', path: str = '.') -> np.ndarray:
+    """Precalculate the fature matrix of xs with the given encoder and store
+    in an HDF5 file
+    
+    Parameters
+    ----------
+    xs: Iterable[T]
+        the inputs for which to generate the feature matrix
+    size : int
+        the length of the iterable
+    n_workers : int (Default = 0)
+        the number of workers to parallelize feature matrix generation over
+    encoder : Type[Encoder] (Default = AtomPairFingerprinter)
+        an object which implements the encoder interface
+    name : str (Default = 'fps')
+        the name of the output HDF5 file
+    path : str (Default = '.')
+        the path under which the HDF5 file should be written
+
+    Returns
+    -------
+    fps_h5 : str
+        the filename of an hdf5 file containing the feature matrix of the
+        representations generated from the molecules in the input file.
+        The row ordering corresponds to the ordering of smis
+    invalid_idxs : Set[int]
+        the set of idxs in xs containing invalid inputs
+    """
+    fps_h5 = str(Path(path)/ f'{name}.h5')
+
+    with Pool(max_workers=n_workers) as pool, h5py.File(fps_h5, 'w') as h5f:
+        global feautrize_; feautrize_ = encoder.encode_and_uncompress
+        CHUNKSIZE = 1024
+
+        fps_dset = h5f.create_dataset(
+            'fps', (size, len(encoder)),
+            chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
+        )
+        
+        batch_size = CHUNKSIZE*n_workers*2
+        n_batches = n_mols // batch_size + 1
+
+        invalid_idxs = set()
+        i = 0
+        offset = 0
+
+        for xs_batch in tqdm(batches(xs, batch_size), total=n_batches,
+                             desc='Precalculating fps', unit='batch'):
+            fps = pool.map(featurize, xs_batch, CHUNKSIZE)
+            for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
+                while fp is None:
+                    invalid_idxs.add(i+offset)
+                    offset += 1
+                    fp = next(fps)
+
+                fps_dset[i] = fp
+                i += 1
+
+        # original dataset size included potentially invalid xs
+        valid_size = size - len(invalid_idxs)
+        if valid_size != size:
+            fps_dset.resize(valid_size, axis=0)
+
+    return fps_h5, invalid_idxs
+
+def featurize(x):
+    try:
+        return feautrize_(x)
+    except:
+        return None
+
 def parse_smiles_par(filepath: str, delimiter: str = ',',
                      smiles_col: int = 0, title_line: bool = True,
                      encoder_: Type[Encoder] = AtomPairFingerprinter(),
@@ -122,13 +195,6 @@ def parse_smiles_par(filepath: str, delimiter: str = ',',
             chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
         )
         
-        # semaphore = mp.Semaphore((njobs+2) * chunksize)
-        # def gen_rows(reader: csv.reader, sem: mp.Semaphore):
-        #     for row in reader:
-        #         sem.acquire()
-        #         yield row
-
-        # parse_line_partial = partial(parse_line, smiles_col=smiles_col)
         parse_line_ = partial(parse_line, smiles_col=smiles_col)
         # rows = gen_rows(reader, semaphore)
 
@@ -149,20 +215,6 @@ def parse_smiles_par(filepath: str, delimiter: str = ',',
 
                 fps_dset[i] = fp
                 i += 1
-
-        # fps = pool.imap(parse_line_partial, rows, chunksize)
-        # for i, fp in tqdm(enumerate(fps), total=n_mols,
-        #                   desc='Preculating fingerprints'):
-        #     while fp is None:
-        #         # i+offset is the row in the original file
-        #         # we do this instead of incrementing i to maintain a contiguous
-        #         # set of fingerprints in the fps dataset
-        #         invalid_rows.add(i+offset)
-        #         offset += 1
-        #         fp = next(fps)
-
-        #     fps_dset[i] = fp
-        #     semaphore.release()
 
         # original dataset size included potentially invalid SMILES
         n_mols_valid = n_mols - len(invalid_rows)

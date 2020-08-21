@@ -7,7 +7,6 @@ from molpal import Explorer
 
 def sigterm_handler(signum, frame):
     sys.exit(0)
-
 signal.signal(signal.SIGTERM, sigterm_handler)
 
 def main():
@@ -33,12 +32,12 @@ def main():
     try:
         explorer.run()
     except BaseException:
-        # explorer.save()
+        state_file = explorer.save()
+        print(f'Exception raised! Intemediate state saved to "{state_file}"')
         raise
     stop = time()
 
-    elapsed = stop - start
-    m, s = divmod(elapsed, 60)
+    m, s = divmod(stop-start, 60)
     h, m = divmod(int(m), 60)
     d, h = divmod(h, 24)
     print(f'Total time for exploration: {d}d {h}h {m}m {s:0.2f}s')

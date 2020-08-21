@@ -121,15 +121,13 @@ class MoleculePool(Sequence[Mol]):
         self.library = library
         self.title_line = title_line
         self.delimiter = delimiter
+        self.smiles_col = smiles_col
         self.verbose = verbose
-
         if Path(library).suffix == '.gz':
             self.open_ = partial(gzip.open, mode='rt')
         else:
             self.open_ = open
             
-        self.smiles_col = smiles_col
-
         self.fps_ = fps
         self.invalid_lines = None
         self.njobs = njobs
@@ -147,6 +145,7 @@ class MoleculePool(Sequence[Mol]):
         self._mol_generator = None
 
     def __len__(self) -> int:
+        """The number of valid pool inputs"""
         return self.size
 
     def __iter__(self) -> Iterator[Mol]:
@@ -251,7 +250,7 @@ class MoleculePool(Sequence[Mol]):
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
 
-        with h5py.File(self.fps_) as h5fid:
+        with h5py.File(self.fps_, mode='r') as h5fid:
             fps = h5fid['fps']
             return fps[idx]
 
@@ -357,10 +356,14 @@ class MoleculePool(Sequence[Mol]):
                 if self.title_line:
                     next(reader)
 
-                for i, row in enumerate(reader):
-                    if i in self.invalid_lines:
-                        continue
-                    yield row[self.smiles_col]
+                if self.invalid_lines:
+                    for i, row in enumerate(reader):
+                        if i in self.invalid_lines:
+                            continue
+                        yield row[self.smiles_col]
+                else:
+                    for row in reader:
+                        yield row[self.smiles_col]
 
     def fps(self) -> Iterator[np.ndarray]:
         """Return a generator over pool molecules' feature representations
@@ -404,7 +407,8 @@ class MoleculePool(Sequence[Mol]):
 
         return None
 
-    def _encode_mols(self, enc: Type[Encoder], njobs: int, path: str) -> int:
+    def _encode_mols(self, encoder: Type[Encoder], 
+                     njobs: int, path: str) -> int:
         """Precalculate the fingerprints of the library members, if necessary.
 
         Parameters
@@ -432,8 +436,13 @@ class MoleculePool(Sequence[Mol]):
         """
         if self.fps_ is None:
             if self.verbose > 0:
-                print('Precalculating fingerprints ...', end=' ')
+                print('Precalculating feature matrix ...', end=' ')
 
+            # total_size = sum(1 for _ in self.smis())
+            # self.fps_, self.invalid_lines = fingerpints.feature_matrix_hdf5(
+            #     self.smis(), total_size, n_workers=self.njobs,
+            #     encoder=encoder, name=Path(self.library).stem, path=path
+            # )
             self.fps_, self.invalid_lines = fingerprints.parse_smiles_par(
                 self.library, delimiter=self.delimiter,
                 smiles_col=self.smiles_col, title_line=self.title_line, 
@@ -442,10 +451,10 @@ class MoleculePool(Sequence[Mol]):
 
             if self.verbose > 0:
                 print('Done!')
-                print(f'Molecular fingerprints were saved to "{self.fps_}"')
+                print(f'Feature matrix was saved to "{self.fps_}"', flush=True)
         else:
             if self.verbose > 0:
-                print(f'Using presupplied fingerprints from "{self.fps_}"')
+                print(f'Using feature matrix from "{self.fps_}"', flush=True)
 
         with h5py.File(self.fps_, 'r') as h5f:
             fps = h5f['fps']

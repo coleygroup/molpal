@@ -40,6 +40,7 @@ class RFModel(Model):
             n_estimators=100,
             n_jobs=self.n_jobs,
             max_depth=8,
+            verbose=1,
         )
 
         super().__init__(test_batch_size, **kwargs)

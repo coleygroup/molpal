@@ -24,18 +24,16 @@ except AttributeError:
     MAX_CPU = mp.cpu_count()
 
 def cluster_fps_h5(fps_h5: str, ncluster: int = 100) -> List[int]:
-    """
-    Cluster the molecular fingerprints
+    """Cluster the inputs represented by the feature matrix in fps_h5
 
     Parameters
     ----------
     fps : str
-        the filepath of an h5py file containing the NxM matrix of the
-        molecular representations, where N is the number of molecules and
-        M is the length of the feature representation
+        the filepath of an HDF5 file containing the feature matrix of the
+        molecules, where N is the number of molecules and M is the length of 
+        the feature representation
     ncluster : int (Default = 100)
-        the number of clusters to form with the given fingerprints (if the
-        input method requires this parameter)
+        the number of clusters to generate
 
     Returns
     -------
@@ -44,24 +42,21 @@ def cluster_fps_h5(fps_h5: str, ncluster: int = 100) -> List[int]:
     """
     begin = timeit.default_timer()
 
-    batch_size = 1000
+    BATCH_SIZE = 1024
     n_iter = 1000
 
     clusterer = cluster.MiniBatchKMeans(n_clusters=ncluster,
-                                        batch_size=batch_size)
+                                        batch_size=BATCH_SIZE)
 
     with h5py.File(fps_h5, 'r') as h5f:
         fps = h5f['fps']
 
-        # fit clustering model
-        for i in range(n_iter):
-            rand_inds = sorted(sample(range(len(fps)), batch_size))
-            batch_fps = fps[rand_inds]
-            clusterer.partial_fit(batch_fps)
+        for _ in range(n_iter):
+            idxs = sorted(sample(range(len(fps)), BATCH_SIZE))
+            clusterer.partial_fit(fps[idxs])
 
-        # predict clustering data
-        cluster_ids = [clusterer.predict(fps[i:i+batch_size])
-                       for i in range(0, len(fps), batch_size)]
+        cluster_ids = [clusterer.predict(fps[i:i+BATCH_SIZE])
+                       for i in range(0, len(fps), BATCH_SIZE)]
 
     elapsed = timeit.default_timer() - begin
     print(f'Clustering took: {elapsed:0.3f}s')
@@ -71,8 +66,7 @@ def cluster_fps_h5(fps_h5: str, ncluster: int = 100) -> List[int]:
 def cluster_fps(fps: List[np.ndarray],
                 ncluster: int = 100, method: str = 'minibatch',
                 njobs: Optional[int] = None) -> np.ndarray:
-    """
-    Cluster the molecular fingerprints, fps, by a given method
+    """Cluster the molecular fingerprints, fps, by a given method
 
     Parameters
     ----------

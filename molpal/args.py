@@ -1,6 +1,5 @@
 # can add support for those who don't have configargparse
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
-import multiprocessing as mp
 import os
 from pathlib import Path
 import sys
@@ -12,7 +11,7 @@ from typing import Union
 try:
     MAX_CPU = len(os.sched_getaffinity(0))
 except AttributeError:
-    MAX_CPU = mp.cpu_count()
+    MAX_CPU = os.cpu_count()
 
 #################################
 #       GENERAL ARGUMENTS       #
@@ -51,7 +50,7 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--previous-scores',
                         help='the path to a file containing the scores from a previous run of molpal to load in as preliminary dataset.')
     parser.add_argument('--scores-csvs', nargs='+',
-                        help='A list of filepaths containing the output from a previous exploration to read in and mimic its intermediate state. Will load these files in the order in which they are passed.')
+                        help='Either (1) A list of filepaths containing the outputs from a previous exploration or (2) a pickle file containing this list. Will load these files in the order in which they are passed to mimic the intermediate state of a previous exploration. Specifying a single will be interpreted as passing a pickle file. If seeking to mimic the state after only one round of exploration, use the --previous-scores argument instead and leave this option empty.')
 
     parser.add_argument('--root', default='.',
                         help='the root directory under which to organize all program outputs')
@@ -184,14 +183,12 @@ def modify_DockingObjective_args(args: Namespace) -> None:
 
     args.name = args.name or f'{rec}_{lib}'
 
-    # input files are generic, so are named solely by their ligand supply file
     if args.input is None:
-        args.input = f'input/{lib}'
+        args.input = f'input/{args.name}'
     if args.output is None:
         args.output = f'output/{args.name}'
 
     args.ncpu = min(MAX_CPU, args.ncpu)
-    args.njobs = min(MAX_CPU, args.njobs)
 
 def modify_LookupObjective_args(args: Namespace) -> None:
     args.lookup_title_line = not args.no_lookup_title_line
@@ -253,24 +250,23 @@ def add_stopping_args(parser: ArgumentParser) -> None:
                         help='the maximum number of inputs to explore')
 
 def cleanup_args(args: Namespace) -> None:
-    """Remove unnecessary arguments"""
+    """Remove unnecessary arguments and change some arguments"""
+    if isinstance(s, list) and len(args.scores_csvs)==1:
+        args.scores_csvs = args.scores_csvs[0]
     args.title_line = not args.no_title_line
 
     args_to_remove = {'no_title_line'}
 
-    docking_args = {'docker', 'receptor', 'center', 'size', 'ncpu',
-                    'boltzmann', 'opt'}
-    lookup_args = {'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
-                    'lookup_data_col', 'lookup_sep'}
-    
-    gp_args = {'gp_kernel'}
-    nn_args = set() # {'ensemble_size'}
-    mpnn_args = {'device', 'init_lr', 'max_lr', 'final_lr'}
-
     if args.objective == 'docking':
-        args_to_remove |= lookup_args
+        args_to_remove |= {
+            'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
+            'lookup_data_col', 'lookup_sep'
+        }
     elif args.objective == 'lookup':
-        args_to_remove |= docking_args
+        args_to_remove |= {
+            'docker', 'receptor', 'center', 'size', 'ncpu',
+            'boltzmann', 'opt'
+        }
 
     if args.metric != 'ei' or args.metric != 'pi':
         args_to_remove.add('xi')
@@ -283,13 +279,13 @@ def cleanup_args(args: Namespace) -> None:
         args_to_remove |= {'temp_i', 'temp_f'}
 
     if args.model != 'gp':
-        args_to_remove |= gp_args
+        args_to_remove |= {'gp_kernel'}
     if args.model != 'nn':
-        args_to_remove |= nn_args
+        args_to_remove |= set()
     if args.model != 'mpn':
-        args_to_remove |= mpnn_args
+        args_to_remove |= {'device', 'init_lr', 'max_lr', 'final_lr'}
     if args.model != 'nn' and args.model != 'mpn':
-        args_to_remove.add('conf_method')
+        args_to_remove |= {'conf_method'}
 
     for arg in args_to_remove:
         delattr(args, arg)
@@ -308,7 +304,6 @@ def gen_args(args=None) -> Namespace:
     args = parser.parse_args(args)
 
     modify_objective_args(args)
-    
     cleanup_args(args)
 
     return args
