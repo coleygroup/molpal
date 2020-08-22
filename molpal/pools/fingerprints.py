@@ -8,14 +8,16 @@ import os
 from pathlib import Path
 import sys
 import timeit
-from typing import Iterable, Iterator, List, Optional, Set, TextIO, Tuple, Type
+from typing import Iterable, Iterator, List, Optional, Set, Tuple, Type, TypeVar
 
 import h5py
 import numpy as np
 from rdkit.Chem import AllChem as Chem
 from tqdm import tqdm
 
-from molpal.encoders import Encoder, AtomPairFingerprinter
+from ..encoders import Encoder, AtomPairFingerprinter
+
+T = TypeVar('T')
 
 try:
     MAX_CPU = len(os.sched_getaffinity(0))
@@ -96,7 +98,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
         )
         
         batch_size = CHUNKSIZE*n_workers*2
-        n_batches = n_mols // batch_size + 1
+        n_batches = size//batch_size + 1
 
         invalid_idxs = set()
         i = 0
@@ -121,7 +123,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
 
     return fps_h5, invalid_idxs
 
-def featurize(x):
+def featurize(x) -> Optional[np.ndarray]:
     try:
         return feautrize_(x)
     except:

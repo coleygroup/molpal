@@ -170,7 +170,7 @@ class MPNN:
         # batch_graphs = mpnn.utils.batch_graphs(
         #     smis=xs, minibatch_size=50, n_workers=self.num_workers)
 
-        return mpnn.predict(self.model, test_data_loader, scaler=self.scaler)
+        return mpnn.predict(self.model, data_loader, scaler=self.scaler)
     
     # def save(self, path) -> None:
     #     Path(path).mkdir(parents=True, exist_ok=True)

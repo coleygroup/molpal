@@ -179,7 +179,7 @@ class Explorer:
         elif isinstance(scores_csvs, list):
             self.scores_csvs = scores_csvs
         else:
-            self.scores_csvs = None
+            self.scores_csvs = []
 
         if previous_scores:
             self.load_scores(previous_scores)

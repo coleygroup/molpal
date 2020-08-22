@@ -134,7 +134,7 @@ def write_cluster(filepath: str, smidxs: List[int],
 def cluster_smiles_file(filepath: str, delimiter: str = ',',
                         smiles_col: int = -1, title_line: bool = True,
                         njobs: int = -1, ncluster: int = 100,
-                        out_path: Optional[str] = None) -> None:
+                        path: str = '.') -> None:
     """
     Cluster the molecules in a .smi format file
 
@@ -149,7 +149,7 @@ def cluster_smiles_file(filepath: str, delimiter: str = ',',
         the column containing the SMILES string in each row. If a value of -1
         is used, will use the first column containing a valid smiles string
     title_line : bool (Default = True)
-        does the file contain a title line?
+        whether the file contains a title line
     njobs : int (Default = -1)
         the number of jobs to parallelize file parsing over. A value of -1
         uses all available cores, -2: all cores minus one, etc.
@@ -158,11 +158,7 @@ def cluster_smiles_file(filepath: str, delimiter: str = ',',
     out_path : Optional[str]
         the name of the directory to which all cluster files should be written.
         By default, will organize all clusters under the directory
-        <filepath>_clusters/ located in /path/to/filepath
-
-    Returns
-    -------
-    None
+        <path>/<filename>_clusters/
     """
     start = timeit.default_timer()
 
@@ -172,11 +168,12 @@ def cluster_smiles_file(filepath: str, delimiter: str = ',',
 
     cluster_ids = cluster_fps_h5(fps_smis_h5, ncluster=ncluster)
 
-    if out_path is None:
-        p = Path(filepath)
-        out_path = p.with_name((p.stem+'_clustered'))
+    if path is None:
+        p_smis = Path(filepath)
+        p_clusters = p_smis.with_name(f'{p_smis.stem}_clusters')
+        # path = Path(path) / f'{p_smis.stem}_clusters'
 
-    with open(filepath) as fid_in, open(out_path, 'w') as fid_out:
+    with open(filepath) as fid_in, open(p_clusters, 'w') as fid_out:
         reader = csv.reader(fid_in, delimiter=delimiter)
         writer = csv.writer(fid_out)
 
@@ -188,20 +185,6 @@ def cluster_smiles_file(filepath: str, delimiter: str = ',',
         for i, row in enumerate(reader):
             smi = row[smiles_col]
             writer.write([smi, cluster_ids[i]])
-
-    # with h5py.File(fps_smis_h5, 'r') as f:
-    #     fps = f['fps']
-    #     smis = f['smis']
-    #     # map from cluster_id to list of smiles indices
-    #     d_cluster_smidxs = defaultdict(list)
-    #     for idx, cluster_id in enumerate(cluster_ids):
-    #         d_cluster_smidxs[cluster_id].append(idx)
-    #
-    #     # if writing is too slow, could parallelize
-    #     if out_path is None:
-    #         p = Path(filepath)
-    #         out_path = str(p.with_suffix('')) + '_clusters'
-    #     write_clusters(out_path, d_cluster_smidxs, smis)
 
     elapsed = timeit.default_timer() - start
     print(f'Total time to cluster the {len(cluster_ids)} mols in "{filepath}"',

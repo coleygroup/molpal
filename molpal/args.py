@@ -250,8 +250,8 @@ def add_stopping_args(parser: ArgumentParser) -> None:
                         help='the maximum number of inputs to explore')
 
 def cleanup_args(args: Namespace) -> None:
-    """Remove unnecessary arguments and change some arguments"""
-    if isinstance(s, list) and len(args.scores_csvs)==1:
+    """Remove unnecessary attributes and change some arguments"""
+    if isinstance(args.scores_csvs, list) and len(args.scores_csvs)==1:
         args.scores_csvs = args.scores_csvs[0]
     args.title_line = not args.no_title_line
 
