@@ -1,12 +1,9 @@
 # from collections import defaultdict
 import csv
-import itertools as it
 from itertools import chain
-import multiprocessing as mp
 import os
 from pathlib import Path
 from random import sample
-import re
 import sys
 import timeit
 from typing import Dict, List, Optional
@@ -21,7 +18,7 @@ from .fingerprints import parse_smiles_par
 try:
     MAX_CPU = len(os.sched_getaffinity(0))
 except AttributeError:
-    MAX_CPU = mp.cpu_count()
+    MAX_CPU = os.cpu_count()
 
 def cluster_fps_h5(fps_h5: str, ncluster: int = 100) -> List[int]:
     """Cluster the inputs represented by the feature matrix in fps_h5

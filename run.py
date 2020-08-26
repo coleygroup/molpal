@@ -1,5 +1,6 @@
 import signal
 import sys
+from pprint import pprint
 from timeit import default_timer as time
 
 from molpal.args import gen_args
@@ -22,8 +23,7 @@ def main():
     args = gen_args()
     params = vars(args)
     print(f'MolPAL will be run with the following arguments:')
-    for key, value in sorted(params.items()):
-        print(f'  {key}: {value}')
+    pprint(params)
     print(flush=True)
     
     explorer = Explorer(**params)

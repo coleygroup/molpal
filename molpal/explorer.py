@@ -81,9 +81,8 @@ class Explorer:
     write_preds : bool
         whether the predictions should be written after each exploration batch
     verbose : int
-        the level of output this Explorer prints
+        the level of output the Explorer prints
     
-
     Properties
     ----------
     k : int
@@ -174,6 +173,7 @@ class Explorer:
         self.top_k_avg = None
         self.y_preds = None
         self.y_vars = None
+
         if isinstance(scores_csvs, str):
             self.scores_csvs = pickle.load(open(scores_csvs, 'rb'))
         elif isinstance(scores_csvs, list):
@@ -184,19 +184,15 @@ class Explorer:
         if previous_scores:
             self.load_scores(previous_scores)
         elif scores_csvs:
-            # self.load(scores_csvs)
-            self.load_()
+            if retrain_from_scratch:
+                self.load_()
+            else:
+                self.load()
 
     @property
     def k(self) -> int:
         """The number of top-scoring inputs from which to determine
-        the average.
-        
-        Returned as an integer but can be set either as an integer or as
-        a fraction of the pool.
-        NOTE: Specifying either a fraction greater than 1 or or a number larger
-              than the pool size will default to using the full pool.
-        l"""
+        the average."""
         k = self.__k
         if isinstance(k, float):
             k = int(k * len(self.pool))
@@ -205,19 +201,18 @@ class Explorer:
 
     @k.setter
     def k(self, k: Union[int, float]):
-        if k < 0:
+        """Set k either as an integer or as a fraction of the pool.
+        
+        NOTE: Specifying either a fraction greater than 1 or or a number 
+        larger than the pool size will default to using the full pool.
+        """
+        if k <= 0:
             raise ValueError(f'k(={k}) must be greater than 0!')
         self.__k = k
 
     @property
     def max_explore(self) -> int:
-        """The maximum number of inputs to explore
-        
-        Returned as an integer but can be set either as an integer or as
-        a fraction of the pool.
-        NOTE: Specifying either a fraction greater than 1 or or a number larger
-              than the pool size will default to using the full pool.
-        """
+        """The maximum number of inputs to explore"""
         max_explore = self.__max_explore
         if isinstance(max_explore, float):
             max_explore = int(max_explore * len(self.pool))
@@ -226,10 +221,49 @@ class Explorer:
     
     @max_explore.setter
     def max_explore(self, max_explore: Union[int, float]):
-        if max_explore < 0.:
-            raise ValueError(f'max_explore(={max_explore}) must be greater than 0!')
+        """Set max_explore either as an integer or as a fraction of the pool.
+        
+        NOTE: Specifying either a fraction greater than 1 or or a number 
+        larger than the pool size will default to using the full pool.
+        """
+        if max_explore <= 0.:
+            raise ValueError(
+                f'max_explore(={max_explore}) must be greater than 0!')
 
         self.__max_explore = max_explore
+
+    @property
+    def completed(self) -> bool:
+        """Has the explorer fulfilled one of its stopping conditions?
+
+        Stopping Conditions
+        -------------------
+        a. explored the entire pool
+           (not implemented right now due to complications with 'transfer 
+           learning')
+        b. explored for at least <max_epochs> epochs
+        c. explored at least <max_explore> inputs
+        d. the current top-k average is within a fraction <delta> of the moving
+           top-k average. This requires two sub-conditions to be met:
+           1. the explorer has successfully explored at least k inputs
+           2. the explorer has completed at least <window_size> epochs after
+              sub-condition (1) has been met
+
+        Returns
+        -------
+        bool
+            whether a stopping condition has been met
+        """
+        if self.epoch > self.max_epochs:
+            return True
+        if len(self.scores) >= self.max_explore:
+            return True
+
+        if len(self.recent_avgs) < self.recent_avgs.maxlen:
+            return False
+
+        moving_avg = sum(self.recent_avgs) / len(self.recent_avgs)
+        return (self.top_k_avg - moving_avg) / moving_avg <= self.delta
 
     def explore(self):
         self.run()
@@ -237,20 +271,18 @@ class Explorer:
     def run(self):
         """Explore the MoleculePool until the stopping condition is met"""
         
-        if not self.epoch:
+        if self.epoch == 0:
             print('Starting Exploration ...')
-            avg = self.explore_initial()
+            self.explore_initial()
         else:
             print(f'Resuming Exploration at epoch {self.epoch}...')
-            avg = self.explore_batch()
+            self.explore_batch()
 
-        while not self.stopping_condition():
+        while not self.completed:
             if self.verbose > 0:
-                k = min(len(self.scores), self.k)
-                print(f'Current average of top {k}: {avg:0.3f}',
+                print(f'Current average of top {self.k}: {self.top_k_avg:0.3f}',
                       'Continuing exploration ...', flush=True)
-
-            avg = self.explore_batch()
+            self.explore_batch()
 
         print('Finished exploring!')
         print(f'Explored a total of {len(self)} molecules',
@@ -272,20 +304,15 @@ class Explorer:
         """Perform an initial round of exploration
 
         Must be called before explore_batch()
-
-        Returns
-        -------
-        avg : float
-            the current average score
         """
-        ligands = self.acq.acquire_initial(
+        inputs = self.acq.acquire_initial(
             xs=self.pool.smis(),
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
 
         new_scores = self.obj.calc(
-            ligands, 
+            inputs, 
             in_path=f'{self.tmp}/{self.name}/input/initial',
             out_path=f'{self.tmp}/{self.name}/output/initial'
         )
@@ -300,24 +327,17 @@ class Explorer:
         
         self.epoch += 1            
 
-        return self.top_k_avg
-
     def explore_batch(self) -> float:
         """Perform a round of exploration
-
-        Returns
-        -------
-        avg : float
-            the current average score
 
         Raises
         ------
         InvalidExplorationError
-            if before explore_initial or load_scores
+            if called before explore_initial or load_scores
         """
         if self.epoch == 0:
             raise InvalidExplorationError(
-                'Cannot call explore_batch without initialization!')
+                'Cannot explore a batch before initialization!')
 
         if len(self.scores) >= len(self.pool):
             # this needs to be reconsidered for transfer learning type approach
@@ -327,7 +347,7 @@ class Explorer:
         self._update_model()
         self._update_predictions()
 
-        ligands = self.acq.acquire_batch(
+        inputs = self.acq.acquire_batch(
             xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
@@ -335,7 +355,7 @@ class Explorer:
         )
 
         new_scores = self.obj.calc(
-            ligands,
+            inputs,
             in_path=f'{self.tmp}/{self.name}/input/{self.epoch}',
             out_path=f'{self.tmp}/{self.name}/output/{self.epoch}'
         )
@@ -350,13 +370,11 @@ class Explorer:
         
         self.epoch += 1
 
-        return self.top_k_avg
-
-    def avg(self, k: Optional[float] = None) -> float:
+    def avg(self, k: Union[int, float, None] = None) -> float:
         """Calculate the average of the top k molecules
         
-        Parameters
-        ----------
+        Parameter
+        ---------
         k : Union[int, float, None] (Default = None)
             the number of molecules to consider when calculating the
             average, expressed either as a specific number or as a 
@@ -374,38 +392,20 @@ class Explorer:
         
         return sum(score for smi, score in self.top_explored(k)) / k
 
-    def stopping_condition(self) -> bool:
-        """Is the stopping condition met?
-
+    def top_explored(self, k: Union[int, float, None] = None) -> List[Tuple]:
+        """Get the top-k explored molecules
+        
+        Parameter
+        ---------
+        k : Union[int, float, None] (Default = None)
+            see documentation for avg()
+        
         Returns
         -------
-        bool
-            whether the stopping condition has been met
-            True:
-                a. explored the entire pool
-                b. exceeded the maximum number of iterations
-                c. exceeded the maximum number of objective function evaluations
-                d. the average has not improved by at least some fraction delta 
-                   of the top-k moving average
-            False:
-                a. has not explored at least k molecules
-                b. has not completed enough epochs to calculate a moving average
-                c. the current top-k average is better than the top-k moving
-                   average by at least some fraction delta
+        top_explored : List[Tuple[str, float]]
+            a list of tuples containing the identifier and score of the 
+            top-k inputs, sorted by their score
         """
-        if self.epoch > self.max_epochs:
-            return True
-        if len(self.scores) >= self.max_explore:
-            return True
-
-        if len(self.recent_avgs) < self.recent_avgs.maxlen:
-            return False
-
-        moving_avg = sum(self.recent_avgs) / len(self.recent_avgs)
-        return (self.top_k_avg - moving_avg) / moving_avg <= self.delta
-
-    def top_explored(self, k: Optional[float] = None) -> List[Tuple[str,float]]:
-        """Get the top-k explored molecules"""
         k = k or self.k
         if isinstance(k, float):
             k = int(k * len(self.pool))
@@ -416,9 +416,24 @@ class Explorer:
         
         return sorted(self.scores.items(), key=itemgetter(1), reverse=True)
 
-    def top_preds(self, k: Optional[int] = None) -> List[Tuple[str, float]]:
-        """Get the current top predicted molecules and their scores"""
+    def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
+        """Get the current top predicted molecules and their scores
+        
+        Parameter
+        ---------
+        k : Union[int, float, None] (Default = None)
+            see documentation for avg()
+        
+        Returns
+        -------
+        top_preds : List[Tuple[str, float]]
+            a list of tuples containing the identifier and predicted score of 
+            the top-k predicted inputs, sorted by their predicted score
+        """
         k = k or self.k
+        if isinstance(k, float):
+            k = int(k * len(self.pool))
+        k = min(k, len(self.scores))
 
         selected = []
         for x, y in zip(self.pool.smis(), self.y_preds):
@@ -430,7 +445,8 @@ class Explorer:
         return [(x, y) for y, x in selected]
 
     def write_scores(self, m: Union[int, float] = 1., 
-                     final: bool = False, include_failed: bool = False) -> None:
+                     final: bool = False,
+                     include_failed: bool = False) -> None:
         """Write the top M scores to a CSV file
 
         Writes a CSV file of the top-k explored inputs with the input ID and
@@ -439,11 +455,15 @@ class Explorer:
         Parameters
         ----------
         m : Union[int, float] (Default = 1.)
-            the number of top inputs to write. By default, writes all inputs
+            The number of top-scoring inputs to write, expressed either as an
+            integer or as a float representing the fraction of explored inputs.
+            By default, writes all inputs
         final : bool (Default = False)
-            whether the explorer has finished.
-        include_failed : bool (Defulat = False)
-            whether to include the inputs for which objective function
+            Whether the explorer has finished. If true, write all explored
+            inputs (both successful and failed) and name the output CSV file
+            "all_explored_final.csv"
+        include_failed : bool (Default = False)
+            Whether to include the inputs for which objective function
             evaluation failed
         """
         if isinstance(m, float):
@@ -457,6 +477,7 @@ class Explorer:
         if final:
             m = len(self)
             p_scores = p_data / f'all_explored_final.csv'
+            include_failed = True
         else:
             p_scores = p_data / f'top_{m}_explored_iter_{self.epoch}.csv'
         self.scores_csvs.append(p_scores)
@@ -478,11 +499,22 @@ class Explorer:
         
         If this is being called during initialization, treat the data as the
         initialization batch.
+
+        Parameter
+        ---------
+        previous_scores : str
+            the filepath of a CSV file containing previous scoring information.
+            The 0th column of this CSV must contain the input identifier and
+            the 1st column must contain a float corresponding to its score.
+            A failure to parse the 1st column as a float will treat that input
+            as a failure.
         """
         if self.verbose > 0:
             print(f'Loading scores from "{previous_scores}" ... ', end='')
 
-        self.scores, self.failures = self._read_scores(previous_scores)
+        scores, failures = self._read_scores(previous_scores)
+        self.scores.update(scores)
+        self.failures.update(failures)
         
         if self.epoch == 0:
             self.epoch = 1
@@ -506,25 +538,23 @@ class Explorer:
         the data from the list of output files"""
 
         if self.verbose > 0:
-            print(f'Mimicking previous state ... ', end='')
+            print(f'Loading in previous state ... ', end='')
 
         for scores_csv in self.scores_csvs:
             scores, self.failures = self._read_scores(scores_csv)
-            self.new_scores = dict(set(self.scores) ^ set(scores))
+
+            self.new_scores = {smi: score for smi, score in scores.items()
+                               if smi not in self.scores}
+
             if not self.retrain_from_scratch:
-                # only need to train at each iteration if training online
                 self._update_model()
+
             self.scores = scores
-            # self.failures = failures
             self.epoch += 1
 
             self.top_k_avg = self.avg()
             if len(self.scores) >= self.k:
                 self.recent_avgs.append(self.top_k_avg)
-        
-        # if self.retrain_from_scratch:
-        #     self._update_model()
-        # self._update_predictions()
 
         if self.verbose > 0:
             print('Done!')
@@ -546,9 +576,6 @@ class Explorer:
         self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.top_k_avg)
-        
-        # self._update_model()
-        # self._update_predictions()
 
         if self.verbose > 0:
             print('Done!')
@@ -571,6 +598,12 @@ class Explorer:
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update new_scores, 
         scores, and failed attributes accordingly
+
+        Parameter
+        ---------
+        new_scores : Dict[T, Optional[float]]
+            a dictionary containing the corresponding values of the objective
+            function for a batch of inputs
 
         Side effects
         ------------
@@ -611,10 +644,7 @@ class Explorer:
 
         self.model.train(xs, ys, retrain=self.retrain_from_scratch,
                          featurize=self.enc.encode_and_uncompress)
-
-        self.scores.update(**self.new_scores)
         self.new_scores = {}
-
         self.updated_model = True
 
     def _update_predictions(self) -> None:
@@ -632,7 +662,9 @@ class Explorer:
             sets self.updated_model to False, indicating that the predictions 
             are now up-to-date with the current model
         """
-        if not self.updated_model:
+        if not self.updated_model and self.y_preds:
+            # don't update predictions if the model has not been updated the
+            # predictions are already set
             return
 
         self.y_preds, self.y_vars = self.model.apply(
