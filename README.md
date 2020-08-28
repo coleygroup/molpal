@@ -60,7 +60,9 @@ The following packages are _optional_ to install before running MolPAL:
 
 ## Object Model
 
-MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the molpal library and the __Explorer__ class, which implements the optimization routine. The __Explorer__ relies on five classes to accomplish its purpose: __MoleculePool__, __Acquirer__, __Encoder__, __Model__, and __Objective__.
+MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements defines several classes that implement various elements of the optimization routine.
+
+__Explorer__: An [`Explorer`](molpal/explorer.py) is the abstraction of the optimization routine. It ties together the `MoleculePool`, `Acquirer`, `Encoder`, `Model`, and `Objective`, which each handle (roughly) a single step of a Bayesian optimization loop, into a full optimization procedure. Its main functionality is defined by the `run()` method, which performs the optimization until a stopping condition is met, but it also defines other convenience functions that make it amenable to running a single iteration of the optimization loop and interrogating its current state if optimization is desired to be run interactively.
 
 __MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual library (i.e., domain of inputs)
 
@@ -76,27 +78,26 @@ __Objective__: An [`Objective`](molpal/objectives.base.py) handles calculation o
 <pre>
 molpal
 ├── acquirer
-│   ├── acquirer.py
-│   └── metrics.py
-├── args.py
-├── encoders.py
+│   ├── acquirer.py        # Acquirer class implementation
+│   └── metrics.py         # metric functions
+├── encoders.py            # Encoder abstract base (ABC) class interface definition and various implementations thereof
 ├── explorer.py
 ├── models
-│   ├── base.py
-│   ├── mpnmodels.py
-│   ├── mpnn/
-│   ├── nnmodels.py
-│   ├── sklmodels.py
-│   └── utils.py
+│   ├── base.py            # Model ABC interface definition
+│   ├── mpnmodels.py       # implementations of Model subclasses that use pytorch message-passing neural nets in the backend 
+│   ├── mpnn/              # submodule containing functions used by MPNN models
+│   ├── nnmodels.py        # "..." that use tensorflow FFN model in the backend
+│   ├── sklmodels.py       # "..." that use scikit-learn models in the backend
+│   └── utils.py           # utility functions used in model code
 ├── objectives
-│   ├── base.py
-│   ├── docking.py
-│   ├── lookup.py
+│   ├── base.py            # Objective ABC interface definition
+│   ├── docking.py         # implementation of the DockingObjective
+│   └── lookup.py          # implementation of the LookupObjective
 └── pools
-    ├── cluster.py
-    ├── fingerprints.py
-    └── base.py
-    └── lazypool.py
+    ├── cluster.py         # functions for clustering a feature matrix
+    ├── fingerprints.py    # functions for calculating a feature matrix    
+    ├── base.py            # implementation of the base (Eager) MoleculePool, which precomputes the feature matrix
+    └── lazypool.py        # implementation of the LazyMoleculePool, which doesn't precompute the feature matrix
 </pre>
 
 ## Running MolPAL
