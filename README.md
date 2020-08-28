@@ -60,12 +60,17 @@ The following packages are _optional_ to install before running MolPAL:
 
 ## Object Model
 
-MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the molpal library and the __Explorer__ class, which implements the optimization routine. The __Explorer__ relies on five classes to accomplish its purpose: __MoleculePool__, __Acquirer__, __Encoder__, __Model__, and __Objective__. Many of these classes are defined as abstract base classes (ABCs), for which the interface is typically defined in a file named `base.py`. 
-[__MoleculePool__](molpal/pools/base.py): A `MoleculePool` defines the virtual library (i.e., domain of inputs)
-__Acquirer__: An `Acquirer` handles acquisition of unlabeled inputs from the MoleculePool according to its acquisition metric and the prior distribution over the data. The metric is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
-__Encoder__: An `Encoder` computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
-__Model__: A `Model` is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
-__Objective__: An `Objective` handles calculation of the objective function for unlabeled inputs
+MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the molpal library and the __Explorer__ class, which implements the optimization routine. The __Explorer__ relies on five classes to accomplish its purpose: __MoleculePool__, __Acquirer__, __Encoder__, __Model__, and __Objective__.
+
+__MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual library (i.e., domain of inputs)
+
+__Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition of unlabeled inputs from the MoleculePool according to its `metric` and the prior distribution over the data. The [`metric`](molpal/acquirer/metrics.py) is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
+
+__Encoder__: An [`Encoder`](molpal/encoders.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
+
+__Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
+
+__Objective__: An [`Objective`](molpal/objectives.base.py) handles calculation of the objective function for unlabeled inputs
 
 ## Directory Structure
 <pre>
