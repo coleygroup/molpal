@@ -4,18 +4,12 @@
 ## Overview
 This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high throughput virtual screening environments.
 
-At the core of MolPAL is the __Explorer__ class. The Explorer is an abstraction of a batched, Bayesian optimization routine on a discrete domain of inputs and it relies on five classes
-1. __MoleculePool__: A `MoleculePool` defines the virtual library (i.e., domain of inputs)
-2. __Acquirer__: An `Acquirer` handles acquisition of unlabeled inputs from the MoleculePool according to its acquisition metric (e.g. random, greedy, upper confidence bound, etc...) and the prior distribution over the data
-3. __Encoder__: An `Encoder` computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs
-4. __Model__: A `Model` is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
-5. __Objective__: An `Objective` handles calculation of the objective function for unlabeled inputs
-
 ## Table of Contents
 - [Overview](#overview)
 - [Table of Contents](#table-of-contents)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Object Model](#object-model)
 - [Directory Structure](#directory-structure)
 - [Running MolPAL](#running-molpal)
   * [Novel Targets](#novel-targets)
@@ -63,6 +57,15 @@ The following packages are _optional_ to install before running MolPAL:
 - [map4](https://github.com/reymond-group/map4) (if utilizing the map4 fingerprint)
 - optuna (1.4; if planning to perform hyperparameter optimization)
 - [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
+
+## Object Model
+
+MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the molpal library and the __Explorer__ class, which implements the optimization routine. The __Explorer__ relies on five classes to accomplish its purpose: __MoleculePool__, __Acquirer__, __Encoder__, __Model__, and __Objective__. Many of these classes are defined as abstract base classes (ABCs), for which the interface is typically defined in a file named `base.py`. 
+[__MoleculePool__](molpal/pools/base.py): A `MoleculePool` defines the virtual library (i.e., domain of inputs)
+__Acquirer__: An `Acquirer` handles acquisition of unlabeled inputs from the MoleculePool according to its acquisition metric and the prior distribution over the data. The metric is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
+__Encoder__: An `Encoder` computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
+__Model__: A `Model` is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
+__Objective__: An `Objective` handles calculation of the objective function for unlabeled inputs
 
 ## Directory Structure
 <pre>
