@@ -2,6 +2,7 @@
 implement this interface in order to interact properly with an Explorer"""
 
 from abc import ABC, abstractmethod
+import gc
 from typing import (Callable, Iterable, List,
                     Optional, Sequence, Set, Tuple, TypeVar)
 
@@ -112,6 +113,8 @@ class Model(ABC):
         variances: List[float]
             the variance in the predicted values, empty if mean_only is True
         """
+        gc.collect()
+        
         if self.type_ == 'mpn':
             # MPNs predict directly on the input identifier
             xs = x_ids

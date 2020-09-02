@@ -495,7 +495,7 @@ class MoleculePool(Sequence[Mol]):
             return len(self)
 
         if self.verbose > 0:
-            print('Validating SMILES strings ...', end=' ', flush=True)
+            print('Validating SMILES strings ...', end=' ')
 
         self.invalid_lines = set()
         # with self.open_(self.library) as fid:
@@ -536,7 +536,7 @@ class MoleculePool(Sequence[Mol]):
                             self.d_smi_idx[hash(smi)] = i
 
         if self.verbose > 0:
-            print('Done!')
+            print('Done!', flush=True)
         if self.verbose > 1:
             print(f'Detected {len(self.invalid_lines)} invalid SMILES strings')
 

@@ -184,6 +184,7 @@ class Explorer:
         if previous_scores:
             self.load_scores(previous_scores)
         elif scores_csvs:
+            # TODO: remove this line on release
             if retrain_from_scratch:
                 self.load_()
             else:
@@ -287,7 +288,7 @@ class Explorer:
         print('Finished exploring!')
         print(f'Explored a total of {len(self)} molecules',
               f'over {self.epoch} iterations')
-        print(f'Final average of top {self.k}: {avg:0.3f}')
+        print(f'Final average of top {self.k}: {self.top_k_avg:0.3f}')
         print(f'Final averages')
         print(f'--------------')
         for k in [0.0001, 0.0005, 0.001, 0.005]:
@@ -480,7 +481,7 @@ class Explorer:
             include_failed = True
         else:
             p_scores = p_data / f'top_{m}_explored_iter_{self.epoch}.csv'
-        self.scores_csvs.append(p_scores)
+        self.scores_csvs.append(str(p_scores))
 
         top_m = self.top_explored(m)
 
@@ -596,8 +597,8 @@ class Explorer:
             )
     
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
-        """Remove the None entries from new_scores and update new_scores, 
-        scores, and failed attributes accordingly
+        """Remove the None entries from new_scores and update the attributes 
+        new_scores, scores, and failed accordingly
 
         Parameter
         ---------
@@ -607,8 +608,10 @@ class Explorer:
 
         Side effects
         ------------
-        (sets) self.new_scores : Dict[T, float]
-            sets self.new_scores to new_scores without the None entries
+        (mutates) self.scores : Dict[T, float]
+            updates self.scores with the non-None entries from new_scores
+        (mutates) self.new_scores : Dict[T, float]
+            updates self.new_scores with the non-None entries from new_scores
         (mutates) self.failures : Dict[T, None]
             a dictionary storing the inputs for which scoring failed
         """
