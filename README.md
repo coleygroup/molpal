@@ -2,7 +2,7 @@
 # Efficient Exploration of Virtual Chemical <br/> Libraries through Active Learning
 
 ## Overview
-This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high throughput virtual screening environments.
+This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high-throughput virtual screening environments.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -18,18 +18,16 @@ This repository contains the source of MolPAL, both a library and software for t
 
 ## Requirements
 - Python (>= 3.6)
-- all desired docking programs to be installed and located on a user's PATH
-- (optional) OpenBabel to be installed and located on a user's path if input file preparation is to be performed online
+- the `pyscreener` library and all of its dependencies
 
-NN and MPN models can make use of GPUs for significantly faster model regression and inference. To utilize this, you must have the following:
+NN and MPN models can make use of GPUs for significantly faster model training and inference. To utilize this, you must have the following:
 - CUDA (>= 8.0)
 - cuDNN
-
 
 ## Installation
 The first step in installing MolPAL is to clone this repository: `git clone <this_repo>`
 
-The easiest way to install all dependencies necessary to run MolPAL is to use conda along with the supplied environment YAML file, but you may also install them manually, if desired.
+The easiest way to install all dependencies is to use conda along with the supplied environment YAML file, but you may also install them manually, if desired.
 
 ### conda
 1. (if necessary) install conda. Instructions will vary based on your system
@@ -41,21 +39,22 @@ Before running MolPAL, be sure to first activate the environment: `conda activat
 ### manual (FIX ME)
 
 The following packages are __necessary__ to install before running MolPAL:
-- [chemprop](https://github.com/chemprop/chemprop) (0.0.2)
-- h5py (2.10)
-- numpy (1.18)
-- rdkit (2019.09.3)
-- scikit-learn (0.22)
-- scipy (1.4)
-- pytorch (1.5; built with CUDA if utilizing GPU acceleration)
-- tensorflow (2.2)
-- tqdm (4.42)
+- [chemprop](https://github.com/chemprop/chemprop)
+- configargparse
+- h5py
+- numpy
+- rdkit
+- scikit-learn
+- scipy
+- pytorch (built with CUDA if utilizing GPU acceleration)
+- tensorflow
+- tqdm
 
 The following packages are _optional_ to install before running MolPAL:
 - cudatoolkit (if utilizing GPU acceleration; whichever version matches your CUDA build)
 - cudnn (if utilizing GPU acceleration; whichever version matches your cuDNN build)
 - [map4](https://github.com/reymond-group/map4) (if utilizing the map4 fingerprint)
-- optuna (1.4; if planning to perform hyperparameter optimization)
+- optuna (if planning to perform hyperparameter optimization)
 - [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
 
 ## Object Model
