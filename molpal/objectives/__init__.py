@@ -6,10 +6,16 @@ from .lookup import LookupObjective
 
 def objective(objective, **kwargs) -> Type[Objective]:
     """Objective factory function"""
-    try:
-        return {
-            # 'docking': DockingObjective,
-            'lookup': LookupObjective
-        }[objective](**kwargs)
-    except KeyError:
-        raise NotImplementedError(f'Unrecognized objective: "{objective}"')
+    if objective == 'docking':
+        from .docking import DockingObjective
+        return DockingObjective(**kwargs)
+    if objective == 'lookup':
+        from .lookup import LookupObjective
+        return LookupObjective(**kwargs)
+    # try:
+    #     return {
+    #         # 'docking': DockingObjective,
+    #         'lookup': LookupObjective
+    #     }[objective](**kwargs)
+    
+    raise NotImplementedError(f'Unrecognized objective: "{objective}"')
