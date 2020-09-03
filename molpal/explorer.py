@@ -666,8 +666,8 @@ class Explorer:
             are now up-to-date with the current model
         """
         if not self.updated_model and self.y_preds:
-            # don't update predictions if the model has not been updated the
-            # predictions are already set
+            # don't update predictions if the model has not been updated 
+            # and the predictions are already set
             return
 
         self.y_preds, self.y_vars = self.model.apply(
