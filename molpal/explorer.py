@@ -185,10 +185,10 @@ class Explorer:
             self.load_scores(previous_scores)
         elif scores_csvs:
             # TODO: remove this line on release
-            if retrain_from_scratch:
-                self.load_()
-            else:
-                self.load()
+            # if retrain_from_scratch:
+            #     self.load_()
+            # else:
+            self.load()
 
     @property
     def k(self) -> int:

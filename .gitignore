@@ -16,7 +16,11 @@
 *.sh
 *.batch
 *.hdf5
+*.npy
 *.h5
+*.png
 
 !outline.txt
 submit_molpal.py
+fps_umap.py
+molpal_umap.py
