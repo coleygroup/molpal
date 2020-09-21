@@ -94,8 +94,8 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
         Z = I / Y_sd
     E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
-    # if the expected variance is 0, the expected improvement is the 
-    # predicted improvement
+    # if the expected variance is 0, the expected improvement
+    # is the predicted improvement
     mask = (Y_var == 0)
     E_imp[mask] = I[mask]
 
@@ -119,8 +119,8 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
         Z = I / np.sqrt(Y_var)
     P_imp = norm.cdf(Z)
 
-    # if expected variance is 0, probability of improvement is 0 or 1 depending
-    # on whether the predicted improvement is negative or positive
+    # if expected variance is 0, probability of improvement is 0 or 1 
+    # depending on whether the predicted improvement is negative or positive
     mask = (Y_var == 0)
     P_imp[mask] = np.where(I > 0, 1, 0)[mask]
 
@@ -128,13 +128,13 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
 
 def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
              stochastic: bool = False, **kwargs) -> float:
-    """Thompson-like acquisition score
+    """Thompson acquisition score
 
     Parameters
     -----------
-    y_mean, y_var
+    Y_mean, Y_var
     stochastic : bool
-        is y_mean generated stochastically?
+        is Y_mean generated stochastically?
 
     Returns
     -------

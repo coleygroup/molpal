@@ -166,6 +166,8 @@ def main():
     d_model_metric_it_rep_results = recursive_conversion(results)
     random = recursive_conversion(random)
 
+    # pprint.pprint(d_model_metric_it_rep_results)
+
     d_model_results = {}
     for model in d_model_metric_it_rep_results:
         d_metric_it_rep_results = d_model_metric_it_rep_results[model]
