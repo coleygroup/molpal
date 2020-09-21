@@ -8,8 +8,8 @@ from numpy import ndarray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 
-from .base import Model
-from .utils import feature_matrix
+from molpal.models.base import Model
+from molpal.models.utils import feature_matrix
 
 T = TypeVar('T')
 

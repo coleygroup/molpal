@@ -13,7 +13,7 @@ import numpy as np
 from scipy import sparse
 from sklearn import cluster
 
-from .fingerprints import parse_smiles_par
+from molpal.pools.fingerprints import parse_smiles_par
 
 try:
     MAX_CPU = len(os.sched_getaffinity(0))

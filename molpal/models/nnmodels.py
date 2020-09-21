@@ -17,8 +17,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from tensorflow import keras
 
-from .base import Model
-from .utils import feature_matrix
+from molpal.models.base import Model
+from molpal.models.utils import feature_matrix
 
 # tf.get_logger().setLevel(logging.ERROR)
 

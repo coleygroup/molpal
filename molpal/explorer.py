@@ -11,7 +11,7 @@ from pathlib import Path
 import pickle
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
-from . import acquirer, encoders, models, objectives, pools
+from molpal import acquirer, encoders, models, objectives, pools
 
 T = TypeVar('T')
 

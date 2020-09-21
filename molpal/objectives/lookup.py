@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 from tqdm import tqdm
 
-from .base import Objective
+from molpal.objectives.base import Objective
 
 class LookupObjective(Objective):
     """A LookupObjective calculates the objective function by looking the

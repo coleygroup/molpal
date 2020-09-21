@@ -16,8 +16,8 @@ from chemprop.data.scaler import StandardScaler
 from chemprop.data.utils import split_data
 import chemprop.utils
 
-from .base import Model
-from . import mpnn
+from molpal.models.base import Model
+from molpal.models import mpnn
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')

@@ -1,6 +1,5 @@
 """This module contains the Acquirer class, which is used to gather inputs for
 a subsequent round of exploration based on prior prediction data."""
-
 import heapq
 from itertools import chain, zip_longest
 import math
@@ -11,7 +10,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Set, TypeVar, Union
 import numpy as np
 from tqdm import tqdm
 
-from . import metrics
+from molpal.acquirer import metrics
 
 T = TypeVar('T')
 
@@ -197,7 +196,7 @@ class Acquirer:
 
     def acquire_batch(self, xs: Iterable[T],
                       y_means: Iterable[float], y_vars: Iterable[float],
-                      explored: Mapping[T, float],
+                      explored: Mapping[T, float] = {},
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
                       epoch: Optional[int] = None, is_random: bool = False,
@@ -212,7 +211,7 @@ class Acquirer:
             the predicted input values
         y_vars : Iterable[float]
             the variances of the predicted input values
-        explored : Mapping[T, float]
+        explored : Mapping[T, float] (Default = {})
             the set of explored inputs and their associated scores
         cluster_ids : Optional[Iterable[int]] (Default = None)
             a parallel iterable for the cluster ID of each input

@@ -6,7 +6,7 @@ from torch import clamp, log, nn
 from chemprop.data import MoleculeDatapoint, MoleculeDataset
 from chemprop.features import BatchMolGraph, mol2graph
 
-from ..utils import batches
+from molpal.models.utils import batches
 
 def get_loss_func(dataset_type: str,
                   uncertainty_method: Optional[str] = None) -> nn.Module:

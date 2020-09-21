@@ -13,9 +13,9 @@ import numpy as np
 from rdkit import Chem
 from tqdm import tqdm
 
-from .cluster import cluster_fps_h5
-from . import fingerprints
-from ..encoders import Encoder, AtomPairFingerprinter
+from molpal.encoders import Encoder, AtomPairFingerprinter
+from molpal.pools.cluster import cluster_fps_h5
+from molpal.pools import fingerprints
 
 # a Mol is a SMILES string, a fingerprint, and an optional cluster ID
 Mol = Tuple[str, np.ndarray, Optional[int]]
@@ -172,7 +172,7 @@ class MoleculePool(Sequence[Mol]):
 
     def __contains__(self, smi: str) -> bool:
         for smi_ in self.smis():
-            if smi == smi:
+            if smi_ == smi:
                 return True
 
         return False
@@ -446,7 +446,7 @@ class MoleculePool(Sequence[Mol]):
             self.fps_, self.invalid_lines = fingerprints.parse_smiles_par(
                 self.library, delimiter=self.delimiter,
                 smiles_col=self.smiles_col, title_line=self.title_line, 
-                encoder_=enc, njobs=njobs, path=path
+                encoder_=encoder, njobs=njobs, path=path
             )
 
             if self.verbose > 0:

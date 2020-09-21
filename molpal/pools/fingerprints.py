@@ -15,7 +15,7 @@ import numpy as np
 from rdkit.Chem import AllChem as Chem
 from tqdm import tqdm
 
-from ..encoders import Encoder, AtomPairFingerprinter
+from molpal.encoders import Encoder, AtomPairFingerprinter
 
 T = TypeVar('T')
 

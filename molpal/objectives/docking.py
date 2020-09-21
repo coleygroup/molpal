@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, TypeVar
 
-from .base import Objective
+from molpal.objectives.base import Objective
 from .pyscreener import docking
 
 T = TypeVar('T')

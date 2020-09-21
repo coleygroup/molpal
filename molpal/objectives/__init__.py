@@ -1,8 +1,6 @@
 from typing import Type
 
-from .base import Objective
-# from .docking import DockingObjective
-from .lookup import LookupObjective
+from molpal.objectives.base import Objective
 
 def objective(objective, **kwargs) -> Type[Objective]:
     """Objective factory function"""

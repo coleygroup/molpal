@@ -4,11 +4,13 @@ training data."""
 
 from typing import Optional, Type
 
-from .base import Model
-from .utils import get_model_types
-from .nnmodels import NNModel, NNDropoutModel, NNEnsembleModel, NNTwoOutputModel
-from .mpnmodels import MPNModel, MPNDropoutModel, MPNTwoOutputModel
-from .sklmodels import RFModel, GPModel
+from molpal.models.base import Model
+from molpal.models.utils import get_model_types
+from molpal.models.nnmodels import (NNModel, NNDropoutModel,
+                                    NNEnsembleModel, NNTwoOutputModel)
+from molpal.models.mpnmodels import (MPNModel, MPNDropoutModel, 
+                                     MPNTwoOutputModel)
+from molpal.models.sklmodels import RFModel, GPModel
 
 def model(model: str, **kwargs) -> Type[Model]:
     """Model factory function"""
