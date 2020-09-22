@@ -227,7 +227,10 @@ class Acquirer:
         List[T]
             a list of selected inputs
         """
-        current_max = max(y for y in explored.values() if y is not None)
+        if explored:
+            current_max = max(y for y in explored.values() if y is not None)
+        else:
+            current_max = float('-inf')
 
         begin = default_timer()
 
@@ -243,7 +246,7 @@ class Acquirer:
 
         idxs = np.random.choice(
             np.arange(U.size), replace=False,
-            size=int(self.batch_size * U.size * self.epsilon)
+            size=int(self.batch_size * self.epsilon)
         )
         U[idxs] = np.inf
 

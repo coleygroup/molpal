@@ -19,8 +19,9 @@
 *.npy
 *.h5
 *.png
+*.pdf
 
-!outline.txt
+.DS_Store
 submit_molpal.py
 fps_umap.py
 molpal_umap.py

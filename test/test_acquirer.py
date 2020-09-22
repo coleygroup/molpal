@@ -8,7 +8,7 @@ from molpal.acquirer import Acquirer
 class TestAcquirer(unittest.TestCase):
     def setUp(self):
         self.xs = string.ascii_lowercase
-        self.y_means = np.arange(len(self.xs))[::-1]
+        self.y_means = np.arange(len(self.xs), dtype=np.double)[::-1]
         self.y_vars = np.zeros(len(self.xs))
 
         self.init_size = 10

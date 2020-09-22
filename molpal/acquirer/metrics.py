@@ -1,6 +1,5 @@
 """This module contains functions for calculating the acquisition score of an
 input based on various metrics"""
-
 from typing import Callable, Optional, Set
 
 import numpy as np
@@ -9,7 +8,8 @@ from scipy.stats import norm
 
 # this module maintains an independent random number generator
 RG = np.random.default_rng()
-def seed(seed: Optional[int]) -> None:
+
+def seed(seed: Optional[int] = None) -> None:
     global RG
     RG = np.random.default_rng(seed)
 
@@ -19,6 +19,7 @@ def get_metric(metric: str) -> Callable[..., float]:
         return {
             'random': random_metric,
             'greedy': greedy,
+            'noisy': noisy,
             'ucb': ucb,
             'ei': ei,
             'pi': pi,
@@ -33,6 +34,7 @@ def get_needs(metric: str) -> Set[str]:
     return {
         'random': set(),
         'greedy': {'means'},
+        'noisy': {'means'},
         'ucb': {'means', 'vars'},
         'ei': {'means', 'vars'},
         'pi': {'means', 'vars'},
@@ -45,11 +47,46 @@ def calc(metric: str, *args, **kwargs) -> np.ndarray:
     return get_metric(metric)(*args, **kwargs)
 
 def random_metric(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
+    """Random acquistion score
+
+    Parameters
+    ----------
+    Y_mean : np.ndarray
+        an array of length equal to the number of random scores to generate.
+        It is only used to determine the dimension of the output array
+    
+    Returns
+    -------
+    np.ndarray
+        the random acquisition scores
+    """
     return RG.random(len(Y_mean))
 
 def greedy(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
-    """Greedy acquisition score"""
+    """Greedy acquisition score
+    
+    Parameters
+    ----------
+    Y_mean : np.ndarray
+        the mean predicted y values
+
+    Returns
+    -------
+    np.ndarray
+        the greedy acquisition scores
+    """
     return Y_mean
+
+def noisy(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
+    """Noisy acquisition score
+    
+    Adds a random amount of noise to each predicted mean value. The noise is
+    randomly sampled from a normal distribution centered at 0 with standard
+    deviation equal to the standard deviation of the input predicted means.
+    """
+    sd = np.std(Y_mean)
+    noise = RG.normal(scale=sd, size=len(Y_mean))
+    return Y_mean + noise
 
 def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, 
         beta: int = 2, **kwargs) -> float:
@@ -57,12 +94,11 @@ def ucb(Y_mean: np.ndarray, Y_var: np.ndarray,
 
     Parameters
     ----------
-    Y_mean : float
-        the mean predicted y-value
-    Y_var : float
-        the variance of the predicted y mean
+    Y_mean : np.ndarray
+    Y_var : np.ndarray
+        the variance of the mean predicted y values
     beta : int (Default = 2)
-        the number of standard deviations to add to y_mean
+        the number of standard deviations to add to Y_mean
 
     Returns
     -------
@@ -71,13 +107,31 @@ def ucb(Y_mean: np.ndarray, Y_var: np.ndarray,
     """
     return Y_mean + beta*np.sqrt(Y_var)
 
+def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, 
+        beta: int = 2, **kwargs) -> float:
+    """Lower confidence bound acquisition score
+
+    Parameters
+    ----------
+    Y_mean : np.ndarray
+    Y_var : np.ndarray
+    beta : int (Default = 2)
+
+    Returns
+    -------
+    np.ndarray
+        the lower confidence bound acquisition scores
+    """
+    return Y_mean - beta*np.sqrt(Y_var)
+
 def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
        xi: float = 0.01, **kwargs) -> float:
     """Exected improvement acquisition score
 
     Parameters
     ----------
-    Y_mean, Y_var
+    Y_mean : np.ndarray
+    Y_var : np.ndarray
     current_max : float
         the current maximum observed score
     xi : float (Default = 0.01)
@@ -107,7 +161,10 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
 
     Parameters
     ----------
-    Y_mean, Y_var, current_max, xi
+    Y_mean : np.ndarray
+    Y_var : np.ndarray
+    current_max : float
+    xi : float (Default = 0.01)
 
     Returns
     -------
@@ -132,13 +189,14 @@ def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
 
     Parameters
     -----------
-    Y_mean, Y_var
+    Y_mean : np.ndarray
+    Y_var : np.ndarray
     stochastic : bool
         is Y_mean generated stochastically?
 
     Returns
     -------
-    thmpson : np.ndarray
+    np.ndarray
         the thompson acquisition scores
     """
     if stochastic:
@@ -150,5 +208,19 @@ def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
 
 def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
     """Random acquisition score [0, 1) if above threshold. Otherwise,
-    return -1."""
-    return np.where(Y_mean > threshold, RG.random(), -1.)
+    return -1.
+    
+    Parameters
+    ----------
+    Y_mean : np.ndarray
+    threshold : float
+        the threshold value below which to assign acquisition scores as -1 and 
+        above or equal to which to assign random acquisition scores in the 
+        range (0, 1]
+    
+    Returns
+    -------
+    np.ndarray
+        the random threshold acquisition scores
+    """
+    return np.where(Y_mean >= threshold, RG.random(), -1.)
