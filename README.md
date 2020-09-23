@@ -1,6 +1,8 @@
 # MolPAL: Molecular Pool-based Active Learning
 # Efficient Exploration of Virtual Chemical <br/> Libraries through Active Learning
 
+![overview of molpal structure and implementation](molpal_overview.png)
+
 ## Overview
 This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high-throughput virtual screening environments.
 
