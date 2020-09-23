@@ -73,7 +73,7 @@ __Encoder__: An [`Encoder`](molpal/encoders.py) computes the uncompressed featur
 
 __Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
 
-__Objective__: An [`Objective`](molpal/objectives.base.py) handles calculation of the objective function for unlabeled inputs
+__Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
 
 ## Directory Structure
 <pre>
