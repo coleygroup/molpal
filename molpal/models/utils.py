@@ -26,12 +26,12 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
         X = [featurize(x) for x in tqdm(xs, desc='Featurizing', smoothing=0.)]
     else:
         with Pool(max_workers=n_workers) as pool:
-            global featurize_; featurize_ = featurize
-            X = list(tqdm(pool.map(__featurize, xs), desc='Featurizing'))
+            # global featurize_; featurize_ = featurize
+            X = list(tqdm(pool.map(featurize, xs), desc='Featurizing'))
     
     return np.array(X)
 
 # local featurize function isn't pickleable so it must be wrapped inside a
 # global function to enable parallel feature matrix construction
-def __featurize(x):
-    return featurize_(x)
+# def __featurize(x):
+#     return featurize_(x)

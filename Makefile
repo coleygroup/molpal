@@ -1,5 +1,4 @@
 PYTHON=python
-SOURCE=source
 
 .PHONY: test
 

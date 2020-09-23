@@ -5,7 +5,8 @@ from itertools import chain, zip_longest
 import math
 import random
 from timeit import default_timer
-from typing import Dict, Iterable, List, Mapping, Optional, Set, TypeVar, Union
+from typing import (Callable, Dict, Iterable, List, Mapping, 
+                    Optional, Set, TypeVar, Union)
 
 import numpy as np
 from tqdm import tqdm
@@ -19,16 +20,6 @@ class Acquirer:
 
     Attributes
     ----------
-    metric : Callable[..., np.ndarray]
-        the function for calculating the acquisition utility of an input
-    metric_type : str
-        the alias of the metric function (NOT the function name)
-    needs : Set[str]
-        the values this acquirer needs to calculate acquisition utilities
-    init_size : int
-        the number of inputs to acquire initially
-    batch_size : int
-        the number of inputs to acquire in each batch
     epsilon : float
         the fraction of each batch that should be acquired randomly
     temp_i : Optional[float]
@@ -93,7 +84,9 @@ class Acquirer:
         return self.size
 
     @property
-    def metric(self):
+    def metric(self) -> Callable[..., np.ndarray]:
+        """Callable[..., np.ndarray] : the function for calculating the acquisition utility of an input"""
+    
         return self.__metric
 
     @metric.setter
@@ -103,14 +96,18 @@ class Acquirer:
 
     @property
     def metric_type(self) -> str:
+        """str : the alias of the metric function (NOT the function name)"""
         return self.__metric_type
 
     @property
     def needs(self) -> Set[str]:
+        """Set[str] : the values this acquirer needs to calculate acquisition 
+        utilities"""
         return metrics.get_needs(self.__metric_type)
     
     @property
     def init_size(self) -> int:
+        """int : the number of inputs to acquire initially"""
         if isinstance(self.__init_size, float):
             return math.ceil(self.size * self.__init_size)
 
@@ -127,6 +124,7 @@ class Acquirer:
 
     @property
     def batch_size(self) -> int:
+        """int : the number of inputs to acquire in each batch"""
         if isinstance(self.__batch_size, float):
             return math.ceil(self.size * self.__batch_size)
 

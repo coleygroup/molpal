@@ -156,13 +156,9 @@ class NN:
         -------
         True
         """
-        # data_tuple = self.make_datasets(xs, ys, featurize)
-        # n_train, n_val, train_data, val_data, batch_size = data_tuple
-
-        # reinitialize optimizer for each training iteration
         self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        X = feature_matrix(xs, featurize, 1)# self.n_workers)
+        X = feature_matrix(xs, featurize, self.n_workers)
         Y = self._normalize(ys)
 
         self.model.fit(

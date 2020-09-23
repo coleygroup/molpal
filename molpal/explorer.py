@@ -82,11 +82,6 @@ class Explorer:
         whether the predictions should be written after each exploration batch
     verbose : int
         the level of output the Explorer prints
-    
-    Properties
-    ----------
-    k : int
-    max_explore : int
 
     Parameters
     ----------
@@ -139,7 +134,7 @@ class Explorer:
         self.root = root
         self.tmp = tmp
 
-        self.enc = encoders.encoder(**kwargs)
+        self.enc = encoders.Encoder(**kwargs)
         self.pool = pools.pool(enc=self.enc, path=self.tmp, **kwargs)
         self.acq = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
@@ -192,7 +187,7 @@ class Explorer:
 
     @property
     def k(self) -> int:
-        """The number of top-scoring inputs from which to determine
+        """int : The number of top-scoring inputs from which to determine
         the average."""
         k = self.__k
         if isinstance(k, float):
@@ -213,7 +208,7 @@ class Explorer:
 
     @property
     def max_explore(self) -> int:
-        """The maximum number of inputs to explore"""
+        """int : The maximum number of inputs to explore"""
         max_explore = self.__max_explore
         if isinstance(max_explore, float):
             max_explore = int(max_explore * len(self.pool))

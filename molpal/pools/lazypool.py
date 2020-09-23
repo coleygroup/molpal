@@ -4,12 +4,12 @@ from typing import Iterator, Sequence, Type
 
 import numpy as np
 
-from .base import MoleculePool, Mol
-from ..encoders import Encoder, AtomPairFingerprinter
+from molpal.encoders import Encoder
+from molpal.pools.base import MoleculePool, Mol
 
-encoder = AtomPairFingerprinter()
-def smi_to_fp(smi):
-    return encoder.encode_and_uncompress(smi)
+# encoder = AtomPairFingerprinter()
+# def smi_to_fp(smi):
+#     return encoder.encode_and_uncompress(smi)
 
 class LazyMoleculePool(MoleculePool):
     """A LazyMoleculePool does not precompute fingerprints for the pool
@@ -63,17 +63,15 @@ class LazyMoleculePool(MoleculePool):
                 yield fp
 
     def fps_batches(self) -> Iterator[np.ndarray]:
-        global encoder; encoder = self.encoder
-
+        # buffer of chunk of fps into memory for faster iteration
         job_chunk_size = self.chunk_size // self.njobs
         smis = iter(self.smis())
-
-        # buffer of chunk of fps into memory for faster iteration
         smis_chunks = iter(lambda: list(islice(smis, self.chunk_size)), [])
+
         with ProcessPoolExecutor(max_workers=self.njobs) as pool:
             for smis_chunk in smis_chunks:
-                fps_chunk = pool.map(smi_to_fp, smis_chunk, 
-                                     chunksize=job_chunk_size)
+                fps_chunk = pool.map(self.encoder.encode_and_uncompress, 
+                                     smis_chunk, chunksize=job_chunk_size)
                 yield fps_chunk
 
     def _encode_mols(self, encoder: Type[Encoder], njobs: int, 

@@ -10,16 +10,27 @@ def evaluate_predictions(
     preds: List[List[float]], targets: List[List[float]],
     num_tasks: int, metric_func: Callable, dataset_type: str,
     logger: logging.Logger = None) -> List[float]:
-    """
-    Evaluates predictions using a metric function and filtering out invalid targets.
+    """Evaluates predictions using a metric function and filtering out invalid targets.
 
-    :param preds: A list of lists of shape (data_size, num_tasks) with model predictions.
-    :param targets: A list of lists of shape (data_size, num_tasks) with targets.
-    :param num_tasks: Number of tasks.
-    :param metric_func: Metric function which takes in a list of targets and a list of predictions.
-    :param dataset_type: Dataset type.
-    :param logger: Logger.
-    :return: A list with the score for each task based on `metric_func`.
+    Paramaters
+    ----------
+    preds : List[List[float]]
+        a 2D list of shape (data_size, num_tasks) with model predictions.
+    targets : List[List[float]]
+        a 2D list of shape (data_size, num_tasks) with targets.
+    num_tasks : int
+        the number of tasks.
+    metric_func : Callable
+        a function which takes in a list of targets and a list of predictions
+        as arguments and returns the list of scores for each task
+    dataset_type : str
+        the dataset type.
+    logger : logging.Logger
+    
+    Returns
+    -------
+    List[float]
+        a list with the score for each task based on metric_func
     """
     info = logger.info if logger is not None else print
 
@@ -56,10 +67,6 @@ def evaluate_predictions(
         if len(targets) == 0:
             continue
 
-        # if dataset_type == 'multiclass':
-        #     results.append(metric_func(valid_targets[i], valid_preds[i], labels=list(range(len(valid_preds[i][0])))))
-        # else:
-
         results.append(metric_func(targets, preds))
 
     return results
@@ -68,22 +75,30 @@ def evaluate(model: nn.Module, data_loader: MoleculeDataLoader, num_tasks: int,
              metric_func: Callable, dataset_type: str,
              scaler: StandardScaler = None,
              logger: logging.Logger = None) -> List[float]:
-    """
-    Evaluates an ensemble of models on a dataset.
+    """Evaluates a model on a dataset.
 
-    :param model: A model.
-    :param data_loader: A MoleculeDataLoader.
-    :param num_tasks: Number of tasks.
-    :param metric_func: Metric function which takes in a list of targets and a list of predictions.
-    :param dataset_type: Dataset type.
-    :param scaler: A StandardScaler object fit on the training targets.
-    :param logger: Logger.
-    :return: A list with the score for each task based on `metric_func`.
+    Parameters
+    ----------
+    model : nn.Module
+        a pytorch model.
+    data_loader : MoleculeDataLoader
+        a MoleculeDataLoader.
+    num_tasks : int
+        the number of tasks.
+    metric_func : Callable
+        a function which takes in a list of targets and a list of predictions
+        as arguments and returns the list of scores for each task
+    dataset_type : str
+        the dataset type
+    scaler : StandardScaler
+        a StandardScaler object fit on the training targets.
+    logger : logging.Logger
+    
+    Returns
+    -------
+    List[float]
+        A list with the score for each task based on metric_func
     """
-    # def batch_graphs(data_loader):
-    #     for batch in data_loader:
-    #         yield batch.batch_graph()
-
     preds = predict(model, data_loader, scaler=scaler)
                     
     results = evaluate_predictions(

@@ -61,7 +61,7 @@ def add_general_args(parser: ArgumentParser) -> None:
 #       ENCODER ARGUMENTS           #
 #####################################
 def add_encoder_args(parser: ArgumentParser) -> None:
-    parser.add_argument('--encoder', default='morgan',
+    parser.add_argument('--fingerprint', default='morgan',
                         choices={'morgan', 'rdkit', 'pair', 'maccs', 'map4'},
                         help='the type of encoder to use')
     parser.add_argument('--radius', type=int, default=2,
