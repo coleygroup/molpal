@@ -12,7 +12,6 @@ This repository contains the source of MolPAL, both a library and software for t
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Object Model](#object-model)
-- [Directory Structure](#directory-structure)
 - [Running MolPAL](#running-molpal)
   * [Novel Targets](#novel-targets)
   * [Hyperparameter Optimization](#hyperparameter-optimization)
@@ -74,32 +73,6 @@ __Encoder__: An [`Encoder`](molpal/encoders.py) computes the uncompressed featur
 __Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
 
 __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
-
-## Directory Structure
-<pre>
-molpal
-├── acquirer
-│   ├── acquirer.py        # Acquirer class implementation
-│   └── metrics.py         # metric functions
-├── encoders.py            # Encoder abstract base (ABC) class interface definition and various implementations thereof
-├── explorer.py
-├── models
-│   ├── base.py            # Model ABC interface definition
-│   ├── mpnmodels.py       # implementations of Model subclasses that use pytorch message-passing neural nets in the backend 
-│   ├── mpnn/              # submodule containing functions used by MPNN models
-│   ├── nnmodels.py        # "..." that use tensorflow FFN model in the backend
-│   ├── sklmodels.py       # "..." that use scikit-learn models in the backend
-│   └── utils.py           # utility functions used in model code
-├── objectives
-│   ├── base.py            # Objective ABC interface definition
-│   ├── docking.py         # implementation of the DockingObjective
-│   └── lookup.py          # implementation of the LookupObjective
-└── pools
-    ├── cluster.py         # functions for clustering a feature matrix
-    ├── fingerprints.py    # functions for calculating a feature matrix    
-    ├── base.py            # implementation of the base (Eager) MoleculePool, which precomputes the feature matrix
-    └── lazypool.py        # implementation of the LazyMoleculePool, which doesn't precompute the feature matrix
-</pre>
 
 ## Running MolPAL
 
