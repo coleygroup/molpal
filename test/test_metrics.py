@@ -105,7 +105,7 @@ class TestMetrics(unittest.TestCase):
     def test_threshold_some_above(self):
         Y_mean = np.arange(10)
         U = metrics.random_threshold(Y_mean, threshold=4)
-        np.testing.assert_allclose(U[:5], np.full(U[:5].shape, -1.))
+        self.assertTrue((U[:4] == -1.).all() and (U[4:] >= 0).all)
 
     def test_threshold_all_below(self):
         Y_mean = np.arange(10)

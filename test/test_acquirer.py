@@ -6,16 +6,17 @@ import numpy as np
 from molpal.acquirer import Acquirer
 
 class TestAcquirer(unittest.TestCase):
-    def setUp(self):
-        self.xs = string.ascii_lowercase
-        self.y_means = np.arange(len(self.xs), dtype=np.double)[::-1]
-        self.y_vars = np.zeros(len(self.xs))
+    @classmethod
+    def setUpClass(cls):
+        cls.xs = string.ascii_lowercase
+        cls.y_means = np.arange(len(cls.xs), dtype=np.double)[::-1]
+        cls.y_vars = np.zeros(len(cls.xs))
 
-        self.init_size = 10
-        self.batch_size = 10
-        self.acq = Acquirer(
-            size=len(self.xs), init_size=self.init_size,
-            batch_size=self.batch_size, metric='greedy', epsilon=0., seed=0
+        cls.init_size = 10
+        cls.batch_size = 10
+        cls.acq = Acquirer(
+            size=len(cls.xs), init_size=cls.init_size,
+            batch_size=cls.batch_size, metric='greedy', epsilon=0., seed=0
         )
 
     def test_acquire_initial(self):

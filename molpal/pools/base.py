@@ -13,7 +13,7 @@ import numpy as np
 from rdkit import Chem
 from tqdm import tqdm
 
-from molpal.encoders import Encoder
+from molpal.encoder import Encoder
 from molpal.pools.cluster import cluster_fps_h5
 from molpal.pools import fingerprints
 
@@ -31,10 +31,14 @@ class MoleculePool(Sequence[Mol]):
     A MoleculePool is most accurately described as a Sequence of Mols, and the
     custom class is necessary for both utility and memory purposes. Its main
     purpose is to hide the storage of large numbers of SMILES strings and
-    molecular fingerprints on disk. Unfortunately, this prevents a MoleculePool
-    from serving as Mapping type (which is arguably more natural.) As a
-    workaround to this limitation, a MoleculePool does store information
-    mapping SMILES -> (fingerprint, cluster_id) in a compressed form by using
+    molecular fingerprints on disk.
+    
+    NOTE: the below is not currently supported
+    *-------------------------------------------------------------------------*
+    Unfortunately, this prevents a MoleculePool from serving as Mapping type 
+    (which is arguably more natural.) As a workaround to this limitation, a 
+    MoleculePool does store information mapping from
+    SMILES -> (fingerprint, cluster_id) in a compressed form by using
     a SMILES string's hash as the key and its index as the value. All get-type
     functions support SMILES-based inputs using this technique. However, we
     must warn users that this mapping is NOT stable and is prone to collisions.
@@ -44,6 +48,7 @@ class MoleculePool(Sequence[Mol]):
     and the check_smi_idx function exists to check if a given SMILES string is
     stable. If using SMILES-based retrieval, one should first call that function
     for a given input and ensure that the result is the same as the input.
+    *-------------------------------------------------------------------------*
 
     Attributes
     ----------
@@ -85,7 +90,7 @@ class MoleculePool(Sequence[Mol]):
             library file
         2. the encoder used to generate the fingerprints is the same
             as the one passed to the model
-    enc : Type[Encoder] (Default = AtomPairFingerprinter)
+    encoder : Type[Encoder] (Default = AtomPairFingerprinter)
         the encoder to use when calculating fingerprints
     njobs : int (Default = -1)
         the number of jobs to parallelize fingerprint calculation over.
@@ -109,7 +114,7 @@ class MoleculePool(Sequence[Mol]):
     def __init__(self, library: str, title_line: bool = True,
                  delimiter: str = ',', smiles_col: int = 0,
                  fps: Optional[str] = None,
-                 enc: Type[Encoder] = Encoder(), njobs: int = 4,
+                 encoder: Type[Encoder] = Encoder(), njobs: int = 4,
                  cache: bool = False, validated: bool = False,
                  cluster: bool = False, ncluster: int = 100,
                  path: str = '.', verbose: int = 0, **kwargs):
@@ -127,10 +132,10 @@ class MoleculePool(Sequence[Mol]):
         self.fps_ = fps
         self.invalid_lines = None
         self.njobs = njobs
-        self.chunk_size = self._encode_mols(enc, njobs, path)
+        self.chunk_size = self._encode_mols(encoder, njobs, path)
 
         self.smis_ = None
-        self.d_smi_idx = {}
+        # self.d_smi_idx = {}
         self.size = self._validate_and_cache_smis(cache, validated)
 
         self.cluster_ids_ = None
@@ -238,10 +243,10 @@ class MoleculePool(Sequence[Mol]):
         assert False    # shouldn't reach this point
 
     def get_fp(self, smi_or_idx: Union[str, int]) -> np.ndarray:
-        if isinstance(smi_or_idx, str):
-            idx = self.d_smi_idx[hash(smi_or_idx)]
-        else:
-            idx = smi_or_idx
+        # if isinstance(smi_or_idx, str):
+        #     idx = self.d_smi_idx[hash(smi_or_idx)]
+        # else:
+        idx = smi_or_idx
 
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
@@ -253,10 +258,11 @@ class MoleculePool(Sequence[Mol]):
         assert False    # shouldn't reach this point
 
     def get_cluster_id(self, smi_or_idx: Union[str, int]) -> Optional[int]:
-        if isinstance(smi_or_idx, str):
-            idx = self.d_smi_idx[hash(smi_or_idx)]
-        else:
-            idx = smi_or_idx
+        # if isinstance(smi_or_idx, str):
+        #     idx = self.d_smi_idx[hash(smi_or_idx)]
+        # else:
+        
+        idx = smi_or_idx
 
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
@@ -409,7 +415,7 @@ class MoleculePool(Sequence[Mol]):
 
         Parameters
         ----------
-        enc : Type[Encoder]
+        encoder : Type[Encoder]
             the encoder to use for generating the fingerprints
         njobs : int
             the number of jobs to parallelize fingerprint calculation over
@@ -435,16 +441,10 @@ class MoleculePool(Sequence[Mol]):
                 print('Precalculating feature matrix ...', end=' ')
 
             total_size = sum(1 for _ in self.smis())
-            self.fps_, self.invalid_lines = fingerpints.feature_matrix_hdf5(
+            self.fps_, self.invalid_lines = fingerprints.feature_matrix_hdf5(
                 self.smis(), total_size, n_workers=self.njobs,
                 encoder=encoder, name=Path(self.library).stem, path=path
             )
-            # self.fps_, self.invalid_lines = fingerprints.parse_smiles_par(
-            #     self.library, delimiter=self.delimiter,
-            #     smiles_col=self.smiles_col, title_line=self.title_line, 
-            #     encoder_=encoder, njobs=njobs, path=path
-            # )
-
             if self.verbose > 0:
                 print('Done!')
                 print(f'Feature matrix was saved to "{self.fps_}"', flush=True)
@@ -499,11 +499,11 @@ class MoleculePool(Sequence[Mol]):
         if validated:
             if cache:
                 self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
-                self.d_smi_idx = {hash(smi): i
-                                  for i, smi in enumerate(self.smis_)}
+                # self.d_smi_idx = {hash(smi): i
+                #                   for i, smi in enumerate(self.smis_)}
             else:
-                self.d_smi_idx = {hash(smi): i
-                                  for i, smi in enumerate(smis)}
+                # self.d_smi_idx = {hash(smi): i
+                #                   for i, smi in enumerate(smis)}
         else:
             with ProcessPoolExecutor(max_workers=self.njobs) as pool:
                 valid_smis = pool.map(validate_smi, smis, chunksize=256)
@@ -515,15 +515,15 @@ class MoleculePool(Sequence[Mol]):
                             self.invalid_lines.add(i)
                         else:
                             self.smis_.append(smi)
-                    self.d_smi_idx = {hash(smi): i 
-                                      for i, smi in enumerate(self.smis_)}
+                    # self.d_smi_idx = {hash(smi): i 
+                    #                   for i, smi in enumerate(self.smis_)}
                 else:
                     for i, smi in tqdm(enumerate(valid_smis), unit='smi',
                                             desc='Validating', smoothing=0.):
                         if smi is None:
                             self.invalid_lines.add(i)
                         else:
-                            self.d_smi_idx[hash(smi)] = i
+                            # self.d_smi_idx[hash(smi)] = i
 
         if self.verbose > 0:
             print('Done!', flush=True)
@@ -550,13 +550,13 @@ class MoleculePool(Sequence[Mol]):
         self.cluster_ids_ = cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
 
-    @property
-    def collisions(self) -> bool:
-        return len(self) != len(self.d_smi_idx)
+    # @property
+    # def collisions(self) -> bool:
+    #     return len(self) != len(self.d_smi_idx)
     
-    def check_smi_idx(self, smi) -> str:
-        idx = self.d_smi_idx[hash(smi)]
-        return self.get_smi(idx)
+    # def check_smi_idx(self, smi) -> str:
+    #     idx = self.d_smi_idx[hash(smi)]
+    #     return self.get_smi(idx)
 
 def validate_smi(smi):
     return smi if Chem.MolFromSmiles(smi) else None

@@ -144,7 +144,7 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
     """
     I = Y_mean - current_max + xi
     Y_sd = np.sqrt(Y_var)
-    with np.errstate(divide='ignore'):
+    with np.errstate(divide='ignore', invalid='ignore'):
         Z = I / Y_sd
     E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
@@ -207,7 +207,7 @@ def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
     return RG.normal(Y_mean, Y_sd)
 
 def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
-    """Random acquisition score [0, 1) if above threshold. Otherwise,
+    """Random acquisition score [0, 1) if at or above threshold. Otherwise,
     return -1.
     
     Parameters
@@ -223,4 +223,4 @@ def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
     np.ndarray
         the random threshold acquisition scores
     """
-    return np.where(Y_mean >= threshold, RG.random(), -1.)
+    return np.where(Y_mean >= threshold, RG.random(Y_mean.shape), -1.)

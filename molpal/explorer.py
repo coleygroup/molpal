@@ -9,9 +9,10 @@ import os
 from operator import itemgetter
 from pathlib import Path
 import pickle
+import tempfile
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
-from molpal import acquirer, encoders, models, objectives, pools
+from molpal import acquirer, encoder, models, objectives, pools
 
 T = TypeVar('T')
 
@@ -24,10 +25,13 @@ class Explorer:
         the name this explorer will use for all outputs
     pool : MoleculePool
         the pool of inputs to explore
-    acq : Acquirer
+    encoder : Encoder
+        the encoder this explorer will use convert molecules from SMILES
+        strings into feature representations
+    acquirer : Acquirer
         an acquirer which selects molecules to explore next using a prior
         distribution over the inputs
-    obj : Objective
+    objective : Objective
         an objective calculates the objective function of a set of inputs
     model : Model
         a model that generates a posterior distribution over the inputs using
@@ -66,8 +70,6 @@ class Explorer:
         the maximum number of batches to explore
     root : str
         the directory under which to organize all outputs
-    tmp : str
-        the temporary directory of the filesystem
     write_final : bool
         whether the list of explored inputs and their scores should be written
         to a file at the end of exploration
@@ -93,7 +95,6 @@ class Explorer:
     max_epochs : int (Default = 50)
     max_explore : Union[int, float] (Default = 1.)
     root : str (Default = '.')
-    tmp : str (Default = $TMP or '.')
     write_final : bool (Default = True)
     write_intermediate : bool (Default = False)
     save_preds : bool (Default = False)
@@ -120,10 +121,9 @@ class Explorer:
         if max_explore is less than 0
     """
     def __init__(self, name: str,
-                 k: Union[int, float] = 0.01,
-                 window_size: int = 3, delta: float = 0.01,
-                 max_epochs: int = 50, max_explore: Union[int, float] = 1.,
-                 root: str = '.', tmp: str = os.environ.get('TMP', '.'),
+                 k: Union[int, float] = 0.01, window_size: int = 3,
+                 delta: float = 0.01, max_epochs: int = 50, 
+                 max_explore: Union[int, float] = 1., root: str = '.',
                  write_final: bool = True, write_intermediate: bool = False,
                  save_preds: bool = False, retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
@@ -132,18 +132,19 @@ class Explorer:
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
-        self.tmp = tmp
+        self.tmp = tempfile.gettempdir()
 
-        self.enc = encoders.Encoder(**kwargs)
-        self.pool = pools.pool(enc=self.enc, path=self.tmp, **kwargs)
-        self.acq = acquirer.Acquirer(size=len(self.pool), **kwargs)
+        self.encoder = encoder.Encoder(**kwargs)
+        self.pool = pools.pool(encoder=self.encoder, 
+                               path=tempfile.gettempdir(), **kwargs)
+        self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
-        if self.acq.metric_type == 'thompson':
+        if self.acquirer.metric_type == 'thompson':
             kwargs['dropout_size'] = 1
-        self.model = models.model(input_size=len(self.enc), **kwargs)
-        self.acq.stochastic_preds = 'stochastic' in self.model.provides
+        self.model = models.model(input_size=len(self.encoder), **kwargs)
+        self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
 
-        self.obj = objectives.objective(**kwargs)
+        self.objective = objectives.objective(**kwargs)
 
         self._validate_acquirer()
         
@@ -301,13 +302,13 @@ class Explorer:
 
         Must be called before explore_batch()
         """
-        inputs = self.acq.acquire_initial(
+        inputs = self.acquirer.acquire_initial(
             xs=self.pool.smis(),
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
 
-        new_scores = self.obj.calc(
+        new_scores = self.objective.calc(
             inputs, 
             in_path=f'{self.tmp}/{self.name}/input/initial',
             out_path=f'{self.tmp}/{self.name}/output/initial'
@@ -343,14 +344,14 @@ class Explorer:
         self._update_model()
         self._update_predictions()
 
-        inputs = self.acq.acquire_batch(
+        inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, epoch=self.epoch,
         )
 
-        new_scores = self.obj.calc(
+        new_scores = self.objective.calc(
             inputs,
             in_path=f'{self.tmp}/{self.name}/input/{self.epoch}',
             out_path=f'{self.tmp}/{self.name}/output/{self.epoch}'
@@ -641,7 +642,7 @@ class Explorer:
             xs, ys = zip(*self.new_scores.items())
 
         self.model.train(xs, ys, retrain=self.retrain_from_scratch,
-                         featurize=self.enc.encode_and_uncompress)
+                         featurize=self.encoder.encode_and_uncompress)
         self.new_scores = {}
         self.updated_model = True
 
@@ -669,7 +670,7 @@ class Explorer:
             x_ids=self.pool.smis(), 
             x_feats=self.pool.fps(), 
             batched_size=None, size=len(self.pool), 
-            mean_only='vars' not in self.acq.needs
+            mean_only='vars' not in self.acquirer.needs
         )
 
         self.updated_model = False
@@ -679,10 +680,12 @@ class Explorer:
 
     def _validate_acquirer(self):
         """Ensure that the model provides values the Acquirer needs"""
-        if self.acq.needs > self.model.provides:
+        if self.acquirer.needs > self.model.provides:
             raise IncompatibilityError(
-                f'{self.acq.metric_type} metric needs {self.acq.needs} but '
-                + f'{self.model.type_} only provides {self.model.provides}')
+                f'{self.acquirer.metric_type} metric needs: '
+                + f'{self.acquirer.needs} '
+                + f'but {self.model.type_} only provides: '
+                + f'{self.model.provides}')
 
     def _read_scores(self, scores_csv: str) -> Dict:
         """read the scores contained in the file located at scores_csv"""

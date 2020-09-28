@@ -5,9 +5,12 @@ from itertools import chain, product
 import multiprocessing as mp
 import os
 from pathlib import Path
+import shelve
+import tempfile
 from typing import Dict, List, Optional, Tuple, TypeVar
 
 from molpal.objectives.base import Objective
+from molpal.objectives import utils
 from .pyscreener import docking
 
 T = TypeVar('T')
@@ -29,42 +32,42 @@ class DockingObjective(Objective):
         the coordinates of center of the docking box
     size : Tuple[int, int, int]
         the x-, y-, and z-radii of the docking box
-    njobs : int (Default = MAX_CPU)
+    njobs : int
         the number of docking jobs to run in parallel
-    ncpu : int (Default = 1)
+    ncpu : int
         the number of cores to run each docking job over
-    navg : Optional[int] (Default = None)
-        the number of top scores to average. If None, take only the top score
+    input_map : Optional[str]
+        the filepath of a Shelf containing the mapping from SMILES string to
+        input filepath(s), if an input map was provided. Otherwise, None
+    verbose : int (Default = 0)
+        the level of output to print
+
+    Parameters
+    ----------
+    docker : str
+    receptor : str
+    center : Tuple[float, float, float]
+    size : Tuple[int, int, int]
+    njobs : int (Default = os.cpu_count())
+    ncpu : int (Default = 1)
     input_map_file : Optional[str] (Default = None)
         a CSV file containing the mappings of SMILES strings to pre-prepared
         ligand files. The first column is the SMILES string and each column
         thereafter is the filepath of an input file corresponding to that
         SMILES string
-    d_smi_pdbqts : Optional[Dict[str, List[str]]]
-        the cached input map, if feasible to hold in memory
     verbose : int (Default = 0)
-        the level of output to print
+    input_map_file : Optional[str] (Default = None)
     **kwargs
         additional and unused keyword arguments
     """
-    try:
-        MAX_CPU = len(os.sched_getaffinity(0))
-    except AttributeError:
-        MAX_CPU = mp.cpu_count()
-
     def __init__(self, docker: str, receptor: str,
                  center: Tuple[float, float, float],
                  size: Tuple[int, int, int],
-                 njobs: int = MAX_CPU, ncpu: int = 1,
+                 njobs: int = os.cpu_count(), ncpu: int = 1,
                  boltzmann: bool = False,
                  input_map_file: Optional[str] = None,
                  verbose: int = 0, **kwargs):
-        if None in [docker, receptor, center, size]:
-            raise ValueError('A DockingObjective argument was None!')
-
         self.docker = docker
-        # handle being passed a pre-converted receptor file
-        # handle receptor formats for different docking programs
         self.receptors = docking.preparation.prepare_receptors([receptor])
         self.center = center
         self.size = size
@@ -75,60 +78,12 @@ class DockingObjective(Objective):
         self.verbose = verbose
 
         if input_map_file:
-            if Path(input_map_file).suffix == '.gz':
-                self.open_ = partial(gzip.open, mode='rt')
-            else:
-                self.open_ = open
-
-            self.d_smi_pdbqts = self._cache_input_map()
+            self.input_map = self._build_input_map(input_map_file)
         else:
-            self.d_smi_pdbqts = None
+            self.input_map = None
 
         super().__init__(minimize=True)
 
-    # @singledispatchmethod
-    # def calc(self, *args, **kwargs):
-    #     raise NotImplementedError
-
-    # @calc.register
-    def calc_single(self, smi_or_file: str, in_path: Optional[str] = None,
-                    out_path: Optional[str] = None,
-                    **kwargs) -> Dict[str, Optional[float]]:
-        """Caclulate the docking score(s)
-
-        Parameters
-        ----------
-        smi_or_file : str
-            a single SMILES string, the filepath of a ligand supply file,
-            or a file containing a single ligand
-        in_path : Optional[str] (Default = None)
-            the path under which input files should be written
-        out_path : Optional[str] (Default = None)
-            the path under which output files should be written
-        *args, **kwargs
-            additional and unused positional and keyword arguments
-
-        Returns
-        -------
-        scores : Dict[str, Optional[float]]
-            a map from SMILES string to docking score. Ligands that failed to
-            dock will be scored as None
-        """
-        if smi_or_file is None or smi_or_file == '':
-            raise ValueError(f'{smi_or_file} was None or empty!')
-
-        ligands = docking.prepare_ligand(smi_or_file, path=in_path)
-        scores, _ = docking.docking.dock_ligands(
-            ligands=ligands, docker=self.docker, receptors=self.receptors,
-            center=self.center, size=self.size,
-            nworkers=self.njobs, ncpu=self.ncpu, boltzmann=self.boltzmann,
-            path=out_path, verbose=self.verbose)
-        return {
-            smi: self.c * score if score else None
-            for smi, score in scores.items()
-        }
-
-    # @calc.register
     def calc(self, smis: List[str],
              in_path: Optional[str] = None,
              out_path: Optional[str] = None,
@@ -152,21 +107,14 @@ class DockingObjective(Objective):
             a map from SMILES string to docking score. Ligands that failed
             to dock will be scored as None
         """
-        if smis is None:
-            raise ValueError('smis was None!')
+        with shelve.open(self.input_map) as d_smi_ligands:
+            ligandss = [(smi, d_smi_inputs[smi])
+                         for smi in smis if smi in d_smi_ligands]
+            ligands = distribute_and_flatten(ligandss)
+            extra_smis = [smi for smi in smis if smi not in d_smi_ligands]
 
-        # these assume we'll find all of the ligands in the input map
-        if self.d_smi_pdbqts:
-            ligandss = [(smi, self.d_smi_pdbqts[smi]) for smi in smis
-                          if smi in self.d_smi_pdbqts]
-            ligands = distribute_and_flatten(ligandss)
-        elif self.input_map_file:
-            ligandss = self._search_input_map(smis)
-            ligands = distribute_and_flatten(ligandss)
-        # handle possibly some ligands being found but others need to be still
-        # be converted
-        else:
-            ligands = docking.prepare_ligand(smis, path=in_path)
+        if extra_smis:
+            ligands.extend(docking.prepare_ligand(extra_smis, path=in_path))
 
         scores, _ = docking.docking.dock_ligands(
             ligands=ligands, docker=self.docker, receptors=self.receptors,
@@ -179,33 +127,40 @@ class DockingObjective(Objective):
             for smi, score in scores.items()
         }
 
-    def _search_input_map(self, smis: List[str]) -> List[Tuple[str, List[str]]]:
-        smis = set(smis)
-        with self.open_(self.input_map_file) as fid:
-            smis_pdbqtss = []
+    def _build_input_map(self, input_map_file) -> str:
+        """Build the input map dictionary
+
+        the input map dictionary is stored on disk using a Shelf object which
+        is stored in a temporary file.
+
+        NOTE: Ideally, the temporary file corresponding to the shelf would only
+              live for the lifetime of the DockingObjective that owns it.
+              Unfortunately, there seems no elegant way to do that and, as a 
+              result, the temporary file will persist until the OS cleans it up
+
+        Parameter
+        ---------
+        input_map_file : str
+            a flat csv containing the SMILES string in the 0th column and any
+            associated input files in the following columns
+        """
+        p_input_map_file = Path(input_map_file)
+        if p_input_map_file.suffix == '.gz':
+            open_ = partial(gzip.open, mode='rt')
+        else:
+            open_ = open
+
+        input_map = utils.get_temp_file()
+
+        with open_(input_map_file) as fid, \
+             shelve.open(input_map) as d_smi_inputs:
             reader = csv.reader(fid)
+            
+            for smi, *ligands in reader:
+                d_smi_ligands[smi] = d_smi_ligands
 
-            for smi, *pdbqts in reader:
-                if smi in smis:
-                    smis_pdbqtss.append((smi, pdbqts))
-
-        return smis_pdbqtss
-
-    def _cache_input_map(self) -> List[Tuple[str, List[str]]]:
-        with self.open_(self.input_map_file) as fid:
-            size = sum(1 for _ in fid)
-            if size > 1000000:
-                return None
-
-            fid.seek(0)
-            reader = csv.reader(fid)
-
-            d_smi_pdbqts = {}
-            for smi, *pdbqts in reader:
-                d_smi_pdbqts[smi] = pdbqts
-
-        return d_smi_pdbqts
-
+        return input_map
+        
 def distribute_and_flatten(
         xs_yss: List[Tuple[T, List[U]]]) -> List[Tuple[T, U]]:
     """Distribute x over a list ys for each item in a list of 2-tuples and
