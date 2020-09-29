@@ -3,13 +3,12 @@ input based on various metrics"""
 from typing import Callable, Optional, Set
 
 import numpy as np
-import numpy.random
 from scipy.stats import norm
 
 # this module maintains an independent random number generator
 RG = np.random.default_rng()
-
-def seed(seed: Optional[int] = None) -> None:
+def set_seed(seed: Optional[int] = None) -> None:
+    """Set the seed of this module's random number generator"""
     global RG
     RG = np.random.default_rng(seed)
 
@@ -17,14 +16,15 @@ def get_metric(metric: str) -> Callable[..., float]:
     """Get the corresponding metric function"""
     try:
         return {
-            'random': random_metric,
+            'random': random,
+            'threshold': random_threshold,
             'greedy': greedy,
             'noisy': noisy,
             'ucb': ucb,
+            'lcb': lcb,
+            'thompson': thompson,
             'ei': ei,
             'pi': pi,
-            'thompson': thompson,
-            'threshold': random_threshold
         }[metric]
     except KeyError:
         raise ValueError(f'Unrecognized metric: "{metric}"')
@@ -42,18 +42,40 @@ def get_needs(metric: str) -> Set[str]:
         'threshold': {'means'}
     }.get(metric, set())
 
-def calc(metric: str, *args, **kwargs) -> np.ndarray:
-    """Get the corresponding metric function and call it with the given args"""
-    return get_metric(metric)(*args, **kwargs)
+def calc(metric: str, Y_mean: np.ndarray, Y_var: np.ndarray,
+         current_max: float, threshold: float,
+         beta: int, xi: float, stochastic: bool) -> np.ndarray:
+    """Call corresponding metric function with the proper args"""
+    if metric == 'random':
+        return random(Y_mean)
+    if metric == 'threshold':
+        return random_threshold(Y_mean, threshold)
+    if metric == 'greedy':
+        return greedy(Y_mean)
+    if metric == 'noisy':
+        return noisy(Y_mean)
+    if metric == 'ucb':
+        return ucb(Y_mean, Y_var, beta)
+    if metric == 'lcb':
+        return lcb(Y_mean, Y_var, beta)
+    if metric in ['ts', 'thompson']:
+        return thompson(Y_mean, Y_var, stochastic)
+    if metric == 'ei':
+        return ei(Y_mean, Y_var, current_max, xi)
+    if metric == 'pi':
+        return pi(Y_mean, Y_var, current_max, xi)
 
-def random_metric(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
+    raise ValueError(f'Unrecognized metric: "{metric}"')
+
+def random(Y_mean: np.ndarray) -> np.ndarray:
     """Random acquistion score
 
     Parameters
     ----------
     Y_mean : np.ndarray
         an array of length equal to the number of random scores to generate.
-        It is only used to determine the dimension of the output array
+        It is only used to determine the dimension of the output array, so the
+        values contained in it are meaningless.
     
     Returns
     -------
@@ -62,7 +84,26 @@ def random_metric(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
     """
     return RG.random(len(Y_mean))
 
-def greedy(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
+def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
+    """Random acquisition score [0, 1) if at or above threshold. Otherwise,
+    return -1.
+    
+    Parameters
+    ----------
+    Y_mean : np.ndarray
+    threshold : float
+        the threshold value below which to assign acquisition scores as -1 and 
+        above or equal to which to assign random acquisition scores in the 
+        range (0, 1]
+    
+    Returns
+    -------
+    np.ndarray
+        the random threshold acquisition scores
+    """
+    return np.where(Y_mean >= threshold, RG.random(Y_mean.shape), -1.)
+
+def greedy(Y_mean: np.ndarray) -> np.ndarray:
     """Greedy acquisition score
     
     Parameters
@@ -77,8 +118,8 @@ def greedy(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
     """
     return Y_mean
 
-def noisy(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
-    """Noisy acquisition score
+def noisy(Y_mean: np.ndarray) -> np.ndarray:
+    """Noisy greedy acquisition score
     
     Adds a random amount of noise to each predicted mean value. The noise is
     randomly sampled from a normal distribution centered at 0 with standard
@@ -88,8 +129,7 @@ def noisy(Y_mean: np.ndarray, *args, **kwargs) -> np.ndarray:
     noise = RG.normal(scale=sd, size=len(Y_mean))
     return Y_mean + noise
 
-def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, 
-        beta: int = 2, **kwargs) -> float:
+def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
     """Upper confidence bound acquisition score
 
     Parameters
@@ -107,8 +147,7 @@ def ucb(Y_mean: np.ndarray, Y_var: np.ndarray,
     """
     return Y_mean + beta*np.sqrt(Y_var)
 
-def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, 
-        beta: int = 2, **kwargs) -> float:
+def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
     """Lower confidence bound acquisition score
 
     Parameters
@@ -124,8 +163,31 @@ def lcb(Y_mean: np.ndarray, Y_var: np.ndarray,
     """
     return Y_mean - beta*np.sqrt(Y_var)
 
-def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
-       xi: float = 0.01, **kwargs) -> float:
+def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
+             stochastic: bool = False) -> float:
+    """Thompson acquisition score
+
+    Parameters
+    -----------
+    Y_mean : np.ndarray
+    Y_var : np.ndarray
+    stochastic : bool
+        is Y_mean generated stochastically?
+
+    Returns
+    -------
+    np.ndarray
+        the thompson acquisition scores
+    """
+    if stochastic:
+        return Y_mean
+
+    Y_sd = np.sqrt(Y_var)
+
+    return RG.normal(Y_mean, Y_sd)
+
+def ei(Y_mean: np.ndarray, Y_var: np.ndarray,
+       current_max: float, xi: float = 0.01) -> float:
     """Exected improvement acquisition score
 
     Parameters
@@ -155,8 +217,8 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
 
     return E_imp
 
-def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
-       xi: float = 0.01, **kwargs) -> np.ndarray:
+def pi(Y_mean: np.ndarray, Y_var: np.ndarray,
+       current_max: float, xi: float = 0.01) -> np.ndarray:
     """Probability of improvement acquisition score
 
     Parameters
@@ -182,45 +244,3 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float,
     P_imp[mask] = np.where(I > 0, 1, 0)[mask]
 
     return P_imp
-
-def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
-             stochastic: bool = False, **kwargs) -> float:
-    """Thompson acquisition score
-
-    Parameters
-    -----------
-    Y_mean : np.ndarray
-    Y_var : np.ndarray
-    stochastic : bool
-        is Y_mean generated stochastically?
-
-    Returns
-    -------
-    np.ndarray
-        the thompson acquisition scores
-    """
-    if stochastic:
-        return Y_mean
-
-    Y_sd = np.sqrt(Y_var)
-
-    return RG.normal(Y_mean, Y_sd)
-
-def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
-    """Random acquisition score [0, 1) if at or above threshold. Otherwise,
-    return -1.
-    
-    Parameters
-    ----------
-    Y_mean : np.ndarray
-    threshold : float
-        the threshold value below which to assign acquisition scores as -1 and 
-        above or equal to which to assign random acquisition scores in the 
-        range (0, 1]
-    
-    Returns
-    -------
-    np.ndarray
-        the random threshold acquisition scores
-    """
-    return np.where(Y_mean >= threshold, RG.random(Y_mean.shape), -1.)

@@ -1,9 +1,8 @@
 """This module contains the Acquirer class, which is used to gather inputs for
 a subsequent round of exploration based on prior prediction data."""
 import heapq
-from itertools import chain, zip_longest
+from itertools import chain
 import math
-import random
 from timeit import default_timer
 from typing import (Callable, Dict, Iterable, List, Mapping, 
                     Optional, Set, TypeVar, Union)
@@ -77,7 +76,7 @@ class Acquirer:
         self.temp_i = temp_i
         self.temp_f = temp_f
 
-        metrics.seed(seed)
+        metrics.set_seed(seed)
         self.verbose = verbose
 
     def __len__(self) -> int:
@@ -85,7 +84,8 @@ class Acquirer:
 
     @property
     def metric(self) -> Callable[..., np.ndarray]:
-        """Callable[..., np.ndarray] : the function for calculating the acquisition utility of an input"""
+        """Callable[..., np.ndarray] : the function for calculating the 
+        acquisition utility of an input"""
     
         return self.__metric
 
@@ -114,10 +114,10 @@ class Acquirer:
         return self.__init_size
     
     @init_size.setter
-    def init_size(self, init_size: Union[int ,float]):
-        if isinstance(init_size, float) and (init_size<0 or init_size>1):
+    def init_size(self, init_size: Union[int, float]):
+        if isinstance(init_size, float) and (init_size < 0 or init_size > 1):
             raise ValueError(f'init_size(={init_size} must be in [0, 1]')
-        elif init_size < 0:
+        if init_size < 0:
             raise ValueError(f'init_size(={init_size}) must be positive')
 
         self.__init_size = init_size
@@ -131,10 +131,10 @@ class Acquirer:
         return self.__batch_size
     
     @batch_size.setter
-    def batch_size(self, batch_size):
-        if isinstance(batch_size, float) and (batch_size<0 or batch_size>1):
+    def batch_size(self, batch_size: Union[int, float]):
+        if isinstance(batch_size, float) and (batch_size < 0 or batch_size > 1):
             raise ValueError(f'batch_size(={batch_size} must be in [0, 1]')
-        elif batch_size < 0:
+        if batch_size < 0:
             raise ValueError(f'batch_size(={batch_size} must be positive')
 
         self.__batch_size = batch_size
@@ -176,7 +176,7 @@ class Acquirer:
                 for cid, cluster_size in cluster_sizes.items()
             }
 
-            for x, u, cid in tqdm(zip(xs, U, cluster_ids), total=U.size, 
+            for x, u, cid in tqdm(zip(xs, U, cluster_ids), total=U.size,
                                   desc='Acquiring'):
                 heap, heap_size = d_cid_heap[cid]
                 if len(heap) < heap_size:
@@ -194,11 +194,10 @@ class Acquirer:
 
     def acquire_batch(self, xs: Iterable[T],
                       y_means: Iterable[float], y_vars: Iterable[float],
-                      explored: Mapping[T, float] = {},
+                      explored: Optional[Mapping] = None,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
-                      epoch: Optional[int] = None, is_random: bool = False,
-                      **kwargs) -> List[T]:
+                      epoch: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
 
         Parameters
@@ -226,8 +225,13 @@ class Acquirer:
             a list of selected inputs
         """
         if explored:
-            current_max = max(y for y in explored.values() if y is not None)
+            try:
+                current_max = max(y for y in explored.values() if y is not None)
+            except ValueError:
+                # all None values case
+                current_max = float('-inf')
         else:
+            explored = {}
             current_max = float('-inf')
 
         begin = default_timer()
@@ -238,9 +242,11 @@ class Acquirer:
         if self.verbose > 1:
             print('Calculating acquisition utilities ...', end=' ')
 
-        U = self.metric(Y_mean=Y_mean, Y_var=Y_var, current_max=current_max,
-                        beta=self.beta, xi=self.xi, threshold=self.threshold,
-                        stochastic=self.stochastic_preds)
+        U = metrics.calc(
+            self.metric, Y_mean=Y_mean, Y_var=Y_var, current_max=current_max, 
+            threshold=self.threshold, beta=self.beta, xi=self.xi,
+            stochastic=self.stochastic_preds
+        )
 
         idxs = np.random.choice(
             np.arange(U.size), replace=False,
@@ -252,8 +258,8 @@ class Acquirer:
             print('Done!')
         if self.verbose > 2:
             total = default_timer() - begin
-            m, s = divmod(int(total), 60)
-            print(f'      Utility calculation took {m}m {s}s')
+            mins, secs = divmod(int(total), 60)
+            print(f'      Utility calculation took {mins}m {secs}s')
         
         if cluster_ids is None and cluster_sizes is None:
             # unclustered acquisition maintains one heap that pushes
@@ -295,7 +301,7 @@ class Acquirer:
 
             if self.temp_i and self.temp_f:
                 d_cid_heap = self._scale_heaps(
-                    d_cid_heap, global_pred_max, epoch, 
+                    d_cid_heap, global_pred_max, epoch,
                     self.temp_i, self.temp_f
                 )
 
@@ -306,19 +312,19 @@ class Acquirer:
             print(f'Selected {len(heap)} new samples')
         if self.verbose > 2:
             total = default_timer() - begin
-            m, s = divmod(int(total), 60)
-            print(f'      Batch acquisition took {m}m {s}s')
+            mins, secs = divmod(int(total), 60)
+            print(f'      Batch acquisition took {mins}m {secs}s')
 
         return [x for _, x in heap]
 
-    def _scale_heaps(self, d_cid_heap: Dict[int, List], 
-                     pred_global_max: float, epoch: int, 
+    def _scale_heaps(self, d_cid_heap: Dict[int, List],
+                     pred_global_max: float, epoch: int,
                      temp_i: float, temp_f: float):
         """Scale each heap's size based on a decay factor
 
         The decay factor is calculated by an exponential decay based on the
-        difference between a given heap's local maximum and the predicted 
-        global maximum then scaled by the current temperature. The temperature 
+        difference between a given heap's local maximum and the predicted
+        global maximum then scaled by the current temperature. The temperature
         is in turn an exponential decay based on the current epoch starting at 
         the initial temperature and approaching the final temperature.
 
@@ -346,7 +352,7 @@ class Acquirer:
         for cid, (heap, heap_size) in d_cid_heap.items():
             if len(heap) == 0:
                 continue
-            
+
             # get the largest non-infinity value
             pred_local_max = max(
                 heap, key=lambda yx: -1 if math.isinf(yx[0]) else yx[0]
@@ -370,4 +376,3 @@ class Acquirer:
                     temp: float) -> float:
         """Calculate the decay factor of a given heap"""
         return math.exp(-(global_max - local_max)/temp)
-

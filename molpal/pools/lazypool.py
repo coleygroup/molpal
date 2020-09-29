@@ -4,7 +4,7 @@ from typing import Iterator, Sequence, Type
 
 import numpy as np
 
-from molpal.encoders import Encoder
+from molpal.encoder import Encoder
 from molpal.pools.base import MoleculePool, Mol
 
 # encoder = AtomPairFingerprinter()
@@ -16,7 +16,7 @@ class LazyMoleculePool(MoleculePool):
 
     Attributes (only differences with EagerMoleculePool are shown)
     ----------
-    encoder : Type[Encoder]
+    encoder : Encoder
         an encoder to generate uncompressed representations on the fly
     fps : None
         no fingerprint file is stored for a LazyMoleculePool

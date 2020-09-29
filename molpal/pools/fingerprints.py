@@ -1,28 +1,24 @@
 from concurrent.futures import ProcessPoolExecutor as Pool
-import csv
-from functools import partial
-import gzip
 from itertools import islice
-import os
 from pathlib import Path
-import timeit
 from typing import Iterable, Iterator, List, Set, Tuple, Type, TypeVar
 
 import h5py
-import numpy as np
 from tqdm import tqdm
 
-from molpal.encoders import Encoder
+from molpal.encoder import Encoder
 
 T = TypeVar('T')
 
 def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
+    """Consume an iterable in batches of size chunk_size"""
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
 def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
                         encoder: Type[Encoder] = Encoder(),
-                        name: str = 'fps', path: str = '.') -> np.ndarray:
+                        name: str = 'fps',
+                        path: str = '.') -> Tuple[str, Set[int]]:
     """Precalculate the fature matrix of xs with the given encoder and store
     the matrix in an HDF5 file
     
@@ -79,7 +75,6 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
 
                 fps_dset[i] = fp
                 i += 1
-
         # original dataset size included potentially invalid xs
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
@@ -185,4 +180,3 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
 #             fps_dset.resize(n_mols_valid, axis=0)
 
 #     return fps_h5, invalid_rows
-

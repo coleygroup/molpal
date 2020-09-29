@@ -1,5 +1,4 @@
 from itertools import chain
-import os
 from random import sample
 import timeit
 from typing import List, Optional

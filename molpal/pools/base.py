@@ -219,11 +219,10 @@ class MoleculePool(Sequence[Mol]):
         raise TypeError('pool indices must be integers, slices, '
                         + f'or tuples thereof. Received: {type(idx)}')
 
-    def get_smi(self, smi_or_idx: Union[int, str]) -> str:
-        if isinstance(smi_or_idx, str):
-            return smi_or_idx
-
-        idx = smi_or_idx
+    def get_smi(self, idx: int) -> str:
+        # if isinstance(smi_or_idx, str):
+        #     return smi_or_idx
+        # idx = smi_or_idx
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
 
@@ -242,7 +241,7 @@ class MoleculePool(Sequence[Mol]):
 
         assert False    # shouldn't reach this point
 
-    def get_fp(self, smi_or_idx: Union[str, int]) -> np.ndarray:
+    def get_fp(self, idx: int) -> np.ndarray:
         # if isinstance(smi_or_idx, str):
         #     idx = self.d_smi_idx[hash(smi_or_idx)]
         # else:
@@ -257,13 +256,10 @@ class MoleculePool(Sequence[Mol]):
 
         assert False    # shouldn't reach this point
 
-    def get_cluster_id(self, smi_or_idx: Union[str, int]) -> Optional[int]:
+    def get_cluster_id(self, idx: int) -> Optional[int]:
         # if isinstance(smi_or_idx, str):
         #     idx = self.d_smi_idx[hash(smi_or_idx)]
         # else:
-        
-        idx = smi_or_idx
-
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
 
@@ -502,6 +498,7 @@ class MoleculePool(Sequence[Mol]):
                 # self.d_smi_idx = {hash(smi): i
                 #                   for i, smi in enumerate(self.smis_)}
             else:
+                pass
                 # self.d_smi_idx = {hash(smi): i
                 #                   for i, smi in enumerate(smis)}
         else:
@@ -523,6 +520,7 @@ class MoleculePool(Sequence[Mol]):
                         if smi is None:
                             self.invalid_lines.add(i)
                         else:
+                            pass
                             # self.d_smi_idx[hash(smi)] = i
 
         if self.verbose > 0:
