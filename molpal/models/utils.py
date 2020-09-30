@@ -20,7 +20,7 @@ def get_model_types() -> List[str]:
 
 def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
                    n_workers: int = 0) -> np.ndarray:
-    """Calculate the fature matrix of xs with the given featurization
+    """Calculate the feature matrix of xs with the given featurization
     function"""
     if n_workers <= 1:
         X = [featurize(x) for x in tqdm(xs, desc='Featurizing', smoothing=0.)]

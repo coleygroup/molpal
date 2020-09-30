@@ -107,11 +107,11 @@ class DockingObjective(Objective):
             a map from SMILES string to docking score. Ligands that failed
             to dock will be scored as None
         """
-        with shelve.open(self.input_map) as d_smi_ligands:
+        with shelve.open(self.input_map) as d_smi_inputs:
             ligandss = [(smi, d_smi_inputs[smi])
-                         for smi in smis if smi in d_smi_ligands]
+                         for smi in smis if smi in d_smi_inputs]
             ligands = distribute_and_flatten(ligandss)
-            extra_smis = [smi for smi in smis if smi not in d_smi_ligands]
+            extra_smis = [smi for smi in smis if smi not in d_smi_inputs]
 
         if extra_smis:
             ligands.extend(docking.prepare_ligand(extra_smis, path=in_path))
@@ -157,7 +157,7 @@ class DockingObjective(Objective):
             reader = csv.reader(fid)
             
             for smi, *ligands in reader:
-                d_smi_ligands[smi] = d_smi_ligands
+                d_smi_inputs[smi] = ligands
 
         return input_map
         

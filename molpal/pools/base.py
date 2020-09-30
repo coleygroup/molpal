@@ -66,7 +66,7 @@ class MoleculePool(Sequence[Mol]):
     smiles_col : int
         the column containing the SMILES strings in the library file
     fps : str
-        the filepath of an hdf5 file containing precomputed fingerprints
+        the filepath of an hdf5 file containing the precomputed fingerprints
     smis_ : Optional[List[str]]
         a list of SMILES strings in the pool. None if no caching
     cluster_ids_ : Optional[List[int]]
@@ -82,17 +82,21 @@ class MoleculePool(Sequence[Mol]):
 
     Parameters
     ----------
-    fps : Optional[str]
-        the filepath of an hdf5 file containing precalculated fingerprints
-        of the library.
-        A user assumes the following:
+    library : str
+    title_line : bool (Default = True)
+    delimiter : str (Default = ',')
+    smiles_col : int (Default = 0)
+    fps : Optional[str] (Default = None)
+        the filepath of an hdf5 file containing the precomputed fingerprints.
+        If specified, a user assumes the following:
         1. the ordering of the fingerprints matches the ordering in the
             library file
         2. the encoder used to generate the fingerprints is the same
             as the one passed to the model
-    encoder : Type[Encoder] (Default = AtomPairFingerprinter)
+        If None, the MoleculePool will generate this file automatically 
+    encoder : Encoder (Default = Encoder())
         the encoder to use when calculating fingerprints
-    njobs : int (Default = -1)
+    njobs : int (Default = 4)
         the number of jobs to parallelize fingerprint calculation over.
         A value of -1 uses all available cores.
     cache : bool (Default = False)
@@ -105,16 +109,17 @@ class MoleculePool(Sequence[Mol]):
     cluster : bool (Default = False)
         whether to cluster the library
     ncluster : int (Default = 100)
-        the number of clusters to form
+        the number of clusters to form. Only used if cluster is True
     path : str
         the path under which the h5 file should be written
+    verbose : int (Default = 0)
     **kwargs
         additional and unused keyword arguments
     """
     def __init__(self, library: str, title_line: bool = True,
                  delimiter: str = ',', smiles_col: int = 0,
                  fps: Optional[str] = None,
-                 encoder: Type[Encoder] = Encoder(), njobs: int = 4,
+                 encoder: Encoder = Encoder(), njobs: int = 4,
                  cache: bool = False, validated: bool = False,
                  cluster: bool = False, ncluster: int = 100,
                  path: str = '.', verbose: int = 0, **kwargs):
@@ -152,9 +157,9 @@ class MoleculePool(Sequence[Mol]):
     def __iter__(self) -> Iterator[Mol]:
         """Return an iterator over the molecule pool.
 
-        Not recommended for use in open constructs. I.e., don't call
-        explicitly call this method unless you plan to exhaust the full
-        iterator.
+        Not recommended for use in open constructs.
+        I.e., don't explicitly call this method unless you plan to exhaust the 
+        full iterator.
         """
         self._mol_generator = zip(
             self.smis(),
@@ -245,7 +250,7 @@ class MoleculePool(Sequence[Mol]):
         # if isinstance(smi_or_idx, str):
         #     idx = self.d_smi_idx[hash(smi_or_idx)]
         # else:
-        idx = smi_or_idx
+        idx = idx
 
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')

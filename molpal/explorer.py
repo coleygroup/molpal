@@ -139,7 +139,7 @@ class Explorer:
                                path=tempfile.gettempdir(), **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
-        if self.acquirer.metric_type == 'thompson':
+        if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
         self.model = models.model(input_size=len(self.encoder), **kwargs)
         self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
@@ -299,8 +299,13 @@ class Explorer:
 
     def explore_initial(self) -> float:
         """Perform an initial round of exploration
-
+        
         Must be called before explore_batch()
+
+        Returns
+        -------
+        avg : float
+            the average score of the batch
         """
         inputs = self.acquirer.acquire_initial(
             xs=self.pool.smis(),
@@ -322,10 +327,18 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
-        self.epoch += 1            
+        self.epoch += 1
+
+        valid_scores = [y for y in new_scores.values() if y is not None]
+        return sum(valid_scores)/len(valid_scores)
 
     def explore_batch(self) -> float:
         """Perform a round of exploration
+
+        Returns
+        -------
+        avg : float
+            the average score of the batch
 
         Raises
         ------
@@ -367,6 +380,9 @@ class Explorer:
         
         self.epoch += 1
 
+        valid_scores = [y for y in new_scores.values() if y is not None]
+        return sum(valid_scores)/len(valid_scores)
+
     def avg(self, k: Union[int, float, None] = None) -> float:
         """Calculate the average of the top k molecules
         
@@ -375,9 +391,14 @@ class Explorer:
         k : Union[int, float, None] (Default = None)
             the number of molecules to consider when calculating the
             average, expressed either as a specific number or as a 
-            fraction of the pool. If None, use self.k. If the value specified 
-            is greater than the number of successfully evaluated inputs, 
-            default to that value.
+            fraction of the pool. If the value specified is greater than the 
+            number of successfully evaluated inputs, return the average of all 
+            succesfully evaluated inputs. If None, use self.k
+        
+        Returns
+        -------
+        float
+            the top-k average
         """
         k = k or self.k
         if isinstance(k, float):
@@ -395,7 +416,10 @@ class Explorer:
         Parameter
         ---------
         k : Union[int, float, None] (Default = None)
-            see documentation for avg()
+            the number of top-scoring molecules to get, expressed either as a 
+            specific number or as a fraction of the pool. If the value 
+            specified is greater than the number of successfully evaluated 
+            inputs, return all explored inputs. If None, use self.k
         
         Returns
         -------
@@ -682,7 +706,7 @@ class Explorer:
         """Ensure that the model provides values the Acquirer needs"""
         if self.acquirer.needs > self.model.provides:
             raise IncompatibilityError(
-                f'{self.acquirer.metric_type} metric needs: '
+                f'{self.acquirer.metric} metric needs: '
                 + f'{self.acquirer.needs} '
                 + f'but {self.model.type_} only provides: '
                 + f'{self.model.provides}')

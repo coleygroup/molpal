@@ -79,15 +79,15 @@ class RFModel(Model):
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
-    def save(self, path) -> None:
-        Path(path).mkdir(parents=True, exist_ok=True)
+    # def save(self, path) -> None:
+    #     Path(path).mkdir(parents=True, exist_ok=True)
 
-        model_path = f'{path}/model.pkl'
-        pickle.dump(self.model, open(model_path, 'wb'))
+    #     model_path = f'{path}/model.pkl'
+    #     pickle.dump(self.model, open(model_path, 'wb'))
     
-    def load(self, path) -> None:
-        model_path = f'{path}/model.pkl'
-        self.model = pickle.load(open(model_path, 'wb'))
+    # def load(self, path) -> None:
+    #     model_path = f'{path}/model.pkl'
+    #     self.model = pickle.load(open(model_path, 'wb'))
     
 class GPModel(Model):
     """Gaussian process model
@@ -152,13 +152,13 @@ class GPModel(Model):
 
         return Y_mean, np.power(Y_sd, 2)
 
-    def save(self, path) -> None:
-        Path(path).mkdir(parents=True, exist_ok=True)
+    # def save(self, path) -> None:
+    #     Path(path).mkdir(parents=True, exist_ok=True)
 
-        model_path = f'{path}/model.pkl'
-        pickle.dump(self.model, open(model_path, 'wb'))
+    #     model_path = f'{path}/model.pkl'
+    #     pickle.dump(self.model, open(model_path, 'wb'))
     
-    def load(self, path) -> None:
-        model_path = f'{path}/model.pkl'
-        self.model = pickle.load(open(model_path, 'wb'))
+    # def load(self, path) -> None:
+    #     model_path = f'{path}/model.pkl'
+    #     self.model = pickle.load(open(model_path, 'wb'))
         

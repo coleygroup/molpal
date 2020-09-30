@@ -19,6 +19,10 @@ class Acquirer:
 
     Attributes
     ----------
+    size : int
+        the size of the pool this acquirer will work on
+    metric : str (Default = 'greedy')
+        the alias of the metric to use
     epsilon : float
         the fraction of each batch that should be acquired randomly
     temp_i : Optional[float]
@@ -33,22 +37,29 @@ class Acquirer:
         whether the prediction values are generated through stochastic means
     threshold : float
         the threshold value to use in the random_threshold metric
-    seed : Optional[int]
-        the random seed to use for initial batch acquisition
     verbose : int
         the level of output the acquirer should print
     
     Parameters
     ----------
-    pool_size : int
-        the size of the pool on which this acquirer will operate
-    metric : str (Default = 'greedy')
-        the alias of the metric to use
+    size : int
     init_size : Union[int, float] (Default = 0.02)
         the number of ligands or fraction of the pool to acquire initially.
     batch_size : Union[int, float] (Default = 0.02)
         the number of ligands or fraction of the pool to acquire
         in each batch
+    metric : str (Default = 'greedy')
+    epsilon : float (Default = 0.)
+    temp_i : Optional[float] (Default = None)
+    temp_f : Optional[float] (Default = 1.)
+    xi: float (Default = 0.01)
+    beta : int (Default = 2)
+    threshold : float (Default = float('-inf'))
+    seed : Optional[int] (Default = None)
+        the random seed to use for initial batch acquisition
+    verbose : int (Default = 0)
+    **kwargs
+        additional and unused keyword arguments
     """
     def __init__(self, size: int,
                  init_size: Union[int, float] = 0.01,
@@ -83,27 +94,10 @@ class Acquirer:
         return self.size
 
     @property
-    def metric(self) -> Callable[..., np.ndarray]:
-        """Callable[..., np.ndarray] : the function for calculating the 
-        acquisition utility of an input"""
-    
-        return self.__metric
-
-    @metric.setter
-    def metric(self, metric: str):
-        self.__metric_type = metric
-        self.__metric = metrics.get_metric(metric)
-
-    @property
-    def metric_type(self) -> str:
-        """str : the alias of the metric function (NOT the function name)"""
-        return self.__metric_type
-
-    @property
     def needs(self) -> Set[str]:
         """Set[str] : the values this acquirer needs to calculate acquisition 
         utilities"""
-        return metrics.get_needs(self.__metric_type)
+        return metrics.get_needs(self.metric)
     
     @property
     def init_size(self) -> int:
@@ -277,7 +271,7 @@ class Acquirer:
             # this is broken for e-greedy/pi/etc. approaches
             # the random indices are not distributed evenly amongst clusters
 
-            # clustered acquisition maintains m independent heaps that
+            # clustered acquisition maintains o independent heaps that
             # operate similarly to the above
             d_cid_heap = {
                 cid: ([], math.ceil(self.batch_size * cluster_size/U.size))
