@@ -5,8 +5,8 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
-from chemprop.data import MoleculeDataLoader, MoleculeDataset, StandardScaler
-from chemprop.features import BatchMolGraph, mol2graph
+from ..chemprop.data import MoleculeDataLoader, MoleculeDataset, StandardScaler
+from ..chemprop.features import BatchMolGraph, mol2graph
 
 def predict(model: nn.Module,
             data_loader: Iterable[MoleculeDataLoader],

@@ -10,11 +10,11 @@ from numpy import ndarray
 from tqdm import tqdm
 import torch.cuda
 
-from chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
-                                MoleculeDataLoader)
-from chemprop.data.scaler import StandardScaler
-from chemprop.data.utils import split_data
-import chemprop.utils
+from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
+                                 MoleculeDataLoader)
+from .chemprop.data.scaler import StandardScaler
+from .chemprop.data.utils import split_data
+from . import chemprop.utils
 
 from molpal.models.base import Model
 from molpal.models import mpnn

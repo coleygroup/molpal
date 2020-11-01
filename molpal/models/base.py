@@ -9,7 +9,7 @@ from typing import (Callable, Iterable, List,
 from numpy import ndarray
 from tqdm import tqdm
 
-from .utils import batches
+from molpal.models.utils import batches
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
