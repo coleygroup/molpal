@@ -7,7 +7,7 @@ from pathlib import Path
 import pickle
 import pprint
 import sys
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 
 from tqdm import tqdm
 
@@ -47,13 +47,20 @@ def recursive_conversion(nested_dict):
         nested_dict[k] = recursive_conversion(sub_dict)
     return dict(nested_dict)
 
-def read_data(p_data, k):
+def read_data(p_data, k) -> List[Tuple]:
     with open(p_data) as fid:
         reader = csv.reader(fid); next(reader)
         # the data files are always sorted
-        data = [(row[0], -float(row[1])) for row in islice(reader, k)]
+        data = [(row[0], -float(row[1])) for row in islice(reader, 2*k)]
     
-    return sorted(data, key=itemgetter(1))
+    return sorted(data, key=itemgetter(1))[:k]
+
+def get_smis_from_data(p_data) -> Set:
+    with open(p_data) as fid:
+        reader = csv.reader(fid); next(reader)
+        smis = {row[0] for row in reader}
+    
+    return smis
 
 def compare_results(found: List[Tuple], true: List[Tuple],
                     avg: bool = True, smis: bool = True, scores: bool = True
@@ -138,6 +145,7 @@ def main():
     nested_dict = lambda: defaultdict(nested_dict)
     results = nested_dict()
     random = nested_dict()
+    common_smis = nested_dict()
 
     for child in tqdm(parent_dir.iterdir(), desc='Analyzing runs', unit='run'):
         if not child.is_dir():
@@ -161,10 +169,11 @@ def main():
                 random[it][rep] = compare_results(found, true)
             else:
                 results[model][metric][it][rep] = compare_results(found, true)
-            
+                common_smis[model][metric][it][rep] = {smi for smi, _ in found}
 
     d_model_metric_it_rep_results = recursive_conversion(results)
     random = recursive_conversion(random)
+    common_smis = recursive_conversion(common_smis)
 
     # pprint.pprint(d_model_metric_it_rep_results)
 
@@ -201,5 +210,110 @@ def main():
         }
         pprint.pprint(random, compact=True)
 
+    # common_smis = nested_dict()
+    # total_smis = nested_dict()
+
+    # for model in common_smis:
+    #     for metric in common_smis[model]:
+    #         for it in common_smis[model][metric]:
+    #             smis_sets = list(common_smis[model][metric][it].values())
+    #             # print(smis_sets)[0]
+    #             common_smis[model][metric][it] = len(set.intersection(
+    #                 *smis_sets
+    #             ))
+    #             total_smis[model][metric][it] = len(set.union(
+    #                 *smis_sets
+    #             ))
+    
+    # pprint.pprint(recursive_conversion(common_smis), compact=True)
+    # pprint.pprint(recursive_conversion(total_smis), compact=True)
+    
+def main_2():
+    parent_dir = Path(sys.argv[2])
+    k = int(sys.argv[3])
+
+    nested_dict = lambda: defaultdict(nested_dict)
+    common_smis = nested_dict()
+
+    for child in tqdm(parent_dir.iterdir(), desc='Analyzing runs', unit='run'):
+        if not child.is_dir():
+            continue
+
+        fields = str(child.stem).split('_')
+        _, model, metric, _, rep, *_ = fields
+        rep = int(rep)
+        
+        p_data = child / 'data'
+        for p_iter in tqdm(p_data.iterdir(), desc='Analyzing iterations',
+                           leave=False):
+            try:
+                it = int(p_iter.stem.split('_')[-1])
+            except ValueError:
+                continue
+
+            found = read_data(p_iter, k)
+            if metric == 'random':
+                pass
+                # random[it][rep] = compare_results(found, true)
+            else:
+                common_smis[model][metric][it][rep] = {smi for smi, _ in found}
+
+    common_smis = recursive_conversion(common_smis)
+    for model in common_smis:
+        for metric in common_smis[model]:
+            n_smis_by_iter = []
+            for it in common_smis[model][metric]:
+                smis_sets = list(common_smis[model][metric][it].values())
+                n_smis_by_iter.append(len(set.intersection(*smis_sets)))
+            common_smis[model][metric] = n_smis_by_iter
+    pprint.pprint(common_smis, compact=True)
+
+def main_3():
+    parent_dir = Path(sys.argv[2])
+
+    nested_dict = lambda: defaultdict(nested_dict)
+    total_smis = nested_dict()
+
+    for child in tqdm(parent_dir.iterdir(), desc='Analyzing runs', unit='run'):
+        if not child.is_dir():
+            continue
+
+        fields = str(child.stem).split('_')
+        _, model, metric, _, rep, *_ = fields
+        rep = int(rep)
+        
+        p_data = child / 'data'
+        for p_iter in tqdm(p_data.iterdir(), desc='Analyzing iterations',
+                           leave=False):
+            try:
+                it = int(p_iter.stem.split('_')[-1])
+            except ValueError:
+                continue
+
+            if metric == 'random':
+                pass
+                # random[it][rep] = compare_results(found, true)
+            else:
+                total_smis[model][metric][it][rep] = get_smis_from_data(p_iter)
+
+    total_smis = recursive_conversion(total_smis)
+    for model in total_smis:
+        for metric in total_smis[model]:
+            n_smis_by_iter = []
+            for it in range(6):#total_smis[model][metric]:
+                smis_sets = list(total_smis[model][metric][it].values())
+                n_smis_by_iter.append(len(set.union(*smis_sets)))
+            total_smis[model][metric] = n_smis_by_iter
+
+    pprint.pprint(total_smis, compact=True)
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 5:
+        main()
+        exit()
+    if sys.argv[4] == 'intersection':
+        main_2()
+        exit()
+    if sys.argv[4] == 'union':
+        main_3()
+        exit()

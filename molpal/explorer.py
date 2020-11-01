@@ -611,7 +611,9 @@ class Explorer:
 
         with open(f'{preds_path}/preds_iter_{self.epoch}.csv', 'w') as fid:
             writer = csv.writer(fid)
-            writer.writerow(['smiles', 'predicted_score[, predicted_variance]'])
+            writer.writerow(
+                ['smiles', 'predicted_score', '[predicted_variance]']
+            )
             writer.writerows(
                 zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
             )

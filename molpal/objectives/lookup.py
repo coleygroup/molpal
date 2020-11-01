@@ -44,9 +44,8 @@ class LookupObjective(Objective):
         else:
             open_ = open
         
-        self.data = utils.get_temp_file()
-        with open_(lookup_path) as fid, \
-             shelve.open(self.data, flag='n') as data:
+        self.data = {}
+        with open_(lookup_path) as fid:
             reader = csv.reader(fid, delimiter=lookup_sep)
             if lookup_title_line:
                 next(fid)
@@ -56,16 +55,15 @@ class LookupObjective(Objective):
                 key = row[lookup_smiles_col]
                 val = row[lookup_data_col]
                 try:
-                    data[key] = float(val)
+                    self.data[key] = float(val)
                 except ValueError:
                     pass
 
         super().__init__(**kwargs)
 
-    def calc(self, smis: Collection[str], 
+    def calc(self, smis: Collection[str],
              *args, **kwargs) -> Dict[str, Optional[float]]:
-        with shelve.open(self.data) as data:
-            return {
-                smi: self.c * data[smi] if smi in data else None
-                for smi in smis
-            }
+        return {
+            smi: self.c * self.data[smi] if smi in self.data else None
+            for smi in smis
+        }

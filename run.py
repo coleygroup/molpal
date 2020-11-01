@@ -2,7 +2,7 @@ import signal
 import sys
 from timeit import default_timer as time
 
-from molpal.args import gen_args
+# from molpal.args import gen_args
 from molpal import args, Explorer
 
 def sigterm_handler(signum, frame):
@@ -19,7 +19,7 @@ def main():
 *   \/_/  \/_/   \/_____/   \/_____/   \/_/     \/_/\/_/   \/_____/ *
 *********************************************************************''')
     print('Welcome to MolPAL!')
-    params = vars(gen_args())
+    params = vars(args.gen_args())
     print(f'MolPAL will be run with the following arguments:')
     for k, v in sorted(params.items()):
         print(f'  {k}: {v}')

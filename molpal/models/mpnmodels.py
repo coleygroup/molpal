@@ -46,14 +46,12 @@ class MPNN:
     epochs : int
         the number of epochs over which to train
     """
-    def __init__(self, batch_size: int = 50, featurizer: bool = False,
+    def __init__(self, batch_size: int = 50,
                  uncertainty_method: Optional[str] = None,
                  dataset_type: str = 'regression', num_tasks: int = 1,
                  atom_messages: bool = False, hidden_size: int = 300,
                  bias: bool = False, depth: int = 3, dropout: float = 0.0,
-                 undirected: bool = False, features_only: bool = False,
-                 use_input_features: bool = False,
-                 features_size: Optional[int] = None, activation: str = 'ReLU',
+                 undirected: bool = False, activation: str = 'ReLU',
                  ffn_hidden_size: Optional[int] = None,
                  ffn_num_layers: int = 2, metric: str = 'rmse',
                  epochs: int = 50, warmup_epochs: float = 2.0,
@@ -68,14 +66,12 @@ class MPNN:
         self.num_workers = njobs
 
         self.model = mpnn.MoleculeModel(
-            featurizer=featurizer, uncertainty_method=uncertainty_method,
+            uncertainty_method=uncertainty_method,
             dataset_type=dataset_type, num_tasks=num_tasks,
             atom_messages=atom_messages, hidden_size=hidden_size,
-            bias=bias, depth=depth, dropout=dropout,
-            undirected=undirected, features_only=features_only,
-            use_input_features=use_input_features, device=self.device,
-            features_size=features_size, activation=activation,
-            ffn_hidden_size=ffn_hidden_size, ffn_num_layers=ffn_num_layers
+            bias=bias, depth=depth, dropout=dropout, undirected=undirected,
+            activation=activation, ffn_hidden_size=ffn_hidden_size, 
+            ffn_num_layers=ffn_num_layers, device=self.device,
         )
         self.model = self.model.to(self.device)
 
@@ -145,7 +141,7 @@ class MPNN:
         """Split xs and ys into train and validation datasets"""
 
         data = MoleculeDataset([
-            MoleculeDatapoint(smiles=x, targets=[y])
+            MoleculeDatapoint(smiles=[x], targets=[y])
             for x, y in zip(xs, ys)
         ])
         train_data, val_data, _ = split_data(data=data, sizes=(0.8, 0.2, 0.0))
@@ -160,7 +156,7 @@ class MPNN:
 
     def predict(self, xs: Iterable[str]) -> ndarray:
         """Generate predictions for the inputs xs"""
-        test_data = MoleculeDataset([MoleculeDatapoint(smiles=x) for x in xs])
+        test_data = MoleculeDataset([MoleculeDatapoint(smiles=[x]) for x in xs])
         data_loader = MoleculeDataLoader(
             dataset=test_data,
             batch_size=self.batch_size,

@@ -155,7 +155,7 @@ class Acquirer:
         List[T]
             the list of inputs to explore
         """
-        U = metrics.random_metric(np.empty(self.size))
+        U = metrics.random(np.empty(self.size))
 
         if cluster_ids is None and cluster_sizes is None:
             heap = []

@@ -51,10 +51,54 @@ class Encoder:
 
     def encode(self, x: T) -> Optional[T_comp]:
         try:
-            return _encode(x, self.fingerprint, self.radius, self.length)
+            return self._encode(x, self.fingerprint, self.radius, self.length)
         except:
             return None
+    
+    @staticmethod
+    def _encode(smi: str, fingerprint: str, radius: int, length: int) -> T_comp:
+        """fingerprint functions must be wrapped in a static function
+        so that they may be pickled for parallel processing
         
+        Parameters
+        ----------
+        smi : str
+            the SMILES string of the molecule to encode
+        fingerprint : str
+            the the type of fingerprint to generate
+        radius : int
+            the radius of the fingerprint
+        length : int
+            the length of the fingerprint
+        
+        Returns
+        -------
+        T_comp
+            the compressed feature representation of the molecule
+        """
+        mol = Chem.MolFromSmiles(smi)
+        if fingerprint == 'morgan':
+            return rdmd.GetMorganFingerprintAsBitVect(
+                mol, radius=radius, nBits=length, useChirality=True)
+
+        if fingerprint == 'pair':
+            return rdmd.GetHashedAtomPairFingerprintAsBitVect(
+                mol, minLength=1, maxLength=1+radius, nBits=length)
+        
+        if fingerprint == 'rdkit':
+            return rdmd.RDKFingerprint(
+                mol, minPath=1, maxPath=1+radius, fpSize=length)
+        
+        if fingerprint == 'maccs':
+            return rdmd.GetMACCSKeysFingerprint(mol)
+
+        if fingerprint == 'map4':
+            return map4.MAP4Calculator(
+                dimensions=length, radius=radius, is_folded=True
+            ).calculate(mol)
+
+        raise NotImplementedError(f'Unrecognized fingerprint: "{fingerprint}"')
+
     def uncompress(self, x_comp: T_comp) -> np.ndarray:
         return np.array(x_comp)
 
@@ -69,47 +113,3 @@ class Encoder:
         return (f'{self.__class__.__name__}(' + 
                 f'fingerprint={self.fingerprint}, ' +
                 f'radius={self.radius}, length={self.length})')
-
-def _encode(smi: str, fingerprint: str, radius: int, length: int) -> T_comp:
-    """fingerprint functions must be wrapped in a top-level function
-    so that they may be pickled for parallel processing
-    
-    Parameters
-    ----------
-    smi : str
-        the SMILES string of the molecule to encode
-    fingerprint : str
-        the the type of fingerprint to generate
-    radius : int
-        the radius of the fingerprint
-    length : int
-        the length of the fingerprint
-    
-    Returns
-    -------
-    T_comp
-        the compressed feature representation of the molecule
-    """
-    mol = Chem.MolFromSmiles(smi)
-    if fingerprint == 'morgan':
-        return rdmd.GetMorganFingerprintAsBitVect(
-            mol, radius=radius, nBits=length, useChirality=True)
-
-    if fingerprint == 'pair':
-        return rdmd.GetHashedAtomPairFingerprintAsBitVect(
-            mol, minLength=1, maxLength=1+radius, nBits=length)
-    
-    if fingerprint == 'rdkit':
-        return rdmd.RDKFingerprint(
-            mol, minPath=1, maxPath=1+radius, fpSize=length)
-    
-    if fingerprint == 'maccs':
-        return rdmd.GetMACCSKeysFingerprint(mol)
-
-    if fingerprint == 'map4':
-        return map4.MAP4Calculator(
-            dimensions=length, radius=radius, is_folded=True
-        ).calculate(mol)
-
-    raise NotImplementedError(f'Unrecognized fingerprint: "{fingerprint}"')
-        

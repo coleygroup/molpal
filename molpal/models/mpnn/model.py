@@ -18,8 +18,6 @@ class MoleculeModel(nn.Module):
 
     Attributes
     ----------
-    featurizer : bool
-        whether this model is a featurization model
     uncertainty_method : Optional[str]
         the uncertainty method this model is using
     uncertainty : bool
@@ -36,19 +34,17 @@ class MoleculeModel(nn.Module):
     ffn : nn.Sequential
         the feed-forward network of the message-passing network
     """
-    def __init__(self, featurizer: bool = False,
+    def __init__(self,
                  uncertainty_method: Optional[str] = None,
                  dataset_type: str = 'regression', num_tasks: int = 1,
-                 atom_messages: bool = False,
-                 bias: bool = False, depth: int = 3, dropout: float = 0.0,
-                 undirected: bool = False, features_only: bool = False,
-                 use_input_features: bool = False,
-                 features_size: Optional[int] = None, activation: str = 'ReLU',
-                 hidden_size: int = 300, ffn_hidden_size: Optional[int] = None,
+                 atom_messages: bool = False, bias: bool = False,
+                 depth: int = 3, dropout: float = 0.0, undirected: bool = False,
+                 aggregation: str = 'mean', aggregation_norm: int = 100,
+                 activation: str = 'ReLU', hidden_size: int = 300, 
+                 ffn_hidden_size: Optional[int] = None,
                  ffn_num_layers: int = 2, device: str = 'cpu'):
         super().__init__()
 
-        self.featurizer = featurizer
         self.uncertainty_method = uncertainty_method
         self.uncertainty = uncertainty_method in {'mve'}
         self.classification = dataset_type == 'classification'
@@ -60,48 +56,37 @@ class MoleculeModel(nn.Module):
 
         self.encoder = self.build_encoder(
             atom_messages=atom_messages, hidden_size=hidden_size,
-            bias=bias, depth=depth, dropout=dropout,
-            undirected=undirected, features_only=features_only,
-            use_input_features=use_input_features,
-            features_size=features_size, activation=activation,
-            device=self.device
+            bias=bias, depth=depth, dropout=dropout, undirected=undirected,
+            aggregation=aggregation, aggregation_norm=aggregation_norm,
+            activation=activation, device=self.device,
         )
         self.ffn = self.build_ffn(
-            output_size=num_tasks, features_only=features_only,
-            features_size=features_size, hidden_size=hidden_size,
-            use_input_features=use_input_features,
-            dropout=dropout, activation=activation,
-            ffn_num_layers=ffn_num_layers, ffn_hidden_size=ffn_hidden_size
+            output_size=num_tasks, hidden_size=hidden_size, dropout=dropout, 
+            activation=activation, ffn_num_layers=ffn_num_layers, 
+            ffn_hidden_size=ffn_hidden_size
         )
 
         initialize_weights(self)
 
     def build_encoder(self, atom_messages: bool = False, bias: bool = False,
-                       hidden_size: int = 300, depth: int = 3,
-                       dropout: float = 0.0, undirected: bool = False,
-                       features_only: bool = False,
-                       use_input_features: bool = False,
-                       features_size: Optional[int] = None,
-                       activation: str = 'ReLU', device: str = 'cpu'):
+                      hidden_size: int = 300, depth: int = 3,
+                      dropout: float = 0.0, undirected: bool = False,
+                      aggregation: str = 'mean', aggregation_norm: int = 100,
+                      activation: str = 'ReLU', device: str = 'cpu'):
          return MPN(Namespace(
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
-            features_only=features_only, use_input_features=use_input_features,
-            features_size=features_size, activation=activation,
-            device=device
+            features_only=False, use_input_features=False,
+            aggregation=aggregation, aggregation_norm=aggregation_norm,
+            activation=activation, device=device, number_of_molecules=1,
+            atom_descriptors=None, mpn_shared=False
         ))
 
-    def build_ffn(self, output_size: int, features_only: bool = False,
-                   features_size: Optional[int] = None, hidden_size: int = 300,
-                   use_input_features: bool = False, dropout: float = 0.0,
-                   activation: str = 'ReLU', ffn_num_layers: int = 2,
-                   ffn_hidden_size: Optional[int] = None) -> None:
-        if features_only:
-            first_linear_dim = features_size
-        else:
-            first_linear_dim = hidden_size
-            if use_input_features:
-                first_linear_dim += features_size
+    def build_ffn(self, output_size: int, 
+                  hidden_size: int = 300, dropout: float = 0.0,
+                  activation: str = 'ReLU', ffn_num_layers: int = 2,
+                  ffn_hidden_size: Optional[int] = None) -> None:
+        first_linear_dim = hidden_size
 
         # If dropout uncertainty method, use for both evaluation and training
         if self.uncertainty_method == 'dropout':
@@ -139,9 +124,6 @@ class MoleculeModel(nn.Module):
 
     def forward(self, *inputs):
         """Runs the MoleculeModel on the input."""
-        if self.featurizer:
-            return self.featurize(*inputs)
-
         output = self.ffn(self.encoder(*inputs))
 
         if self.uncertainty:
