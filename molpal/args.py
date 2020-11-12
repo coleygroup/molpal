@@ -211,13 +211,7 @@ def add_model_args(parser: ArgumentParser) -> None:
                         default='dotproduct',
                         help='Kernel to use for Gaussian Process model')
 
-    ## NN args
-    # parser.add_argument('--ensemble-size', type=int, default=5,
-    #                     help='Number of independent models to fit')
-
     # MPNN args
-    parser.add_argument('--device', choices={'cpu', 'cuda'}, default='cpu',
-                        help='the device on which to run MPNN training/inference. Not specifying will choose based on what\'s available.')
     parser.add_argument('--init-lr', type=float, default=1e-4,
                         help='the initial learning rate for the MPNN model')
     parser.add_argument('--max-lr', type=float, default=1e-3,
