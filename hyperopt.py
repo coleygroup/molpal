@@ -16,14 +16,8 @@ def objective(trial: Trial):
     if not args.cluster and random() > 0.5:
         args.epsilon = trial.suggest_float('epsilon', 0.00, 0.2, step=0.05)
 
-    # model hyperparam's
-    args.model = trial.suggest_categorical(
-        'model', {'rf', 'gp', 'nn', 'mpn'})
-    if args.model == 'nn' or args.model == 'mpn':
-        args.conf_method = trial.suggest_categorical(
-            'conf_method', {'dropout', 'ensemble', 'twooutput', 'none'})
     args.fps = None
-    if args.model != 'mpn':
+    if args.model in {'rf', 'nn'} or args.cluster:
         args.encoder = trial.suggest_categorical(
             'encoder', {'morgan', 'pair', 'rdkit'})
     

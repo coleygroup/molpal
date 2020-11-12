@@ -7,7 +7,6 @@ channels:
 
 dependencies:
   - configargparse
-  - cudatoolkit=10.2
   - h5py
   - importlib-resources
   - numpy

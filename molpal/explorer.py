@@ -180,10 +180,6 @@ class Explorer:
         if previous_scores:
             self.load_scores(previous_scores)
         elif scores_csvs:
-            # TODO: remove this line on release
-            # if retrain_from_scratch:
-            #     self.load_()
-            # else:
             self.load()
 
     @property
@@ -579,30 +575,6 @@ class Explorer:
 
         if self.verbose > 0:
             print('Done!')
-
-    ########################################
-    ######### SPECIAL LOAD FUNCTION ########
-    ######### TODO: REMOVE ME       ########
-    def load_(self) -> None:
-        """Mimic the intermediate state of a previous explorer run by loading
-        the data from the list of output files"""
-
-        if self.verbose > 0:
-            print(f'Mimicking previous state ... ', end='')
-        
-        self.new_scores, self.failures = self._read_scores(self.scores_csvs[-1])
-        self.scores = self.new_scores
-        self.epoch += len(self.scores_csvs)
-
-        self.top_k_avg = self.avg()
-        if len(self.scores) >= self.k:
-            self.recent_avgs.append(self.top_k_avg)
-
-        if self.verbose > 0:
-            print('Done!')
-    ########################################
-    ########################################
-    ########################################
 
     def write_preds(self) -> None:
         preds_path = Path(f'{self.root}/{self.name}/preds')
