@@ -1,3 +1,4 @@
+from argparse import Namespace
 from typing import List, Union
 from functools import reduce
 
@@ -6,17 +7,15 @@ from rdkit import Chem
 import torch
 import torch.nn as nn
 
-from chemprop.args import TrainArgs
-from chemprop.features import BatchMolGraph, get_atom_fdim, get_bond_fdim, mol2graph
-from chemprop.nn_utils import index_select_ND, get_activation_function
-
+from ..features import BatchMolGraph, get_atom_fdim, get_bond_fdim, mol2graph
+from ..nn_utils import index_select_ND, get_activation_function
 
 class MPNEncoder(nn.Module):
     """An :class:`MPNEncoder` is a message passing neural network for encoding a molecule."""
 
-    def __init__(self, args: TrainArgs, atom_fdim: int, bond_fdim: int):
+    def __init__(self, args: Namespace, atom_fdim: int, bond_fdim: int):
         """
-        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        :param args: A :class:`Namespace` object containing model arguments.
         :param atom_fdim: Atom feature vector dimension.
         :param bond_fdim: Bond feature vector dimension.
         """
@@ -151,11 +150,11 @@ class MPN(nn.Module):
     """An :class:`MPN` is a wrapper around :class:`MPNEncoder` which featurizes input as needed."""
 
     def __init__(self,
-                 args: TrainArgs,
+                 args: Namespace,
                  atom_fdim: int = None,
                  bond_fdim: int = None):
         """
-        :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
+        :param args: A :class:`~chemprop.args.Namespace` object containing model arguments.
         :param atom_fdim: Atom feature vector dimension.
         :param bond_fdim: Bond feature vector dimension.
         """

@@ -8,7 +8,6 @@ from .data import (
     set_cache_graph,
     set_cache_mol
 )
-from .scaffold import generate_scaffold, log_scaffold_stats, scaffold_split, scaffold_to_smiles
 from .scaler import StandardScaler
 from .utils import (
     filter_invalid_smiles,

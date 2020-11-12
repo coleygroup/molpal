@@ -8,14 +8,11 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from rdkit import Chem
 
 from .scaler import StandardScaler
-from chemprop.features import get_features_generator
-from chemprop.features import BatchMolGraph, MolGraph
-
+from ..features import get_features_generator, BatchMolGraph, MolGraph
 
 # Cache of graph featurizations
 CACHE_GRAPH = True
 SMILES_TO_GRAPH: Dict[str, MolGraph] = {}
-
 
 def cache_graph() -> bool:
     r"""Returns whether :class:`~chemprop.features.MolGraph`\ s will be cached."""
@@ -186,7 +183,8 @@ class MoleculeDataset(Dataset):
 
         return [d.smiles for d in self._data]
 
-    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol], List[List[Chem.Mol]]]:
+    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol], 
+                                                   List[List[Chem.Mol]]]:
         """
         Returns a list of the RDKit molecules associated with each :class:`MoleculeDatapoint`.
 
@@ -412,7 +410,7 @@ class MoleculeSampler(Sampler):
         :param shuffle: Whether to shuffle the data.
         :param seed: Random seed. Only needed if :code:`shuffle` is True.
         """
-        super(Sampler, self).__init__()
+        super().__init__(dataset)
 
         self.dataset = dataset
         self.class_balance = class_balance

@@ -67,3 +67,4 @@ class LookupObjective(Objective):
             smi: self.c * self.data[smi] if smi in self.data else None
             for smi in smis
         }
+        

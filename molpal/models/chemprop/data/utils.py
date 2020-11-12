@@ -1,3 +1,4 @@
+from argparse import Namespace
 from collections import OrderedDict
 import csv
 from logging import Logger
@@ -11,10 +12,6 @@ import numpy as np
 from tqdm import tqdm
 
 from .data import MoleculeDatapoint, MoleculeDataset
-from .scaffold import log_scaffold_stats, scaffold_split
-from chemprop.args import PredictArgs, TrainArgs
-from chemprop.features import load_features, load_valid_atom_features
-
 
 def preprocess_smiles_columns(smiles_columns: Optional[Union[str, List[Optional[str]]]]) -> List[Optional[str]]:
     """
@@ -134,7 +131,7 @@ def get_data(path: str,
              target_columns: List[str] = None,
              ignore_columns: List[str] = None,
              skip_invalid_smiles: bool = True,
-             args: Union[TrainArgs, PredictArgs] = None,
+             args: Namespace = None,
              features_path: List[str] = None,
              features_generator: List[str] = None,
              atom_descriptors_path: str = None,
@@ -309,7 +306,7 @@ def split_data(data: MoleculeDataset,
                sizes: Tuple[float, float, float] = (0.8, 0.1, 0.1),
                seed: int = 0,
                num_folds: int = 1,
-               args: TrainArgs = None,
+               args: Namespace = None,
                logger: Logger = None) -> Tuple[MoleculeDataset,
                                                MoleculeDataset,
                                                MoleculeDataset]:

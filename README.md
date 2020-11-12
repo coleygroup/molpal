@@ -40,7 +40,6 @@ Before running MolPAL, be sure to first activate the environment: `conda activat
 ### manual (FIX ME)
 
 The following packages are __necessary__ to install before running MolPAL:
-- [chemprop](https://github.com/chemprop/chemprop)
 - configargparse
 - h5py
 - numpy
@@ -48,15 +47,15 @@ The following packages are __necessary__ to install before running MolPAL:
 - scikit-learn
 - scipy
 - pytorch (built with CUDA if utilizing GPU acceleration)
-- tensorflow
+- tensorflow / tensorflow_addons
 - tqdm
 
 The following packages are _optional_ to install before running MolPAL:
 - cudatoolkit (if utilizing GPU acceleration; whichever version matches your CUDA build)
 - cudnn (if utilizing GPU acceleration; whichever version matches your cuDNN build)
 - [map4](https://github.com/reymond-group/map4) (if utilizing the map4 fingerprint)
-- optuna (if planning to perform hyperparameter optimization)
 - [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
+- optuna (if planning to perform hyperparameter optimization)
 
 ## Object Model
 

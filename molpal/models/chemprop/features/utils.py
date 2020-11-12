@@ -8,7 +8,6 @@ import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import PandasTools
 
-
 def save_features(path: str, features: List[np.ndarray]) -> None:
     """
     Saves features to a compressed :code:`.npz` file with array name "features".

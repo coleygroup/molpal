@@ -9,165 +9,21 @@ import pickle
 from time import time
 from typing import Any, Callable, List, Tuple, Union
 
-from sklearn.metrics import auc, mean_absolute_error, mean_squared_error, precision_recall_curve, r2_score,\
-    roc_auc_score, accuracy_score, log_loss
+from sklearn.metrics import (auc, mean_absolute_error, mean_squared_error, 
+                             precision_recall_curve, r2_score,
+                             roc_auc_score, accuracy_score, log_loss)
 import torch
 import torch.nn as nn
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from chemprop.args import TrainArgs
-from chemprop.data import StandardScaler, MoleculeDataset
-from chemprop.models import MoleculeModel
-from chemprop.nn_utils import NoamLR
+from .data import StandardScaler, MoleculeDataset
+from .nn_utils import NoamLR
 
+def makedirs(*args, **kwargs):
+    pass
 
-def makedirs(path: str, isfile: bool = False) -> None:
-    """
-    Creates a directory given a path to either a directory or file.
-
-    If a directory is provided, creates that directory. If a file is provided (i.e. :code:`isfile == True`),
-    creates the parent directory for that file.
-
-    :param path: Path to a directory or file.
-    :param isfile: Whether the provided path is a directory or file.
-    """
-    if isfile:
-        path = os.path.dirname(path)
-    if path != '':
-        os.makedirs(path, exist_ok=True)
-
-
-def save_checkpoint(path: str,
-                    model: MoleculeModel,
-                    scaler: StandardScaler = None,
-                    features_scaler: StandardScaler = None,
-                    args: TrainArgs = None) -> None:
-    """
-    Saves a model checkpoint.
-
-    :param model: A :class:`~chemprop.models.model.MoleculeModel`.
-    :param scaler: A :class:`~chemprop.data.scaler.StandardScaler` fitted on the data.
-    :param features_scaler: A :class:`~chemprop.data.scaler.StandardScaler` fitted on the features.
-    :param args: The :class:`~chemprop.args.TrainArgs` object containing the arguments the model was trained with.
-    :param path: Path where checkpoint will be saved.
-    """
-    # Convert args to namespace for backwards compatibility
-    if args is not None:
-        args = Namespace(**args.as_dict())
-
-    state = {
-        'args': args,
-        'state_dict': model.state_dict(),
-        'data_scaler': {
-            'means': scaler.means,
-            'stds': scaler.stds
-        } if scaler is not None else None,
-        'features_scaler': {
-            'means': features_scaler.means,
-            'stds': features_scaler.stds
-        } if features_scaler is not None else None
-    }
-    torch.save(state, path)
-
-
-def load_checkpoint(path: str,
-                    device: torch.device = None,
-                    logger: logging.Logger = None) -> MoleculeModel:
-    """
-    Loads a model checkpoint.
-
-    :param path: Path where checkpoint is saved.
-    :param device: Device where the model will be moved.
-    :param logger: A logger for recording output.
-    :return: The loaded :class:`~chemprop.models.model.MoleculeModel`.
-    """
-    if logger is not None:
-        debug, info = logger.debug, logger.info
-    else:
-        debug = info = print
-
-    # Load model and args
-    state = torch.load(path, map_location=lambda storage, loc: storage)
-    args = TrainArgs()
-    args.from_dict(vars(state['args']), skip_unsettable=True)
-    loaded_state_dict = state['state_dict']
-
-    if device is not None:
-        args.device = device
-
-    # Build model
-    model = MoleculeModel(args)
-    model_state_dict = model.state_dict()
-
-    # Skip missing parameters and parameters of mismatched size
-    pretrained_state_dict = {}
-    for param_name in loaded_state_dict.keys():
-
-        if param_name not in model_state_dict:
-            info(f'Warning: Pretrained parameter "{param_name}" cannot be found in model parameters.')
-        elif model_state_dict[param_name].shape != loaded_state_dict[param_name].shape:
-            info(f'Warning: Pretrained parameter "{param_name}" '
-                 f'of shape {loaded_state_dict[param_name].shape} does not match corresponding '
-                 f'model parameter of shape {model_state_dict[param_name].shape}.')
-        else:
-            debug(f'Loading pretrained parameter "{param_name}".')
-            pretrained_state_dict[param_name] = loaded_state_dict[param_name]
-
-    # Load pretrained weights
-    model_state_dict.update(pretrained_state_dict)
-    model.load_state_dict(model_state_dict)
-
-    if args.cuda:
-        debug('Moving model to cuda')
-    model = model.to(args.device)
-
-    return model
-
-
-def load_scalers(path: str) -> Tuple[StandardScaler, StandardScaler]:
-    """
-    Loads the scalers a model was trained with.
-
-    :param path: Path where model checkpoint is saved.
-    :return: A tuple with the data :class:`~chemprop.data.scaler.StandardScaler`
-             and features :class:`~chemprop.data.scaler.StandardScaler`.
-    """
-    state = torch.load(path, map_location=lambda storage, loc: storage)
-
-    scaler = StandardScaler(state['data_scaler']['means'],
-                            state['data_scaler']['stds']) if state['data_scaler'] is not None else None
-    features_scaler = StandardScaler(state['features_scaler']['means'],
-                                     state['features_scaler']['stds'],
-                                     replace_nan_token=0) if state['features_scaler'] is not None else None
-
-    return scaler, features_scaler
-
-
-def load_args(path: str) -> TrainArgs:
-    """
-    Loads the arguments a model was trained with.
-
-    :param path: Path where model checkpoint is saved.
-    :return: The :class:`~chemprop.args.TrainArgs` object that the model was trained with.
-    """
-    args = TrainArgs()
-    args.from_dict(vars(torch.load(path, map_location=lambda storage, loc: storage)['args']), skip_unsettable=True)
-
-    return args
-
-
-def load_task_names(path: str) -> List[str]:
-    """
-    Loads the task names a model was trained with.
-
-    :param path: Path where model checkpoint is saved.
-    :return: A list of the task names that the model was trained with.
-    """
-    return load_args(path).task_names
-
-
-def get_loss_func(args: TrainArgs) -> nn.Module:
+def get_loss_func(args: Namespace) -> nn.Module:
     """
     Gets the loss function corresponding to a given dataset type.
 
@@ -185,7 +41,6 @@ def get_loss_func(args: TrainArgs) -> nn.Module:
 
     raise ValueError(f'Dataset type "{args.dataset_type}" not supported.')
 
-
 def prc_auc(targets: List[int], preds: List[float]) -> float:
     """
     Computes the area under the precision-recall curve.
@@ -196,7 +51,6 @@ def prc_auc(targets: List[int], preds: List[float]) -> float:
     """
     precision, recall, _ = precision_recall_curve(targets, preds)
     return auc(recall, precision)
-
 
 def bce(targets: List[int], preds: List[float]) -> float:
     """
@@ -212,7 +66,6 @@ def bce(targets: List[int], preds: List[float]) -> float:
 
     return loss
 
-
 def rmse(targets: List[float], preds: List[float]) -> float:
     """
     Computes the root mean squared error.
@@ -222,7 +75,6 @@ def rmse(targets: List[float], preds: List[float]) -> float:
     :return: The computed rmse.
     """
     return math.sqrt(mean_squared_error(targets, preds))
-
 
 def mse(targets: List[float], preds: List[float]) -> float:
     """
@@ -234,8 +86,8 @@ def mse(targets: List[float], preds: List[float]) -> float:
     """
     return mean_squared_error(targets, preds)
 
-
-def accuracy(targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5) -> float:
+def accuracy(targets: List[int], preds: Union[List[float], List[List[float]]], 
+             threshold: float = 0.5) -> float:
     """
     Computes the accuracy of a binary prediction task using a given threshold for generating hard predictions.
 
@@ -253,8 +105,8 @@ def accuracy(targets: List[int], preds: Union[List[float], List[List[float]]], t
 
     return accuracy_score(targets, hard_preds)
 
-
-def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], List[float]], float]:
+def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], 
+                                                    List[float]], float]:
     r"""
     Gets the metric function corresponding to a given metric name.
 
@@ -302,8 +154,7 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], Lis
 
     raise ValueError(f'Metric "{metric}" not supported.')
 
-
-def build_optimizer(model: nn.Module, args: TrainArgs) -> Optimizer:
+def build_optimizer(model: nn.Module, args: Namespace) -> Optimizer:
     """
     Builds a PyTorch Optimizer.
 
@@ -315,8 +166,8 @@ def build_optimizer(model: nn.Module, args: TrainArgs) -> Optimizer:
 
     return Adam(params)
 
-
-def build_lr_scheduler(optimizer: Optimizer, args: TrainArgs, total_epochs: List[int] = None) -> _LRScheduler:
+def build_lr_scheduler(optimizer: Optimizer, args: Namespace,
+                       total_epochs: List[int] = None) -> _LRScheduler:
     """
     Builds a PyTorch learning rate scheduler.
 
@@ -335,7 +186,6 @@ def build_lr_scheduler(optimizer: Optimizer, args: TrainArgs, total_epochs: List
         max_lr=[args.max_lr],
         final_lr=[args.final_lr]
     )
-
 
 def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> logging.Logger:
     """
@@ -381,7 +231,6 @@ def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> loggi
 
     return logger
 
-
 def timeit(logger_name: str = None) -> Callable[[Callable], Callable]:
     """
     Creates a decorator which wraps a function with a timer that prints the elapsed time.
@@ -409,7 +258,6 @@ def timeit(logger_name: str = None) -> Callable[[Callable], Callable]:
         return wrap
 
     return timeit_decorator
-
 
 def save_smiles_splits(data_path: str,
                        save_dir: str,
@@ -446,7 +294,8 @@ def save_smiles_splits(data_path: str,
             indices_by_smiles[smiles] = i
 
     all_split_indices = []
-    for dataset, name in [(train_data, 'train'), (val_data, 'val'), (test_data, 'test')]:
+    for dataset, name in [(train_data, 'train'), (val_data, 'val'),
+                          (test_data, 'test')]:
         if dataset is None:
             continue
 

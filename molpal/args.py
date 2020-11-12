@@ -1,4 +1,3 @@
-# can add support for those who don't have configargparse
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
 import os
 from pathlib import Path

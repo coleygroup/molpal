@@ -2,7 +2,6 @@ from typing import Any, List, Optional
 
 import numpy as np
 
-
 class StandardScaler:
     """A :class:`StandardScaler` normalizes the features of a dataset.
 

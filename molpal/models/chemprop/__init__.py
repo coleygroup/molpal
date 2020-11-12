@@ -1,16 +1,8 @@
-import chemprop.data
-import chemprop.features
-import chemprop.models
-import chemprop.train
-# import chemprop.web
+from . import data
+from . import features
+from . import models
 
-import chemprop.args
-import chemprop.constants
-import chemprop.hyperparameter_optimization
-import chemprop.interpret
-import chemprop.nn_utils
-import chemprop.utils
-import chemprop.sklearn_predict
-import chemprop.sklearn_train
+from . import nn_utils
+from . import utils
 
-from chemprop._version import __version__
+from ._version import __version__

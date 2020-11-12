@@ -32,7 +32,6 @@ ATOM_FDIM = sum(len(choices) + 1 for choices in ATOM_FEATURES.values()) + 2
 EXTRA_ATOM_FDIM = 0
 BOND_FDIM = 14
 
-
 def get_atom_fdim() -> int:
     """Gets the dimensionality of the atom feature vector."""
     return ATOM_FDIM + EXTRA_ATOM_FDIM
