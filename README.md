@@ -66,7 +66,7 @@ __MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual l
 
 __Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition of unlabeled inputs from the MoleculePool according to its `metric` and the prior distribution over the data. The [`metric`](molpal/acquirer/metrics.py) is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
 
-__Encoder__: An [`Encoder`](molpal/encoders.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
+__Encoder__: An [`Encoder`](molpal/encoder.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
 
 __Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
 

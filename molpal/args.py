@@ -2,7 +2,7 @@ from configargparse import ArgumentTypeError, ArgumentParser, Namespace
 import os
 from pathlib import Path
 import sys
-from typing import Union
+from typing import Optional, Union
 
 # os.sched_getaffinity(0) returns the set of CPUs this process can use,
 # but it is defined only for some UNIX platforms, so try to use it and, failing
@@ -11,6 +11,24 @@ try:
     MAX_CPU = len(os.sched_getaffinity(0))
 except AttributeError:
     MAX_CPU = os.cpu_count()
+
+def gen_args(args: Optional[str] = None) -> Namespace:
+    parser = ArgumentParser()
+
+    add_general_args(parser)
+    add_encoder_args(parser)
+    add_pool_args(parser)
+    add_acquisition_args(parser)
+    add_objective_args(parser)
+    add_model_args(parser)
+    add_stopping_args(parser)
+
+    args = parser.parse_args(args)
+
+    modify_objective_args(args)
+    cleanup_args(args)
+
+    return args
 
 #################################
 #       GENERAL ARGUMENTS       #
@@ -247,7 +265,8 @@ def cleanup_args(args: Namespace) -> None:
     if isinstance(args.scores_csvs, list) and len(args.scores_csvs)==1:
         args.scores_csvs = args.scores_csvs[0]
     args.title_line = not args.no_title_line
-
+    args.num_workers = args.njobs
+    
     args_to_remove = {'no_title_line'}
 
     if args.objective == 'docking':
@@ -282,24 +301,6 @@ def cleanup_args(args: Namespace) -> None:
 
     for arg in args_to_remove:
         delattr(args, arg)
-
-def gen_args(args=None) -> Namespace:
-    parser = ArgumentParser()
-
-    add_general_args(parser)
-    add_encoder_args(parser)
-    add_pool_args(parser)
-    add_acquisition_args(parser)
-    add_objective_args(parser)
-    add_model_args(parser)
-    add_stopping_args(parser)
-
-    args = parser.parse_args(args)
-
-    modify_objective_args(args)
-    cleanup_args(args)
-
-    return args
 
 ##############################
 #       TYPE FUNCTIONS       #

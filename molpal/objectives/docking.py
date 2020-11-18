@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Tuple, TypeVar
 
 from molpal.objectives.base import Objective
 from molpal.objectives import utils
+
+from . import pyscreener.args
 from .pyscreener import docking
 
 T = TypeVar('T')
@@ -24,63 +26,94 @@ class DockingObjective(Objective):
     ----------
     c : int = -1
         a DockingObjective is minimized, so c is set to -1
-    docker : str
-        the docking program to use
-    receptor : str
-        the filepath of the receptor in which to dock a molecule
-    center : Tuple[float, float, float]
-        the coordinates of center of the docking box
-    size : Tuple[int, int, int]
-        the x-, y-, and z-radii of the docking box
-    njobs : int
-        the number of docking jobs to run in parallel
-    ncpu : int
-        the number of cores to run each docking job over
+    docking_screener : Pyscreener.docking.Screener
+        the pyscreener screening object that handles python-based calls to
+        docking software. The screener is an object that holds the
+        information of a receptor active site and docks the ligands 
+        corresponding to input SMILES strings into that active site
     input_map : Optional[str]
-        the filepath of a Shelf containing the mapping from SMILES string to
-        input filepath(s), if an input map was provided. Otherwise, None
-    verbose : int (Default = 0)
-        the level of output to print
+        NOTE: unused right now
 
     Parameters
     ----------
-    docker : str
-    receptor : str
-    center : Tuple[float, float, float]
-    size : Tuple[int, int, int]
-    njobs : int (Default = os.cpu_count())
-    ncpu : int (Default = 1)
+    docking_config : Optional[str] (Default = None)
+        the path to a pyscreener config file containing the options for docking
+        calculations.
+        NOTE: specifying any option below in the function call will overwrite
+              any values parsed from the configuration file. Absent
+              specification in either the config file or the function call, the
+              default value will be used.
+    software : Optional[str] (Default = 'vina')
+        the docking software to use
+    receptor : Optional[str] (Default = None)
+        the filepath of a receptor file against which to dock the ligands
+    center : Optional[Tuple[float, float, float]] (Default = None)
+        the center of the docking box
+    size : Optional[Tuple[float, float, float]] (Default = (10. 10., 10.))
+        the x-, y-, and z-radii of the docking box
+    score_mode : Optional[str] (Default = 'best')
+        the method to calculate a ligand's overall score from multiple scored
+        poses. Choices: 'best' (the best score), 'average' (average all scores),
+        and 'boltzmann' (boltzmann average of all scores)
+    num_workers : Optional[int] (Default = -1)
+        the number of worker processes to spread docking calculations over.
+        A value of -1 sets the value equal to the number of cores available.
+    ncpu : Optional[int] (Default = 1)
+        the number of cores available to each worker processes
+    distributed : bool (Default = False)
+        whether the worker processes are a distributed setup.
     input_map_file : Optional[str] (Default = None)
-        a CSV file containing the mappings of SMILES strings to pre-prepared
-        ligand files. The first column is the SMILES string and each column
-        thereafter is the filepath of an input file corresponding to that
-        SMILES string
+        NOTE: unused right now
     verbose : int (Default = 0)
-    input_map_file : Optional[str] (Default = None)
     **kwargs
         additional and unused keyword arguments
     """
-    def __init__(self, docker: str, receptor: str,
-                 center: Tuple[float, float, float],
-                 size: Tuple[int, int, int],
-                 njobs: int = os.cpu_count(), ncpu: int = 1,
-                 boltzmann: bool = False,
+    def __init__(self, docking_config: Optional[str] = None,
+                 software: Optional[str] = None,
+                 receptor: Optional[str] = None,
+                 center: Optional[Tuple] = None,
+                 size: Optional[Tuple] = None,
+                 score_mode: Optional[str] = None,
+                 num_workers: Optional[int] = None,
+                 ncpu: Optional[int] = None,
+                 distributed: Optional[bool] = None,
                  input_map_file: Optional[str] = None,
                  verbose: int = 0, **kwargs):
-        self.docker = docker
-        self.receptors = docking.preparation.prepare_receptors([receptor])
-        self.center = center
-        self.size = size
-        self.njobs = njobs
-        self.ncpu = ncpu
-        self.boltzmann = boltzmann
         self.input_map_file = input_map_file
-        self.verbose = verbose
 
-        if input_map_file:
-            self.input_map = self._build_input_map(input_map_file)
-        else:
-            self.input_map = None
+        docking_params = {
+            software: 'vina', size: (10., 10., 10.), score_mode: 'best',
+            num_workers: -1, ncpu: 1, distributed: False, verbose: 0
+        }
+        if docking_config is not None:
+            docking_params.update(vars(pyscreener.args.gen_args(
+                f'--config {docking_config}'
+            )))
+
+        if software is not None:
+            docking_params['software'] = software
+        if receptor is not None:
+            docking_params['receptors'] = [receptor]
+        if center is not None:
+            docking_params['center'] = center
+        if size is not None:
+            docking_params['size'] = size
+        if score_mode is not None:
+            docking_params['score_mode'] = score_mode
+        if num_workers is not None:
+            docking_params['num_workers'] = num_workers
+        if ncpu is not None:
+            docking_params['ncpu'] = ncpu
+        if distributed is not None:
+            docking_params['distributed'] = distributed
+        docking_params['verbose'] = max(docking_params['verbose'], verbose)
+
+        self.docking_screener = docking.screener(**docking_params)
+
+        # if input_map_file:
+        #     self.input_map = self._build_input_map(input_map_file)
+        # else:
+        #     self.input_map = None
 
         super().__init__(minimize=True)
 
@@ -107,20 +140,26 @@ class DockingObjective(Objective):
             a map from SMILES string to docking score. Ligands that failed
             to dock will be scored as None
         """
-        with shelve.open(self.input_map) as d_smi_inputs:
-            ligandss = [(smi, d_smi_inputs[smi])
-                         for smi in smis if smi in d_smi_inputs]
-            ligands = distribute_and_flatten(ligandss)
-            extra_smis = [smi for smi in smis if smi not in d_smi_inputs]
+        # with shelve.open(self.input_map) as d_smi_inputs:
+        #     ligandss = [(smi, d_smi_inputs[smi])
+        #                  for smi in smis if smi in d_smi_inputs]
+        #     ligands = distribute_and_flatten(ligandss)
+        #     extra_smis = [smi for smi in smis if smi not in d_smi_inputs]
 
-        if extra_smis:
-            ligands.extend(docking.prepare_ligand(extra_smis, path=in_path))
+        # if extra_smis:
+        #     ligands.extend(docking.prepare_ligand(extra_smis, path=in_path))
 
-        scores, _ = docking.docking.dock_ligands(
-            ligands=ligands, docker=self.docker, receptors=self.receptors,
-            center=self.center, size=self.size, ncpu=self.ncpu, path=out_path,
-            boltzmann=self.boltzmann, nworkers=self.njobs, verbose=self.verbose
-        )
+        if in_path:
+            self.docking_screener.in_path = in_path
+        if out_path:
+            self.docking_screener.out_path = out_path
+
+        scores = self.docking_screener(smis)
+        # scores, _ = docking.docking.dock_ligands(
+        #     ligands=ligands, docker=self.docker, receptors=self.receptors,
+        #     center=self.center, size=self.size, ncpu=self.ncpu, path=out_path,
+        #     boltzmann=self.boltzmann, nworkers=self.njobs, verbose=self.verbose
+        # )
 
         return {
             smi: self.c * score if score else None
