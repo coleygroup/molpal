@@ -31,8 +31,6 @@ class DockingObjective(Objective):
         docking software. The screener is an object that holds the
         information of a receptor active site and docks the ligands 
         corresponding to input SMILES strings into that active site
-    input_map : Optional[str]
-        NOTE: unused right now
 
     Parameters
     ----------

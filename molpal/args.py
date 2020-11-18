@@ -45,10 +45,8 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('-nj', '--njobs', 
                         default=MAX_CPU, type=int, metavar='N_JOBS',
                         help='the total number of cores available')
-
-    parser.add_argument('--retrain-from-scratch', 
-                        action='store_true', default=False,
-                        help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
+    parser.add_argument('--distributed', action='store_true', default=False,
+                        help='whether the calculations will be distributed over an MPI setup')
 
     parser.add_argument('--write-intermediate', 
                         action='store_true', default=False,
@@ -151,27 +149,26 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         help='whether to minimize the objective function')
 
     # DockingObjective args
-    parser.add_argument('-d', '--docker', default='vina',
-                        required='docking' in sys.argv,
+    parser.add_argument('--software', default='vina',
                         choices={'vina', 'psovina', 'smina', 'qvina'},
                         help='the name of the docking program to use')
+    parser.add_argument('--docking-config',
+                        help='the path to a pyscreener configuration file containing all of the parameters with which to run the docking')
     parser.add_argument('-r', '--receptor',
                         required='docking' in sys.argv,
                         help='the filename of the receptor')
     parser.add_argument('-c', '--center', type=float, nargs=3,
                         metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
-                        required='docking' in sys.argv,
                         help='the x-, y-, and z-coordinates of the center of the docking box')
     parser.add_argument('-s', '--size', type=int, nargs=3,
                         metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
-                        required='docking' in sys.argv,
                         help='the x-, y-, and z-dimensions of the docking box')
+    parser.add_argument('--docked-ligand-file',
+                        help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file. If using Dock, do not select this preprocessing option as autoboxing occurs during input preparation.')
     parser.add_argument('-nc', '--ncpu', default=4, type=int, metavar='N_CPU',
                         help='the number of cores to run the docking program with')
-    parser.add_argument('--opt', action='store_true', default=False,
-                        help='(NOT IMPLEMENTED) whether the docking should self-optimize the external:internal parallelism ratio')
-    parser.add_argument('--boltzmann', action='store_true', default=False,
-                        help='whether to calculate the boltzmann average of the docking scores')
+    parser.add_argument('--score-mode', default='best',
+                        help='the method by which to calculate an overall score from multiple scored conformations')
 
     # LookupObjective args
     parser.add_argument('--lookup-path',
@@ -218,11 +215,14 @@ def modify_LookupObjective_args(args: Namespace) -> None:
 #       MODEL ARGUMENTS       #
 ###############################
 def add_model_args(parser: ArgumentParser) -> None:
-    parser.add_argument('--model', choices={'rf', 'gp', 'nn', 'mpn'},
+    parser.add_argument('--model', choices=('rf', 'gp', 'nn', 'mpn'),
                         default='rf',
                         help='the model type to use')
     parser.add_argument('--test-batch-size', type=int,
-                        help='the size of batch of predictions during model inference')
+                        help='the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.')
+    parser.add_argument('--retrain-from-scratch', 
+                        action='store_true', default=False,
+                        help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
     
     # GP args
     parser.add_argument('--gp-kernel', choices={'dotproduct'},
