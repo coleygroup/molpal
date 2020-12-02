@@ -19,7 +19,7 @@ This repository contains the source of MolPAL, both a library and software for t
 
 ## Requirements
 - Python (>= 3.6)
-- the `pyscreener` library and all of its dependencies
+- the [`pyscreener`](https://github.com/coleygroup/pyscreener) library and all of its dependencies if using a `docking` objective
 
 NN and MPN models can make use of GPUs for significantly faster model training and inference. To utilize this, you must have the following:
 - CUDA (>= 8.0)
@@ -31,24 +31,28 @@ The first step in installing MolPAL is to clone this repository: `git clone <thi
 The easiest way to install all dependencies is to use conda along with the supplied environment YAML file, but you may also install them manually, if desired.
 
 ### conda
-1. (if necessary) install conda. Instructions will vary based on your system
+0. (if necessary) install conda. Instructions will vary based on your system
 1. `cd /path/to/molpal`
 1. `conda env create -f environment.yml`
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
-### manual (FIX ME)
+### manual
 
 The following packages are __necessary__ to install before running MolPAL:
 - configargparse
 - h5py
+- importlib-resources
 - numpy
+- pip
+- python=3.6.10
+- pytorch (built with CUDA if utilizing GPU acceleration)
 - rdkit
 - scikit-learn
-- scipy
-- pytorch (built with CUDA if utilizing GPU acceleration)
-- tensorflow / tensorflow_addons
 - tqdm
+- tensorflow
+- tensorflow-addons
+- typing-extensions
 
 The following packages are _optional_ to install before running MolPAL:
 - cudatoolkit (whichever version matches your CUDA build if utilizing GPU acceleration for PyTorch-based models (MPN); _note_: you must reinstall PyTorch according to the GPU installation instructions on the website if using the `environment.yml` approach)
