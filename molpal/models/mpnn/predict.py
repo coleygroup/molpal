@@ -8,8 +8,7 @@ from tqdm import tqdm
 from ..chemprop.data import MoleculeDataLoader, MoleculeDataset, StandardScaler
 from ..chemprop.features import BatchMolGraph, mol2graph
 
-def predict(model: nn.Module,
-            data_loader: Iterable[MoleculeDataLoader],
+def predict(model: nn.Module, data_loader: Iterable,
             disable_progress_bar: bool = False,
             scaler: Optional[StandardScaler] = None) -> np.ndarray:
     """Predict the output values of a dataset

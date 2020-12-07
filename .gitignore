@@ -21,6 +21,7 @@
 *.png
 *.pdf
 
+.vscode/
 .DS_Store
 submit_molpal.py
 fps_umap.py
