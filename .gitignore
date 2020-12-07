@@ -23,6 +23,9 @@
 
 .vscode/
 .DS_Store
-submit_molpal.py
+analyze_test_loss.py
+scripts/submit_molpal.py
+scripts/umap_fig_plotly.py
+scripts/distance.py
 fps_umap.py
 molpal_umap.py
