@@ -33,15 +33,11 @@ def predict(model: nn.Module, data_loader: Iterable,
     model.eval()
 
     pred_batches = []
-    for batch in data_loader:
-        batch_graph = batch.batch_graph()
-        # features_batch = batch.features()
-
-        with torch.no_grad():
-            # pred_batch = model(mol_batch, features_batch)
+    with torch.no_grad():
+        for batch in data_loader:
+            batch_graph = batch.batch_graph()
             pred_batch = model(batch_graph)
-
-        pred_batches.append(pred_batch.data.cpu().numpy())
+            pred_batches.append(pred_batch.data.cpu().numpy())
     preds = np.concatenate(pred_batches)
 
     if model.uncertainty:
