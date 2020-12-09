@@ -8,7 +8,7 @@ channels:
 dependencies:
   - configargparse
   - h5py
-  - importlib-resources
+  - importlib_resources
   - numpy
   - pip
   - python=3.6.10

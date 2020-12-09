@@ -112,9 +112,7 @@ class Model(ABC):
             the mean predicted values
         variances: List[float]
             the variance in the predicted values, empty if mean_only is True
-        """
-        gc.collect()
-        
+        """        
         if self.type_ == 'mpn':
             # MPNs predict directly on the input identifier
             xs = x_ids
@@ -123,9 +121,9 @@ class Model(ABC):
             xs = x_feats
 
         if batched_size:
-            n_batches = size // batched_size + 1 if size else None
+            n_batches = (size//batched_size) + 1 if size else None
         else:
-            n_batches = size // self.test_batch_size + 1 if size else None
+            n_batches = (size//self.test_batch_size) + 1 if size else None
             xs = batches(xs, self.test_batch_size)
 
         means = []
@@ -133,12 +131,12 @@ class Model(ABC):
 
         if mean_only:
             for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
-                                 desc='Batching test data', unit='batch'):
+                                 desc='Inference', unit='batch'):
                 batch_means = self.get_means(batch_xs)
                 means.extend(batch_means)
         else:
             for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
-                                 desc='Batching test data', unit='batch'):
+                                 desc='Inference', unit='batch'):
                 batch_means, batch_vars = self.get_means_and_vars(batch_xs)
                 means.extend(batch_means)
                 variances.extend(batch_vars)

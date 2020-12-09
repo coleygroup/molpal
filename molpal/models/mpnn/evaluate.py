@@ -32,7 +32,7 @@ def evaluate_predictions(
     List[float]
         a list with the score for each task based on metric_func
     """
-    info = logger.info if logger is not None else print
+    info = logger.info if logger else print
 
     if len(preds) == 0:
         return [float('nan')] * num_tasks

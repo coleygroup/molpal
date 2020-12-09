@@ -62,9 +62,8 @@ class RFModel(Model):
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
-        logging.info('  training MAE: {:.2f}, MSE: {:.2f}'.format(
-            np.mean(np.abs(errors)), np.mean(np.power(errors, 2))
-        ))
+        logging.info(f'  training MAE: {np.mean(np.abs(errors)):.2f},'
+                     f'MSE: {np.mean(np.power(errors, 2)):.2f}')
         return True
 
     def get_means(self, xs: Sequence) -> ndarray:
@@ -78,16 +77,6 @@ class RFModel(Model):
             preds[:, j] = submodel.predict(xs)
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
-
-    # def save(self, path) -> None:
-    #     Path(path).mkdir(parents=True, exist_ok=True)
-
-    #     model_path = f'{path}/model.pkl'
-    #     pickle.dump(self.model, open(model_path, 'wb'))
-    
-    # def load(self, path) -> None:
-    #     model_path = f'{path}/model.pkl'
-    #     self.model = pickle.load(open(model_path, 'wb'))
     
 class GPModel(Model):
     """Gaussian process model
@@ -151,14 +140,4 @@ class GPModel(Model):
         Y_mean, Y_sd = self.model.predict(X, return_std=True)
 
         return Y_mean, np.power(Y_sd, 2)
-
-    # def save(self, path) -> None:
-    #     Path(path).mkdir(parents=True, exist_ok=True)
-
-    #     model_path = f'{path}/model.pkl'
-    #     pickle.dump(self.model, open(model_path, 'wb'))
-    
-    # def load(self, path) -> None:
-    #     model_path = f'{path}/model.pkl'
-    #     self.model = pickle.load(open(model_path, 'wb'))
         

@@ -49,7 +49,7 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
     # loss_sum = 0
     # iter_count = 0
 
-    for batch in tqdm(data_loader, desc='Epoch training', unit='minibatch',
+    for batch in tqdm(data_loader, desc='Step', unit='minibatch',
                       leave=False):
         # Prepare batch
         mol_batch = batch.batch_graph()

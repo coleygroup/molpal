@@ -20,8 +20,6 @@ from tensorflow import keras
 from molpal.models.base import Model
 from molpal.models.utils import feature_matrix
 
-# tf.get_logger().setLevel(logging.ERROR)
-
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 Dataset = tf.data.Dataset
@@ -218,8 +216,8 @@ class NNModel(Model):
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
     njobs : int (Default = 0)
-        the number of workers over which to parallelize
-        feature matrix calculation
+        the number of workers over which to parallelize feature
+        matrix calculation
     
     See also
     --------
@@ -356,7 +354,6 @@ class NNTwoOutputModel(Model):
         the number of workers over which to parallelize
         feature matrix calculation
     """
-
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
@@ -420,7 +417,6 @@ class NNDropoutModel(Model):
     dropout_size : int (Default = 10)
         the number of passes to make through the network during inference
     """
-
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.2, dropout_size: int = 10,
                  njobs: int = 0, **kwargs):

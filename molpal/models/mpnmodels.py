@@ -115,7 +115,7 @@ class MPNN:
         best_val_score = float('-inf')
         best_state_dict = self.model.state_dict()
 
-        for _ in tqdm(range(self.epochs), desc='Model training', unit='epoch'):
+        for _ in tqdm(range(self.epochs), desc='Training', unit='epoch'):
             n_iter = mpnn.train(
                 self.model, train_data_loader, self.loss_func,
                 optimizer, scheduler, self.train_args, n_iter
@@ -163,20 +163,7 @@ class MPNN:
             num_workers=self.num_workers
         )
 
-        # batch_graphs = mpnn.utils.batch_graphs(
-        #     smis=xs, minibatch_size=50, n_workers=self.num_workers)
-
         return mpnn.predict(self.model, data_loader, scaler=self.scaler)
-    
-    # def save(self, path) -> None:
-    #     Path(path).mkdir(parents=True, exist_ok=True)
-
-    #     model_path = f'{path}/model.pt'
-    #     torch.save(self.model.state_dict(), model_path)
-    
-    # def load(self, path) -> None:
-    #     model_path = f'{path}/model.pt'
-    #     self.model.load_state_dict(torch.load(model_path))
 
 class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
