@@ -265,7 +265,7 @@ parser.add_argument('--data-dirs', nargs='+',
                     help='the directories containing molpal output data')
 parser.add_argument('--models', nargs='+',
                     help='the respective name of each model used in --data-dirs')
-parser.add_argument('--iters', nargs=4, type=int, default=[0, 1, 3, 2],
+parser.add_argument('--iters', nargs=4, type=int, default=[0, 1, 3, 5],
                     help='the FOUR iterations of points to show in the main figure')
 parser.add_argument('--si-fig', action='store_true', default=False,
                     help='whether to produce generate the SI fig instead of the main fig')

@@ -1,5 +1,4 @@
 import argparse
-from collections import Counter
 import csv
 from functools import partial
 import gzip
@@ -9,7 +8,6 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-import pandas as pd
 from tqdm import tqdm
 
 sns.set_theme(style='white', context='paper')
@@ -67,16 +65,16 @@ parser.add_argument('--paths', nargs='+',
                     help='the paths containing the datasets')
 parser.add_argument('--names', nargs='+',
                     help='the name of each dataset')
-parser.add_argument('--score-cols', nargs=+, type=int,
+parser.add_argument('--score-cols', nargs='+', type=int,
                     help='the column in each dataset CSV containing the score')
-parser.add_argument('--top-ks', nargs=+, type=int,
+parser.add_argument('--top-ks', nargs='+', type=int,
                     help='the value of k to use for each dataset')
 parser.add_argument('--clip-positive', action='store_true', default=False,
                     help='whether to clip values >= 0 from the datasets.')
                     
 if __name__ == '__main__':
     args = parser.parse_args()
-    for path, score_col, name, k in zip(args.paths, args.score_cols
+    for path, score_col, name, k in zip(args.paths, args.score_cols,
                                         args.names, args.top_ks):
         scores = extract_scores(path, score_col)
         write_histogram(path, score_col, name, k, args.clip_positive)
