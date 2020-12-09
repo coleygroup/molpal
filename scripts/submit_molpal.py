@@ -7,9 +7,7 @@ BATCH_SCRIPT = 'run_molpal.batch'
 LIBRARY = sys.argv[1]
 CONFIG = sys.argv[2]
 
-if LIBRARY == 'AmpC':
-    SIZES = ['0.004', '0.002', '0.001']
-elif LIBRARY == 'HTS':
+if LIBRARY in ('AmpC', 'HTS'):
     SIZES = ['0.004', '0.002', '0.001']
 else:
     SIZES = ['0.01']
