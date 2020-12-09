@@ -38,11 +38,18 @@ class Model(ABC):
     test_batch_size : int
         the size of the batch to split prediction inputs into if not
         already batched
+    ncpu : int
+        the total number of cores available to parallelize computation over
     additional, class-specific instance attributes
+
+    Parameters
+    ----------
+    test_batch_size : int
+    ncpu : int (Default = 1)
     """
-    def __init__(self, test_batch_size: int, njobs: int = 1, **kwargs):
+    def __init__(self, test_batch_size: int, ncpu: int = 1, **kwargs):
         self.test_batch_size = test_batch_size
-        self.njobs = njobs
+        self.ncpu = ncpu
 
     def __call__(self, *args, **kwargs) -> Tuple[List[float], List[float]]:
         return self.apply(*args, **kwargs)

@@ -50,7 +50,7 @@ def cluster_fps_h5(fps_h5: str, ncluster: int = 100) -> List[int]:
 
 def cluster_fps(fps: List[np.ndarray],
                 ncluster: int = 100, method: str = 'minibatch',
-                njobs: Optional[int] = None) -> np.ndarray:
+                ncpu: Optional[int] = None) -> np.ndarray:
     """Cluster the molecular fingerprints, fps, by a given method
 
     Parameters
@@ -67,8 +67,8 @@ def cluster_fps(fps: List[np.ndarray],
         - k-means clustering: 'kmeans'
         - mini-batch k-means clustering: 'minibatch'
         - OPTICS clustering 'optics'
-    njobs : Optional[int]
-        the number of jobs to parallelize clustering over, if possible
+    ncpu : Optional[int]
+        the number of cores to parallelize clustering over, if possible
 
     Returns
     -------
@@ -80,13 +80,13 @@ def cluster_fps(fps: List[np.ndarray],
     fps = sparse.vstack(fps, format='csr')
 
     if method == 'kmeans':
-        clusterer = cluster.KMeans(n_clusters=ncluster, n_jobs=njobs)
+        clusterer = cluster.KMeans(n_clusters=ncluster, n_jobs=ncpu)
     elif method == 'minibatch':
         clusterer = cluster.MiniBatchKMeans(n_clusters=ncluster, n_init=10,
                                             batch_size=100, init_size=1000)
     elif method == 'optics':
         clusterer = cluster.OPTICS(min_samples=0.01, metric='jaccard',
-                                   n_jobs=njobs)
+                                   n_jobs=ncpu)
     else:
         raise ValueError(f'{method} is not a supported clustering method')
 

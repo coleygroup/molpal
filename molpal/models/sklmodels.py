@@ -27,23 +27,21 @@ class RFModel(Model):
     ----------
     test_batch_size : Optional[int] (Default = 10000)
         the size into which testing data should be batched
-    njobs : int (Default = -1)
-        the number of jobs training/inference should be distributed over
+    ncpu : int (Default = 1)
+        the number of cores training/inference should be distributed over
     """
 
     def __init__(self, test_batch_size: Optional[int] = 10000,
-                 njobs: int = -1, **kwargs):
+                 ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 10000
-        self.n_jobs = njobs
+        super().__init__(test_batch_size, ncpu=ncpu, **kwargs)
 
         self.model = RandomForestRegressor(
             n_estimators=100,
-            n_jobs=self.n_jobs,
+            n_jobs=self.ncpu,
             max_depth=8,
             verbose=1,
         )
-
-        super().__init__(test_batch_size, **kwargs)
 
     @property
     def provides(self):
@@ -56,7 +54,7 @@ class RFModel(Model):
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = True):
         # retrain means nothing for this model- internally it always retrains
-        X = feature_matrix(xs, featurize, self.n_jobs)
+        X = feature_matrix(xs, featurize, self.ncpu)
         Y = np.array(ys)
 
         self.model.fit(X, Y)
@@ -86,28 +84,23 @@ class GPModel(Model):
     model : GaussianProcessRegressor
     kernel : kernels.Kernel
         the GP kernel that will be used
-    njobs : int
-    
+
     Parameters
     ----------
     gp_kernel : str (Default = 'dotproduct')
-        the type of GP kernel to use
-    njobs : int (Default = 0)
-        the number of jobs to parallelize feature matrix generation over
+    ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
-        the size into which testing data should be batched
     """
-    def __init__(self, gp_kernel: str = 'dotproduct', njobs: int = 0,
+    def __init__(self, gp_kernel: str = 'dotproduct', ncpu: int = 0,
                  test_batch_size: Optional[int] = 1000, **kwargs):
         test_batch_size = test_batch_size or 1000
+        super().__init__(test_batch_size, ncpu=ncpu, **kwargs)
+
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
-        self.njobs = njobs
-
-        super().__init__(test_batch_size, **kwargs)
-
+        
     @property
     def provides(self):
         return {'means', 'vars'}
@@ -118,7 +111,7 @@ class GPModel(Model):
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
-        X = feature_matrix(xs, featurize, 1)#self.njobs)
+        X = feature_matrix(xs, featurize, self.ncpu)
         Y = np.array(ys)
 
         self.model = GaussianProcessRegressor(kernel=self.kernel)

@@ -42,7 +42,7 @@ Before running MolPAL, be sure to first activate the environment: `conda activat
 The following packages are __necessary__ to install before running MolPAL:
 - configargparse
 - h5py
-- importlib-resources
+- importlib_resources
 - numpy
 - pip
 - python=3.6.10

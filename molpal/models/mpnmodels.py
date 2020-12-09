@@ -42,9 +42,11 @@ class MPNN:
     device : str {'cpu', 'cuda'}
         the device on which training/evaluation/prediction is performed
     batch_size : int
-        the size of each batch
+        the size of each batch during training to update gradients
     epochs : int
         the number of epochs over which to train
+    ncpu : int
+        the number of cores over which to parallelize input batch preparation
     """
     def __init__(self, batch_size: int = 50,
                  uncertainty_method: Optional[str] = None,
@@ -57,13 +59,13 @@ class MPNN:
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
                  final_lr: float = 1e-4, log_frequency: int = 10,
-                 njobs: int = 1):
+                 ncpu: int = 1):
         if torch.cuda.is_available():
             self.device = 'cuda' 
         else:
             self.device = 'cpu'
 
-        self.num_workers = njobs
+        self.ncpu = ncpu
 
         self.model = mpnn.MoleculeModel(
             uncertainty_method=uncertainty_method,
@@ -98,12 +100,12 @@ class MPNN:
         train_data_loader = MoleculeDataLoader(
             dataset=train_data,
             batch_size=self.batch_size,
-            num_workers=self.num_workers
+            num_workers=self.ncpu
         )
         val_data_loader = MoleculeDataLoader(
             dataset=val_data,
             batch_size=self.batch_size,
-            num_workers=self.num_workers
+            num_workers=self.ncpu
         )
 
         optimizer = chemprop.utils.build_optimizer(
@@ -160,7 +162,7 @@ class MPNN:
         data_loader = MoleculeDataLoader(
             dataset=test_data,
             batch_size=self.batch_size,
-            num_workers=self.num_workers
+            num_workers=self.ncpu
         )
 
         return mpnn.predict(self.model, data_loader, scaler=self.scaler)
@@ -169,10 +171,10 @@ class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
     def __init__(self, test_batch_size: Optional[int] = 100000,
-                 njobs: int = 1, **kwargs):
+                 ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 100000
 
-        self.build_model = partial(MPNN, njobs=njobs)
+        self.build_model = partial(MPNN, ncpu=ncpu)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -205,11 +207,11 @@ class MPNDropoutModel(Model):
 
     def __init__(self, test_batch_size: Optional[int] = 100000,
                  dropout: float = 0.2, dropout_size: int = 10,
-                 njobs: int = 1, **kwargs):
+                 ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 100000
 
         self.build_model = partial(MPNN, uncertainty_method='dropout',
-                                   dropout=dropout, njobs=njobs)
+                                   dropout=dropout, ncpu=ncpu)
         self.model = self.build_model()
 
         self.dropout_size = dropout_size
@@ -251,10 +253,10 @@ class MPNTwoOutputModel(Model):
     through mean-variance estimation"""
 
     def __init__(self, test_batch_size: Optional[int] = 100000,
-                 njobs: int = 1, **kwargs):
+                 ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 100000
 
-        self.build_model = partial(MPNN, uncertainty_method='mve', njobs=njobs)
+        self.build_model = partial(MPNN, uncertainty_method='mve', ncpu=ncpu)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)

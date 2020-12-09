@@ -32,23 +32,6 @@ class MoleculePool(Sequence[Mol]):
     custom class is necessary for both utility and memory purposes. Its main
     purpose is to hide the storage of large numbers of SMILES strings and
     molecular fingerprints on disk.
-    
-    NOTE: the below is not currently supported
-    *-------------------------------------------------------------------------*
-    Unfortunately, this prevents a MoleculePool from serving as Mapping type 
-    (which is arguably more natural.) As a workaround to this limitation, a 
-    MoleculePool does store information mapping from
-    SMILES -> (fingerprint, cluster_id) in a compressed form by using
-    a SMILES string's hash as the key and its index as the value. All get-type
-    functions support SMILES-based inputs using this technique. However, we
-    must warn users that this mapping is NOT stable and is prone to collisions.
-    As a result, it is possible that two SMILES strings map to the same index,
-    thus making SMILES-based mapping invalid for one of those two. The
-    collisions() property exists to check for the possible occurrence of this,
-    and the check_smi_idx function exists to check if a given SMILES string is
-    stable. If using SMILES-based retrieval, one should first call that function
-    for a given input and ensure that the result is the same as the input.
-    *-------------------------------------------------------------------------*
 
     Attributes
     ----------
@@ -96,8 +79,8 @@ class MoleculePool(Sequence[Mol]):
         If None, the MoleculePool will generate this file automatically 
     encoder : Encoder (Default = Encoder())
         the encoder to use when calculating fingerprints
-    njobs : int (Default = 4)
-        the number of jobs to parallelize fingerprint calculation over.
+    ncpu : int (Default = 1)
+        the number of cores to parallelize fingerprint calculation over.
         A value of -1 uses all available cores.
     cache : bool (Default = False)
         whether to cache the SMILES strings in memory
@@ -119,7 +102,7 @@ class MoleculePool(Sequence[Mol]):
     def __init__(self, library: str, title_line: bool = True,
                  delimiter: str = ',', smiles_col: int = 0,
                  fps: Optional[str] = None,
-                 encoder: Encoder = Encoder(), njobs: int = 4,
+                 encoder: Encoder = Encoder(), ncpu: int = 1,
                  cache: bool = False, validated: bool = False,
                  cluster: bool = False, ncluster: int = 100,
                  path: str = '.', verbose: int = 0, **kwargs):
@@ -136,8 +119,8 @@ class MoleculePool(Sequence[Mol]):
             
         self.fps_ = fps
         self.invalid_lines = None
-        self.njobs = njobs
-        self.chunk_size = self._encode_mols(encoder, njobs, path)
+        self.ncpu = ncpu
+        self.chunk_size = self._encode_mols(encoder, ncpu, path)
 
         self.smis_ = None
         # self.d_smi_idx = {}
@@ -411,15 +394,15 @@ class MoleculePool(Sequence[Mol]):
         return None
 
     def _encode_mols(self, encoder: Type[Encoder], 
-                     njobs: int, path: str) -> int:
+                     ncpu: int, path: str) -> int:
         """Precalculate the fingerprints of the library members, if necessary.
 
         Parameters
         ----------
         encoder : Type[Encoder]
             the encoder to use for generating the fingerprints
-        njobs : int
-            the number of jobs to parallelize fingerprint calculation over
+        ncpu : int
+            the number of cores to parallelize fingerprint calculation over
         path : str
             the path to which the fingerprints file should be written
         
@@ -443,7 +426,7 @@ class MoleculePool(Sequence[Mol]):
 
             total_size = sum(1 for _ in self.smis())
             self.fps_, self.invalid_lines = fingerprints.feature_matrix_hdf5(
-                self.smis(), total_size, n_workers=self.njobs,
+                self.smis(), total_size, ncpu=self.ncpu,
                 encoder=encoder, name=Path(self.library).stem, path=path
             )
             if self.verbose > 0:
@@ -507,7 +490,7 @@ class MoleculePool(Sequence[Mol]):
                 # self.d_smi_idx = {hash(smi): i
                 #                   for i, smi in enumerate(smis)}
         else:
-            with ProcessPoolExecutor(max_workers=self.njobs) as pool:
+            with ProcessPoolExecutor(max_workers=self.ncpu) as pool:
                 valid_smis = pool.map(validate_smi, smis, chunksize=256)
                 if cache:
                     self.smis_ = []
@@ -552,14 +535,6 @@ class MoleculePool(Sequence[Mol]):
         """
         self.cluster_ids_ = cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
-
-    # @property
-    # def collisions(self) -> bool:
-    #     return len(self) != len(self.d_smi_idx)
-    
-    # def check_smi_idx(self, smi) -> str:
-    #     idx = self.d_smi_idx[hash(smi)]
-    #     return self.get_smi(idx)
 
 def validate_smi(smi):
     return smi if Chem.MolFromSmiles(smi) else None

@@ -50,9 +50,8 @@ class NN:
         the mean of the unnormalized data
     std : float
         the standard deviation of the unnormalized data
-    n_workers : int
-        the number of workers over which to parallelize feature matrix
-        calculation
+    ncpu : int
+        the number of cores to parallelize feature matrix calculation over
 
     Parameters
     ----------
@@ -66,9 +65,8 @@ class NN:
     dropout_at_predict : bool (Default = False)
     activation : Optional[str] (Default = 'relu')
         the name of the activation function to use
-    njobs : int (Default = 0)
-        the number of workers over which to parallelize
-        feature matrix calculation
+    ncpu : int (Default = 1)
+        the number of cores to parallelize feature matrix calculation over
     """
     def __init__(self, input_size: int, output_size: int,
                  batch_size: int = 4096,
@@ -76,7 +74,7 @@ class NN:
                  dropout: Optional[float] = None,
                  dropout_at_predict: bool = False,
                  activation: Optional[str] = 'relu',
-                 njobs: int = 0):
+                 ncpu: int = 1):
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
@@ -88,7 +86,7 @@ class NN:
 
         self.mean = 0
         self.std = 0
-        self.n_workers = njobs
+        self.ncpu = ncpu
 
     def build(self, layer_sizes, dropout, dropout_at_predict, activation):
         """Build the model, optimizer, and loss function"""
@@ -156,7 +154,7 @@ class NN:
         """
         self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        X = feature_matrix(xs, featurize, self.n_workers)
+        X = feature_matrix(xs, featurize, self.ncpu)
         Y = self._normalize(ys)
 
         self.model.fit(
@@ -215,9 +213,8 @@ class NNModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    njobs : int (Default = 0)
-        the number of workers over which to parallelize feature
-        matrix calculation
+    ncpu : int (Default = 1)
+        the number of cores to parallelize feature matrix calculation over
     
     See also
     --------
@@ -226,12 +223,12 @@ class NNModel(Model):
     NNTwoOutputModel
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
+                 dropout: Optional[float] = 0.0, ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   njobs=njobs)
+                                   ncpu=ncpu)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -277,20 +274,19 @@ class NNEnsembleModel(Model):
         the dropout probability during training
     ensemble_size : int (Default = 5)
         the number of separate models to train
-    njobs : int (Default = 0)
-        the number of workers over which to parallelize
-        feature matrix calculation
+    ncpu : int (Default = 1)
+        the number of cores to parallelize feature matrix calculation over
     bootstrap_ensemble : bool
         NOTE: UNUSED
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, ensemble_size: int = 5,
                  bootstrap_ensemble: Optional[bool] = False,
-                 njobs: int = 0, **kwargs):
+                 ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 4096
         self.build_model = partial(NN, input_size=input_size, output_size=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   njobs=njobs)
+                                   ncpu=ncpu)
 
         self.ensemble_size = ensemble_size
         self.models = [self.build_model() for _ in range(self.ensemble_size)]
@@ -350,17 +346,17 @@ class NNTwoOutputModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    njobs : int (Default = 0)
+    ncpu : int (Default = 0)
         the number of workers over which to parallelize
         feature matrix calculation
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, njobs: int = 0, **kwargs):
+                 dropout: Optional[float] = 0.0, ncpu: int = 0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=2,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   njobs=njobs)
+                                   ncpu=ncpu)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -411,20 +407,19 @@ class NNDropoutModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    njobs : int (Default = 0)
-        the number of workers over which to parallelize
-        feature matrix calculation
+    ncpu : int (Default = 1)
+        the number of cores to parallelize feature matrix calculation over
     dropout_size : int (Default = 10)
         the number of passes to make through the network during inference
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.2, dropout_size: int = 10,
-                 njobs: int = 0, **kwargs):
+                 ncpu: int = 1, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   dropout_at_predict=True, njobs=njobs)
+                                   dropout_at_predict=True, ncpu=ncpu)
         self.model = self.build_model()
         self.dropout_size = dropout_size
 

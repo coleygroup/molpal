@@ -42,9 +42,11 @@ def add_general_args(parser: ArgumentParser) -> None:
                         help='the random seed to use for initialization.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='the level of output this program should print')
-    parser.add_argument('-nj', '--njobs', 
+    parser.add_argument('-nw', '-nj', '-np', '--num-workers', '--njobs', 
                         default=MAX_CPU, type=int, metavar='N_JOBS',
-                        help='the total number of cores available')
+                        help='the total number of workers/jobs/processes/nodes to paralllelize computation over. Only used when distributed=False. In this case, njobs*ncpu should be equal to the total number of cores available')
+    parser.add_argument('-nc', '--ncpu', default=1, type=int, metavar='N_CPU',
+                        help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
     parser.add_argument('--distributed', action='store_true', default=False,
                         help='whether the calculations will be distributed over an MPI setup')
 
@@ -76,11 +78,11 @@ def add_general_args(parser: ArgumentParser) -> None:
 #       ENCODER ARGUMENTS           #
 #####################################
 def add_encoder_args(parser: ArgumentParser) -> None:
-    parser.add_argument('--fingerprint', default='morgan',
+    parser.add_argument('--fingerprint', default='pair',
                         choices={'morgan', 'rdkit', 'pair', 'maccs', 'map4'},
                         help='the type of encoder to use')
     parser.add_argument('--radius', type=int, default=2,
-                        help='the radius to use for circular fingerprints')
+                        help='the radius or path length to use for fingerprints')
     parser.add_argument('--length', type=int, default=2048,
                         help='the length of the fingerprint')
 
@@ -147,26 +149,24 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         help='the objective function to use')
     parser.add_argument('--minimize', action='store_true', default=False,
                         help='whether to minimize the objective function')
+    parser.add_argument('--objective-config',
+                        help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 
     # DockingObjective args
     parser.add_argument('--software', default='vina',
                         choices={'vina', 'psovina', 'smina', 'qvina'},
                         help='the name of the docking program to use')
-    parser.add_argument('--docking-config',
-                        help='the path to a pyscreener configuration file containing all of the parameters with which to run the docking')
     parser.add_argument('-r', '--receptor',
                         required='docking' in sys.argv,
                         help='the filename of the receptor')
-    parser.add_argument('-c', '--center', type=float, nargs=3,
+    parser.add_argument('--center', type=float, nargs=3,
                         metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
                         help='the x-, y-, and z-coordinates of the center of the docking box')
-    parser.add_argument('-s', '--size', type=int, nargs=3,
+    parser.add_argument('--size', type=int, nargs=3,
                         metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
                         help='the x-, y-, and z-dimensions of the docking box')
     parser.add_argument('--docked-ligand-file',
                         help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file. If using Dock, do not select this preprocessing option as autoboxing occurs during input preparation.')
-    parser.add_argument('-nc', '--ncpu', default=4, type=int, metavar='N_CPU',
-                        help='the number of cores to run the docking program with')
     parser.add_argument('--score-mode', default='best',
                         help='the method by which to calculate an overall score from multiple scored conformations')
 
@@ -265,7 +265,6 @@ def cleanup_args(args: Namespace) -> None:
     if isinstance(args.scores_csvs, list) and len(args.scores_csvs)==1:
         args.scores_csvs = args.scores_csvs[0]
     args.title_line = not args.no_title_line
-    args.num_workers = args.njobs
     
     args_to_remove = {'no_title_line'}
 

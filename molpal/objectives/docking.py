@@ -66,7 +66,7 @@ class DockingObjective(Objective):
     **kwargs
         additional and unused keyword arguments
     """
-    def __init__(self, docking_config: Optional[str] = None,
+    def __init__(self, objective_config: Optional[str] = None,
                  software: Optional[str] = None,
                  receptor: Optional[str] = None,
                  center: Optional[Tuple] = None,
@@ -83,9 +83,9 @@ class DockingObjective(Objective):
             software: 'vina', size: (10., 10., 10.), score_mode: 'best',
             num_workers: -1, ncpu: 1, distributed: False, verbose: 0
         }
-        if docking_config is not None:
+        if objective_config is not None:
             docking_params.update(vars(pyscreener.args.gen_args(
-                f'--config {docking_config}'
+                f'--config {objective_config}'
             )))
 
         if software is not None:
@@ -153,11 +153,6 @@ class DockingObjective(Objective):
             self.docking_screener.out_path = out_path
 
         scores = self.docking_screener(smis)
-        # scores, _ = docking.docking.dock_ligands(
-        #     ligands=ligands, docker=self.docker, receptors=self.receptors,
-        #     center=self.center, size=self.size, ncpu=self.ncpu, path=out_path,
-        #     boltzmann=self.boltzmann, nworkers=self.njobs, verbose=self.verbose
-        # )
 
         return {
             smi: self.c * score if score else None

@@ -15,7 +15,7 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
-def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
+def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
                         encoder: Type[Encoder] = Encoder(),
                         name: str = 'fps',
                         path: str = '.') -> Tuple[str, Set[int]]:
@@ -28,8 +28,8 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
         the inputs for which to generate the feature matrix
     size : int
         the length of the iterable
-    n_workers : int (Default = 0)
-        the number of workers to parallelize feature matrix generation over
+    ncpu : int (Default = 0)
+        the number of cores to parallelize feature matrix generation over
     encoder : Type[Encoder] (Default = Encoder('pair'))
         an object that encodes inputs from an identifier representation to
         a feature representation
@@ -49,7 +49,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
     """
     fps_h5 = str(Path(path)/f'{name}.h5')
 
-    with Pool(max_workers=n_workers) as pool, h5py.File(fps_h5, 'w') as h5f:
+    with Pool(max_workers=ncpu) as pool, h5py.File(fps_h5, 'w') as h5f:
         CHUNKSIZE = 1024
 
         fps_dset = h5f.create_dataset(
@@ -57,7 +57,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
             chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
         )
         
-        batch_size = CHUNKSIZE*n_workers*2
+        batch_size = CHUNKSIZE*ncpu*2
         n_batches = size//batch_size + 1
 
         invalid_idxs = set()
@@ -81,102 +81,3 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, n_workers: int = 0,
             fps_dset.resize(valid_size, axis=0)
 
     return fps_h5, invalid_idxs
-
-###
-# OLD H5 FILE GENERATION FUNCTION
-###
-
-# def parse_smiles_par(filepath: str, delimiter: str = ',',
-#                      smiles_col: int = 0, title_line: bool = True,
-#                      encoder_: Type[Encoder] = AtomPairFingerprinter(),
-#                      njobs: int = 0, path: str = '.') -> Tuple[str, Set[int]]:
-#     """Parses a .smi type file to generate an hdf5 file containing the feature
-#     matrix of the corresponding molecules.
-
-#     Parameters
-#     ----------
-#     filepath : str
-#         the filepath of a (compressed) CSV file containing the SMILES strings
-#         for which to generate fingerprints
-#     delimiter : str (Default = ',')
-#         the column separator for each row
-#     smiles_col : int (Default = -1)
-#         the index of the column containing the SMILES string of the molecule
-#         by default, will autodetect the smiles column by choosing the first
-#         column containign a valid SMILES string
-#     title_line : bool (Default = True)
-#         does the file contain a title line?
-#     encoder : Type[Encoder] (Default = AtomPairFingerprinter)
-#         an Encoder object which generates the feature representation of a mol
-#     njobs : int (Default = -1)
-#         how many jobs to parellize file parsing over, A value of
-#         -1 defaults to using all cores, -2: all except 1 core, etc...
-#     path : str
-#         the path under which the hdf5 file should be written
-
-#     Returns
-#     -------
-#     fps_h5 : str
-#         the filename of an hdf5 file containing the feature matrix of the
-#         representations generated from the molecules in the input file.
-#         The row ordering corresponds to the ordering of smis
-#     invalid_rows : Set[int]
-#         the set of rows in filepath containing invalid SMILES strings
-#     """
-#     if os.stat(filepath).st_size == 0:
-#         raise ValueError(f'"{filepath} is empty!"')
-
-#     global encoder; encoder = encoder_
-
-#     basename = Path(filepath).stem.split('.')[0]
-#     fps_h5 = str(Path(f'{path}/{basename}.h5'))
-
-#     if Path(filepath).suffix == '.gz':
-#         open_ = partial(gzip.open, mode='rt')
-#     else:
-#         open_ = open
-
-#     with open_(filepath) as fid, \
-#             Pool(max_workers=njobs) as pool, \
-#                 h5py.File(fps_h5, 'w') as h5f:
-#         reader = csv.reader(fid, delimiter=delimiter)
-
-#         n_mols = sum(1 for _ in reader); fid.seek(0)
-#         if title_line:
-#             next(reader)
-#             n_mols -= 1
-
-#         CHUNKSIZE = 1024
-
-#         fps_dset = h5f.create_dataset(
-#             'fps', (n_mols, len(encoder)),
-#             chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
-#         )
-        
-#         parse_line_ = partial(parse_line, smiles_col=smiles_col)
-
-#         batch_size = CHUNKSIZE*njobs
-#         n_batches = n_mols // batch_size + 1
-
-#         smis = (row[smiles_col] for row in reader)
-#         invalid_rows = set()
-#         i = 0
-#         offset = 0
-#         for smis_batch in tqdm(batches(smis, batch_size), total=n_batches,
-#                                desc='Precalculating fps', unit='batch'):
-#             fps = pool.map(encoder.encode_and_uncompress, smis_batch, CHUNKSIZE)
-#             for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
-#                 while fp is None:
-#                     invalid_rows.add(i+offset)
-#                     offset += 1
-#                     fp = next(fps)
-
-#                 fps_dset[i] = fp
-#                 i += 1
-
-#         # original dataset size included potentially invalid SMILES
-#         n_mols_valid = n_mols - len(invalid_rows)
-#         if n_mols_valid != n_mols:
-#             fps_dset.resize(n_mols_valid, axis=0)
-
-#     return fps_h5, invalid_rows

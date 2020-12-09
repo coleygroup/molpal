@@ -7,10 +7,6 @@ import numpy as np
 from molpal.encoder import Encoder
 from molpal.pools.base import MoleculePool, Mol
 
-# encoder = AtomPairFingerprinter()
-# def smi_to_fp(smi):
-#     return encoder.encode_and_uncompress(smi)
-
 class LazyMoleculePool(MoleculePool):
     """A LazyMoleculePool does not precompute fingerprints for the pool
 
@@ -30,7 +26,7 @@ class LazyMoleculePool(MoleculePool):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.chunk_size = 100 * self.njobs
+        self.chunk_size = 100 * self.ncpu
 
     def __iter__(self) -> Iterator[Mol]:
         """Return an iterator over the molecule pool.
@@ -64,28 +60,27 @@ class LazyMoleculePool(MoleculePool):
 
     def fps_batches(self) -> Iterator[np.ndarray]:
         # buffer of chunk of fps into memory for faster iteration
-        job_chunk_size = self.chunk_size // self.njobs
+        job_chunk_size = self.chunk_size // self.ncpu
         smis = iter(self.smis())
         smis_chunks = iter(lambda: list(islice(smis, self.chunk_size)), [])
 
-        with ProcessPoolExecutor(max_workers=self.njobs) as pool:
+        with ProcessPoolExecutor(max_workers=self.ncpu) as pool:
             for smis_chunk in smis_chunks:
                 fps_chunk = pool.map(self.encoder.encode_and_uncompress, 
                                      smis_chunk, chunksize=job_chunk_size)
                 yield fps_chunk
 
-    def _encode_mols(self, encoder: Type[Encoder], njobs: int, 
-                     **kwargs) -> None:
+    def _encode_mols(self, encoder: Type[Encoder], ncpu: int, **kwargs) -> None:
         """
         Side effects
         ------------
         (sets) self.encoder : Type[Encoder]
             the encoder used to generate molecular fingerprints
-        (sets) self.njobs : int
+        (sets) self.ncpu : int
             the number of jobs to parallelize fingerprint buffering over
         """
         self.encoder = encoder
-        self.njobs = njobs
+        self.ncpu = ncpu
 
     def _cluster_mols(self, *args, **kwargs) -> None:
         """A LazyMoleculePool can't cluster molecules
