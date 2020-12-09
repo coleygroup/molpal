@@ -31,21 +31,20 @@ The first step in installing MolPAL is to clone this repository: `git clone <thi
 The easiest way to install all dependencies is to use conda along with the supplied environment YAML file, but you may also install them manually, if desired.
 
 ### conda
-0. (if necessary) install conda. Instructions will vary based on your system
+0. (if necessary) [install conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)
 1. `cd /path/to/molpal`
 1. `conda env create -f environment.yml`
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
 ### manual
-
 The following packages are __necessary__ to install before running MolPAL:
 - configargparse
 - h5py
 - importlib_resources
 - numpy
 - pip
-- python=3.6.10
+- python >= 3.6.10
 - pytorch (built with CUDA if utilizing GPU acceleration)
 - rdkit
 - scikit-learn
@@ -78,11 +77,9 @@ __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation o
 
 ## Running MolPAL
 
-### Novel Targets
-
 The general command to run MolPAL is as follows:
 
-`python molpal.py -o <lookup|docking> [additional objective arguments] --libary <path/to/library.csv> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
+`python molpal.py -o <objective_type> [additional objective arguments] --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
 
 Alternatively, you may use a configuration file to run MolPAL, like so:
 
@@ -96,15 +93,17 @@ Configuration files accept the following syntaxes:
 - `arg = value` (INI)
 - `arg value`
 
-#### Required Settings
-There a few required settings to specify before running MolPAL, and they are highlighted below along with their relevant required settings.
+### Novel Targets
+The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
 
 `-o` or `--objective`: The objective function you would like to use. Choices include `docking` for docking objectives and `lookup` for lookup objectives. There are additional arguments for each type of objective
 - `docking`
-  * `-d, --docker`: the docking software you would like to use. Choices: 'vina', 'smina', 'psovina', 'qvina.'
-  * `-r, --receptor`': the filepath of the receptor you are attempting to dock ligands into.
-  * `-c, --center`: the x-, y-, and z-coordinates (Å) of the center of the docking box.
-  * `-s, --size`: the x-, y-, and z- radii of the docking box in Å.
+  * `--software`: the docking software you would like to use. Choices: 'vina', 'smina', 'psovina', 'qvina', and 'ucsfdock'
+  * `--receptor`': the filepath of the receptor you are attempting to dock ligands into.
+  * `--center`: the x-, y-, and z-coordinates (Å) of the center of the docking box.
+  * `--size`: the x-, y-, and z- radii of the docking box in Å.
+  * `--docked-ligand-file`: the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.
+  * `--score-mode`: the method by which to calculate an overall score from multiple scored conformations
 - `lookup`
   * `--lookup-path`: the filepath of a CSV file containing score information for each input
 

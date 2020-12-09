@@ -1,3 +1,4 @@
+import argparse
 from collections import Counter
 import csv
 from functools import partial
@@ -61,28 +62,21 @@ def write_histogram(path, score_col, name, k, clip_positive=False):
     plt.savefig(f'{name}_score_histogram.pdf')
     plt.clf()
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--paths', nargs='+',
+                    help='the paths containing the datasets')
+parser.add_argument('--names', nargs='+',
+                    help='the name of each dataset')
+parser.add_argument('--score-cols', nargs=+, type=int,
+                    help='the column in each dataset CSV containing the score')
+parser.add_argument('--top-ks', nargs=+, type=int,
+                    help='the value of k to use for each dataset')
+parser.add_argument('--clip-positive', action='store_true', default=False,
+                    help='whether to clip values >= 0 from the datasets.')
+                    
 if __name__ == '__main__':
-    # data_path = sys.argv[1]
-    # score_col = sys.argv[2]
-    # name = sys.argv[3]
-    # k = int(sys.argv[4])
-    # write_histogram(data_path, score_col, name, k, clip_positive)
-
-    DATA_PATH = '/n/shakfs1/users/dgraff/data'
-    paths = [
-        f'{DATA_PATH}/4UNN_Enamine10k_scores.csv',
-        f'{DATA_PATH}/4UNN_Enamine50k_scores.csv',
-        f'{DATA_PATH}/4UNN_EnamineHTS_scores.csv',
-        f'{DATA_PATH}/AmpC_100M_scores.csv.gz',
-    ]
-    score_cols = [2, 2, 1, 2]
-    names = ['10k', '50k', 'HTS', 'AmpC']
-    ks = [100, 500, 1000, 50000]
-
-    for path, score_col, name, k in zip(paths, score_cols, names, ks):
+    args = parser.parse_args()
+    for path, score_col, name, k in zip(args.paths, args.score_cols
+                                        args.names, args.top_ks):
         scores = extract_scores(path, score_col)
-        if name in ['10k', '50k', 'HTS']:
-            clip_positive = True
-        else:
-            clip_positive = False
-        write_histogram(path, score_col, name, k, clip_positive)
+        write_histogram(path, score_col, name, k, args.clip_positive)

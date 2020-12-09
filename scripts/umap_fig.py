@@ -91,16 +91,15 @@ def add_model_data(fig, gs, data_dir, i, model,
         if row==MAX_ROW:
             if not portrait:
                 ax.set_xlabel(j)
-        else:
-            ax.set_xticks([])
-
+        
         if col==0:
             if portrait:
                 ax.set_ylabel(row)
             else:
                 ax.set_ylabel(model)
-        else:
-            ax.set_yticks([])
+        
+        ax.set_xticks([])
+        ax.set_yticks([])
 
         axs.append(ax)
 
@@ -158,6 +157,9 @@ def add_top1k_panel(fig, gs, d_smi_score, d_smi_idx, fps_embedded):
                 c='grey', marker='.')
     add_ellipses(ax)
 
+    # ax.set_xticks([])
+    # ax.set_yticks([])
+
     return fig, ax
 
 def add_density_panel(fig, gs, ax1, fps_embedded):
@@ -166,7 +168,9 @@ def add_density_panel(fig, gs, ax1, fps_embedded):
         x=fps_embedded[:, 0], y=fps_embedded[:, 1], bins=75, cmap='Purples')
     ax2_cbar = plt.colorbar(im, ax=(ax1, ax2))
     ax2_cbar.ax.set_title('Points')
+    
     ax2.set_yticks([])
+
     add_ellipses(ax2)
 
     return fig, ax2
@@ -192,24 +196,25 @@ def add_model_row(fig, gs, parent_dir, row, iters, model,
             marker='.', c=scores, s=2, cmap='plasma', vmin=zmin, vmax=zmax
         )
         add_ellipses(ax)
-        if row < 4:
-            ax.set_xticks([])
-        else:
-            ax.set_xlabel(j)
 
+        if row==4:
+            ax.set_xlabel(j)
         if col==0:
             ax.set_ylabel(model)
-        else:
-            ax.set_yticks([])
+
+
+        ax.set_xticks([])
+        ax.set_yticks([])
 
         axs.append(ax)
         col+=1
+
     return fig, axs
 
 def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
              models=None, iters=None):
     models = ['RF', 'NN', 'MPN'] or models
-    iters = [0, 1, 3, 5] or iters
+    iters = [0, 1, 3, 5] or iters[:4]
 
     parent_data_dir ='/n/shakfs1/users/dgraff/HTS_retrain/001'
     data_dirs = [
@@ -218,12 +223,15 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
         f'{parent_data_dir}/HTS_mpn_greedy_001_0_retrain/data'
     ]
 
-    zmin = -max(score for score in d_smi_score.values() if score < 0)
+    # zmin = -max(score for score in d_smi_score.values() if score < 0)
     zmax = -min(d_smi_score.values())
+
+    # scores = [score for score in d_smi_score.values()]
+    zmin = -sum(score for score in d_smi_score.values()) / len(d_smi_score)
 
     nrows = 2+len(data_dirs)
     ncols = 4
-    fig = plt.figure(figsize=(2*nrows, (2*ncols)*1.05), constrained_layout=True)
+    fig = plt.figure(figsize=(2*nrows, 2*ncols*1.15), constrained_layout=True)
     gs = fig.add_gridspec(nrows=nrows, ncols=4)
 
     fig, ax1 = add_top1k_panel(fig, gs, d_smi_score, d_smi_idx, fps_embedded)
@@ -231,7 +239,7 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
     
     axs = []
     for i, (data_dir, model) in enumerate(zip(data_dirs, models)):
-        fig, axs_ = add_model_row(fig, gs, data_dir, i+2, iters[:4], model,
+        fig, axs_ = add_model_row(fig, gs, data_dir, i+2, iters, model,
                                   d_smi_idx, fps_embedded, zmin, zmax)
         axs.extend(axs_)
 
@@ -257,30 +265,15 @@ parser.add_argument('--data-dirs', nargs='+',
                     help='the directories containing molpal output data')
 parser.add_argument('--models', nargs='+',
                     help='the respective name of each model used in --data-dirs')
+parser.add_argument('--iters', nargs=4, type=int, default=[0, 1, 3, 2],
+                    help='the FOUR iterations of points to show in the main figure')
 parser.add_argument('--si-fig', action='store_true', default=False,
                     help='whether to produce generate the SI fig instead of the main fig')
-parser.add_argument('--iters', nargs='4', type=int,
-                    help='the FOUR iterations of points to show in the main figure')
 parser.add_argument('--landscape', action='store_true', default=False,
                     help='whether to produce a landscape SI figure')
 
 if __name__ == "__main__":
-    # args = parser.parse_args()
-    args = argparse.Namespace()
-    args.scores_dict_pkl = '/n/shakfs1/users/dgraff/data/4UNN_EnamineHTS_scores_dict.pkl'
-    args.smis_csv = '/n/shakfs1/users/dgraff/libraries/EnamineHTS.csv'
-    args.fps_embedded_npy = 'EnamineHTS_pair_umap.npy'
-    parent_data_dir ='/n/shakfs1/users/dgraff/HTS_retrain/001'
-    args.data_dirs = [
-        f'{parent_data_dir}/HTS_random_001_0/data',
-        f'{parent_data_dir}/HTS_rf_greedy_001_0_retrain/data',
-        f'{parent_data_dir}/HTS_nn_greedy_001_0_retrain/data',
-        f'{parent_data_dir}/HTS_mpn_greedy_001_0_retrain/data'
-    ]
-    args.models = ['Random', 'RF', 'NN', 'MPN']
-    args.si_fig = False
-    args.iters = [0, 1, 3, 5]
-    args.landscape = False
+    args = parser.parse_args()
 
     d_smi_score = pickle.load(open(args.scores_dict_pkl, 'rb'))
 

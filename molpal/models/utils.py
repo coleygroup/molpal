@@ -21,10 +21,10 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
                    ncpu: int = 0) -> np.ndarray:
     """Calculate the feature matrix of xs with the given featurization
     function"""
-    if n_workers <= 1:
+    if ncpu <= 1:
         X = [featurize(x) for x in tqdm(xs, desc='Featurizing', smoothing=0.)]
     else:
-        with Pool(max_workers=n_workers) as pool:
+        with Pool(max_workers=ncpu) as pool:
             X = list(tqdm(pool.map(featurize, xs), desc='Featurizing'))
     
     return np.array(X)

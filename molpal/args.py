@@ -156,7 +156,7 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('--software', default='vina',
                         choices={'vina', 'psovina', 'smina', 'qvina'},
                         help='the name of the docking program to use')
-    parser.add_argument('-r', '--receptor',
+    parser.add_argument('--receptor',
                         required='docking' in sys.argv,
                         help='the filename of the receptor')
     parser.add_argument('--center', type=float, nargs=3,
@@ -166,7 +166,7 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
                         help='the x-, y-, and z-dimensions of the docking box')
     parser.add_argument('--docked-ligand-file',
-                        help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file. If using Dock, do not select this preprocessing option as autoboxing occurs during input preparation.')
+                        help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
     parser.add_argument('--score-mode', default='best',
                         help='the method by which to calculate an overall score from multiple scored conformations')
 
@@ -275,8 +275,7 @@ def cleanup_args(args: Namespace) -> None:
         }
     elif args.objective == 'lookup':
         args_to_remove |= {
-            'docker', 'receptor', 'center', 'size', 'ncpu',
-            'boltzmann', 'opt'
+            'software', 'receptor', 'center', 'size', 'score_mode',
         }
 
     if args.metric != 'ei' or args.metric != 'pi':
@@ -294,7 +293,7 @@ def cleanup_args(args: Namespace) -> None:
     if args.model != 'nn':
         args_to_remove |= set()
     if args.model != 'mpn':
-        args_to_remove |= {'device', 'init_lr', 'max_lr', 'final_lr'}
+        args_to_remove |= {'init_lr', 'max_lr', 'final_lr'}
     if args.model != 'nn' and args.model != 'mpn':
         args_to_remove |= {'conf_method'}
 
