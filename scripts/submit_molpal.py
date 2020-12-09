@@ -71,31 +71,31 @@ for model in MODELS:
 
                 time.sleep(1)
 
-# # submit random jobs
-# if LIBRARY == 'AmpC':
-#     script = 'run_molpal_AmpC.batch'
-# else:
-#     script = 'run_molpal_rq.batch'
+# submit random jobs
+if LIBRARY == 'AmpC':
+    script = 'run_molpal_AmpC.batch'
+else:
+    script = 'run_molpal_rq.batch'
 
-# for size in SIZES:
-#     for rep in REPS:
-#         model = 'rf'
-#         conf_method = 'none'
-#         metric = 'random'
-#         name = f'new_{LIBRARY}_{model}_{metric}_{size}_{rep}'
+for size in SIZES:
+    for rep in REPS:
+        model = 'rf'
+        conf_method = 'none'
+        metric = 'random'
+        name = f'{LIBRARY}_{metric}_{size}_{rep}'
 
-#         sbatch_argv = ['--output', f'molpal_{name}_%j.out',
-#                        '--error', f'molpal_{name}_%j.err',
-#                        '-n', njobs]
+        sbatch_argv = ['--output', f'molpal_{name}_%j.out',
+                       '--error', f'molpal_{name}_%j.err',
+                       '-p', 'serial_requeue', '-c', '8']
 
-#         script_argv = (
-#             f'--name {name} --config {CONFIG} --metric {metric} ' 
-#             + f'--init-size {size} --batch-size {size} ' 
-#             + f'--model {model}  --conf-method {conf_method}  -vvvv'
-#         ).split()
+        script_argv = (
+            f'--name {name} --config {CONFIG} --metric {metric} ' 
+            + f'--init-size {size} --batch-size {size} ' 
+            + f'--model {model}  --conf-method {conf_method}  -vvvv'
+        ).split()
 
-#         print(sp.run(['sbatch', *sbatch_argv, BATCH_SCRIPT, *script_argv]))
+        print(sp.run(['sbatch', *sbatch_argv, BATCH_SCRIPT, *script_argv]))
 
-#         time.sleep(1)
+        time.sleep(1)
 
 exit(0)

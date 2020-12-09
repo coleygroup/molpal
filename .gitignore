@@ -10,7 +10,6 @@
 *.sdf
 *.smi
 *.pkl
-*.ini
 *.gz
 *.txt
 *.sh
@@ -24,7 +23,7 @@
 .vscode/
 .DS_Store
 analyze_test_loss.py
-scripts/submit_molpal.py
+config_local
 scripts/umap_fig_plotly.py
 scripts/distance.py
 fps_umap.py
