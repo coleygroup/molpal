@@ -11,9 +11,9 @@ dependencies:
   - importlib_resources
   - numpy
   - pip
-  - python=3.6.10
+  - python
   - pytorch
-  - rdkit=2020.03.5
+  - rdkit
   - scikit-learn
   - tqdm
   - pip:
