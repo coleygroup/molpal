@@ -50,8 +50,8 @@ def get_new_points_by_epoch(scores_csvs: List[str]) -> List[Dict]:
     
     return new_points_by_epoch
 
-def add_ellipses(ax):
-    kwargs = dict(fill=False, color='black', lw=1.)
+def add_ellipses(ax, invert=False):
+    kwargs = dict(fill=False, color='white' if invert else 'black', lw=1.)
     ax.add_patch(Ellipse(xy=(6.05, -6.0), width=2.9, height=1.2, **kwargs))
     ax.add_patch(Ellipse(xy=(16.05, 4.5), width=1.7, height=2.6, **kwargs))
 
@@ -129,7 +129,7 @@ def si_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs, models,
 
     colormap = ScalarMappable(cmap='plasma')
     colormap.set_clim(zmin, zmax)
-    cbar = plt.colorbar(colormap, ax=axs, aspect=30)#, use_gridspec=True)
+    cbar = plt.colorbar(colormap, ax=axs, aspect=30)
     cbar.ax.set_title('Score')
 
     if portrait:
@@ -165,13 +165,13 @@ def add_top1k_panel(fig, gs, d_smi_score, d_smi_idx, fps_embedded):
 def add_density_panel(fig, gs, ax1, fps_embedded):
     ax2 = fig.add_subplot(gs[0:2, 2:])
     _, _, _, im = ax2.hist2d(
-        x=fps_embedded[:, 0], y=fps_embedded[:, 1], bins=75, cmap='Purples')
-    ax2_cbar = plt.colorbar(im, ax=(ax1, ax2))
+        x=fps_embedded[:, 0], y=fps_embedded[:, 1], bins=75, cmap='Purples_r')
+    ax2_cbar = plt.colorbar(im, ax=(ax1, ax2), aspect=20)
     ax2_cbar.ax.set_title('Points')
     
     ax2.set_yticks([])
 
-    add_ellipses(ax2)
+    add_ellipses(ax2, True)
 
     return fig, ax2
 
@@ -192,7 +192,7 @@ def add_model_row(fig, gs, parent_dir, row, iters, model,
         idxs = [d_smi_idx[smi] for smi in smis]
 
         ax.scatter(
-            fps_embedded[idxs, 0], fps_embedded[idxs, 1], 
+            fps_embedded[idxs, 0], fps_embedded[idxs, 1], alpha=0.75,
             marker='.', c=scores, s=2, cmap='plasma', vmin=zmin, vmax=zmax
         )
         add_ellipses(ax)
@@ -223,15 +223,14 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
         f'{parent_data_dir}/HTS_mpn_greedy_001_0_retrain/data'
     ]
 
-    # zmin = -max(score for score in d_smi_score.values() if score < 0)
     zmax = -min(d_smi_score.values())
+    zmin = -max(score for score in d_smi_score.values() if score < 0)
+    zmin = round((zmin+zmax)/2)
 
-    # scores = [score for score in d_smi_score.values()]
-    zmin = -sum(score for score in d_smi_score.values()) / len(d_smi_score)
 
     nrows = 2+len(data_dirs)
     ncols = 4
-    fig = plt.figure(figsize=(2*nrows, 2*ncols*1.15), constrained_layout=True)
+    fig = plt.figure(figsize=(2*ncols*1.15, 2*nrows), constrained_layout=True)
     gs = fig.add_gridspec(nrows=nrows, ncols=4)
 
     fig, ax1 = add_top1k_panel(fig, gs, d_smi_score, d_smi_idx, fps_embedded)
@@ -245,8 +244,16 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
 
     colormap = ScalarMappable(cmap='plasma')
     colormap.set_clim(zmin, zmax)
-    cbar = plt.colorbar(colormap, ax=axs, aspect=30)#, use_gridspec=True)
+
+    ticks = list(range(zmin, round(zmax)))
+
+    cbar = plt.colorbar(colormap, ax=axs, aspect=30, ticks=ticks)
     cbar.ax.set_title('Score')
+
+    ticks[0] = f'≤{ticks[0]}'
+    cbar.ax.set_yticklabels(ticks)
+    # print(cbar.ax)
+    # print(cbar.ax.yticklabels)
 
     fig.text(0.475, 0.005, 'Iteration', ha='center', va='center', 
              fontweight='bold')
