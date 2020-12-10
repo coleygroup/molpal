@@ -66,7 +66,7 @@ Alternatively, you may use a configuration file to run MolPAL, like so:
 
 `python molpal.py --config <path/to/config_file>`
 
-Two sample configuration files are provided: minimal_config.ini, a configuration file specifying only the necessary arguments to run MolPAL, and sample_config.ini, a configuration file containing a few common options to specify (but not _all_ possible options.)
+Two sample configuration files are provided: [minimal_config.ini](config/minimal_config.ini), a configuration file specifying only the necessary arguments to run MolPAL, and [sample_config.ini](config/sample_config.ini), a configuration file containing a few common options to specify (but not _all_ possible options.)
 
 Configuration files accept the following syntaxes:
 - `--arg value` (argparse)
