@@ -9,7 +9,7 @@ dependencies:
   - configargparse
   - h5py
   - importlib_resources
-  - numpy
+  - numpy=1.19
   - pip
   - python
   - pytorch
