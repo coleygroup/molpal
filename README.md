@@ -77,8 +77,11 @@ Configuration files accept the following syntaxes:
 
 A sample command to run one of the experiments used to generate data in the initial publication is as follows:
 
-`python run.py --config config_expts/Enamine50k_retrain.ini --name e50k_test -
--metric greedy --init-size 0.01 --batch-size 0.01 --model rf --conf-method none -vvvv`
+`python run.py --config config_expts/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-size 0.01 --model rf`
+
+or the full command:
+
+`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch library = libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-size 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --lookup-path data/4UNN_Enamine50k_scores.csv.gz --lookup-smiles-col 1 --lookup-data-col 2 --minimize --top-k = 0.01 --window-size = 10 --delta = 0.01 --max-epochs = 5`
 
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
