@@ -74,6 +74,11 @@ Configuration files accept the following syntaxes:
 - `arg = value` (INI)
 - `arg value`
 
+A sample command to run one of the experiments used to generate data in the initial publication is as follows:
+
+`python run.py --config config_expts/Enamine50k_retrain.ini --name e50k_test -
+-metric greedy --init-size 0.01 --batch-size 0.01 --model rf --conf-method none -vvvv`
+
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
 

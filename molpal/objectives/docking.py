@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple, TypeVar
 from molpal.objectives.base import Objective
 from molpal.objectives import utils
 
-from . import pyscreener.args
+from .pyscreener import args as pyscreener_args
 from .pyscreener import docking
 
 T = TypeVar('T')
@@ -67,6 +67,7 @@ class DockingObjective(Objective):
         additional and unused keyword arguments
     """
     def __init__(self, objective_config: Optional[str] = None,
+                 name: Optional[str] = None, root: Optional[str] = None,
                  software: Optional[str] = None,
                  receptor: Optional[str] = None,
                  center: Optional[Tuple] = None,
@@ -78,13 +79,13 @@ class DockingObjective(Objective):
                  input_map_file: Optional[str] = None,
                  verbose: int = 0, **kwargs):
         self.input_map_file = input_map_file
-
+        
         docking_params = {
             software: 'vina', size: (10., 10., 10.), score_mode: 'best',
             num_workers: -1, ncpu: 1, distributed: False, verbose: 0
         }
         if objective_config is not None:
-            docking_params.update(vars(pyscreener.args.gen_args(
+            docking_params.update(vars(pyscreener_args.gen_args(
                 f'--config {objective_config}'
             )))
 
@@ -106,8 +107,16 @@ class DockingObjective(Objective):
             docking_params['distributed'] = distributed
         docking_params['verbose'] = max(docking_params['verbose'], verbose)
 
-        self.docking_screener = docking.screener(**docking_params)
+        if name:
+            path = Path(tempfile.gettempdir()) / name
+        else:
+            path = Path(tempfile.gettempdir()) / 'molpal_docking'
 
+        print(docking_params)
+        
+        self.docking_screener = docking.screener(**docking_params, path=path)
+
+        exit()
         # if input_map_file:
         #     self.input_map = self._build_input_map(input_map_file)
         # else:

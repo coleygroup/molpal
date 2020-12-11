@@ -120,7 +120,7 @@ class Explorer:
         if k is less than 0
         if max_explore is less than 0
     """
-    def __init__(self, name: str,
+    def __init__(self, name: str = 'molpal',
                  k: Union[int, float] = 0.01, window_size: int = 3,
                  delta: float = 0.01, max_epochs: int = 50, 
                  max_explore: Union[int, float] = 1., root: str = '.',
