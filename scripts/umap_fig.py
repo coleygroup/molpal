@@ -15,6 +15,8 @@ from tqdm import tqdm
 
 sns.set_theme(style='white', context='paper')
 
+NBINS=50
+
 def get_num_iters(data_dir: str) -> int:
     scores_csvs = [p_csv for p_csv in Path(data_dir).iterdir()
                    if 'iter' in p_csv.stem]
@@ -109,15 +111,16 @@ def si_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs, models,
            portrait=True):
     zmin = -max(score for score in d_smi_score.values() if score < 0)
     zmax = -min(d_smi_score.values())
+    zmin = round((zmin+zmax)/2)
 
     n_models = len(data_dirs)
     n_iters = get_num_iters(data_dirs[0])
 
     if portrait:
-        fig = plt.figure(figsize=(10, 10), constrained_layout=True)
+        fig = plt.figure(figsize=(10*1.15, 15), constrained_layout=True)
         gs = fig.add_gridspec(nrows=n_iters, ncols=n_models)
     else:
-        fig = plt.figure(figsize=(15, 10), constrained_layout=True)
+        fig = plt.figure(figsize=(15*1.15, 10), constrained_layout=True)
         gs = fig.add_gridspec(nrows=n_models, ncols=n_iters)
 
     axs = []
@@ -127,21 +130,28 @@ def si_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs, models,
                                    portrait, n_models)
         axs.extend(axs_)
 
+    ticks = list(range(zmin, round(zmax)))
+
     colormap = ScalarMappable(cmap='plasma')
     colormap.set_clim(zmin, zmax)
-    cbar = plt.colorbar(colormap, ax=axs, aspect=30)
+    cbar = plt.colorbar(colormap, ax=axs, aspect=30, ticks=ticks)
     cbar.ax.set_title('Score')
+
+    ticks[0] = f'≤{ticks[0]}'
+    cbar.ax.set_yticklabels(ticks)
 
     if portrait:
         fig.text(0.01, 0.5, 'Iteration', ha='center', va='center', 
-                rotation='vertical', fontweight='bold')
-        fig.text(0.48, 0.99, 'Model', ha='center', va='center', 
-                fontweight='bold')
+                 rotation='vertical',
+                 fontsize=14, fontweight='bold',)
+        fig.text(0.465, 0.9975, 'Model', ha='center', va='top',
+                 fontsize=14, fontweight='bold',)
     else:
-        fig.text(0.01, 0.5, 'Model', ha='center', va='center', 
-                rotation='vertical', fontweight='bold')
+        fig.text(0.01, 0.5, 'Model', ha='center', va='center',
+                 rotation='vertical',
+                 fontsize=16, fontweight='bold')
         fig.text(0.48, 0.01, 'Iteration', ha='center', va='center', 
-                fontweight='bold')
+                 fontsize=16, fontweight='bold',)
 
     plt.savefig(f'umap_fig_si_{"portrait" if portrait else "landscape"}.pdf')
     plt.clf()
@@ -157,15 +167,14 @@ def add_top1k_panel(fig, gs, d_smi_score, d_smi_idx, fps_embedded):
                 c='grey', marker='.')
     add_ellipses(ax)
 
-    # ax.set_xticks([])
-    # ax.set_yticks([])
-
     return fig, ax
 
 def add_density_panel(fig, gs, ax1, fps_embedded):
     ax2 = fig.add_subplot(gs[0:2, 2:])
     _, _, _, im = ax2.hist2d(
-        x=fps_embedded[:, 0], y=fps_embedded[:, 1], bins=75, cmap='Purples_r')
+        x=fps_embedded[:, 0], y=fps_embedded[:, 1],
+        bins=NBINS, cmap='Purples_r'
+    )
     ax2_cbar = plt.colorbar(im, ax=(ax1, ax2), aspect=20)
     ax2_cbar.ax.set_title('Points')
     
@@ -216,17 +225,9 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
     models = ['RF', 'NN', 'MPN'] or models
     iters = [0, 1, 3, 5] or iters[:4]
 
-    parent_data_dir ='/n/shakfs1/users/dgraff/HTS_retrain/001'
-    data_dirs = [
-        f'{parent_data_dir}/HTS_rf_greedy_001_0_retrain/data',
-        f'{parent_data_dir}/HTS_nn_greedy_001_0_retrain/data',
-        f'{parent_data_dir}/HTS_mpn_greedy_001_0_retrain/data'
-    ]
-
     zmax = -min(d_smi_score.values())
     zmin = -max(score for score in d_smi_score.values() if score < 0)
     zmin = round((zmin+zmax)/2)
-
 
     nrows = 2+len(data_dirs)
     ncols = 4
@@ -234,14 +235,14 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
     gs = fig.add_gridspec(nrows=nrows, ncols=4)
 
     fig, ax1 = add_top1k_panel(fig, gs, d_smi_score, d_smi_idx, fps_embedded)
-    fig, _ = add_density_panel(fig, gs, ax1, fps_embedded)
+    fig, ax2 = add_density_panel(fig, gs, ax1, fps_embedded)
     
     axs = []
     for i, (data_dir, model) in enumerate(zip(data_dirs, models)):
         fig, axs_ = add_model_row(fig, gs, data_dir, i+2, iters, model,
                                   d_smi_idx, fps_embedded, zmin, zmax)
         axs.extend(axs_)
-
+    
     colormap = ScalarMappable(cmap='plasma')
     colormap.set_clim(zmin, zmax)
 
@@ -252,13 +253,18 @@ def main_fig(d_smi_score, d_smi_idx, fps_embedded, data_dirs,
 
     ticks[0] = f'≤{ticks[0]}'
     cbar.ax.set_yticklabels(ticks)
-    # print(cbar.ax)
-    # print(cbar.ax.yticklabels)
+
+    fig.text(-0.03, 1.03, 'A', transform=ax1.transAxes,
+             fontsize=16, fontweight='bold', va='center', ha='right')
+    fig.text(-0.0, 1.03, 'B', transform=ax2.transAxes,
+             fontsize=16, fontweight='bold', va='center', ha='left')
+    fig.text(-0.03, -0.075, 'C', transform=ax1.transAxes,
+                fontsize=16, fontweight='bold', va='center', ha='right')
 
     fig.text(0.475, 0.005, 'Iteration', ha='center', va='center', 
              fontweight='bold')
 
-    plt.savefig(f'umap_fig_main.pdf')
+    plt.savefig(f'umap_fig_main_2.pdf')
     plt.clf()
 
 parser = argparse.ArgumentParser()

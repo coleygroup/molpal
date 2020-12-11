@@ -116,18 +116,18 @@ class MoleculePool(Sequence[Mol]):
             self.open_ = partial(gzip.open, mode='rt')
         else:
             self.open_ = open
-            
+
         self.fps_ = fps
         self.invalid_lines = None
         self.ncpu = ncpu
-        self.chunk_size = self._encode_mols(encoder, ncpu, path)
 
         self.smis_ = None
-        # self.d_smi_idx = {}
-        self.size = self._validate_and_cache_smis(cache, validated)
-
         self.cluster_ids_ = None
         self.cluster_sizes = None
+        
+        self.chunk_size = self._encode_mols(encoder, ncpu, path)
+        self.size = self._validate_and_cache_smis(cache, validated)
+
         if cluster:
             self._cluster_mols(ncluster)
 
