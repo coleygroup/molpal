@@ -13,9 +13,10 @@ This repository contains the source of MolPAL, both a library and software for t
 - [Installation](#installation)
 - [Object Model](#object-model)
 - [Running MolPAL](#running-molpal)
-  * [Novel Targets](#novel-targets)
-  * [Hyperparameter Optimization](#hyperparameter-optimization)
+  * [Required Settings](#required-settings)
+  * [Optional Settings](#optional-settings)
 - [Future Directions](#future-directions)
+- [Reproducing Experimental Results](#reproducing-experimental-results)
 
 ## Requirements
 - Python (>= 3.6)
@@ -82,13 +83,13 @@ A sample command to run one of the experiments used to generate data in the init
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
 
-`-o` or `--objective`: The objective function you would like to use. Choices include `docking` for docking objectives and `lookup` for lookup objectives. There are additional arguments for each type of objective
-- `docking`
-  * `--software`: the docking software you would like to use. Choices: 'vina', 'smina', 'psovina', 'qvina', and 'ucsfdock'
+`-o` or `--objective`: The objective function you would like to use. Choices include `docking` for docking objectives and `lookup` for lookup objectives. There are additional arguments for each type of objective.
+- `docking`: given the variety of screening options allowed by the `pyscreener` library, it's likely easiest to specify an `--objective-config` rather than providing these options on the command line. The `objective-config` file must be provided in the format of a `pyscreener` configuration file, so some options might have different names (e.g., `size` in that file rather than `--box-size`). Any options specified on the command line will override any options provided in the configuration file. 
+  * `--software`: the docking software you would like to use. Choices: 'vina', 'smina', 'psovina', 'qvina', and 'ucsfdock' (Default = 'vina').
   * `--receptor`': the filepath of the receptor you are attempting to dock ligands into.
-  * `--center`: the x-, y-, and z-coordinates (Å) of the center of the docking box.
-  * `--size`: the x-, y-, and z- radii of the docking box in Å.
-  * `--docked-ligand-file`: the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.
+  * `--box-center`: the x-, y-, and z-coordinates (Å) of the center of the docking box.
+  * `--box-size`: the x-, y-, and z- radii of the docking box in Å.
+  * `--docked-ligand-file`: the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file. Either `--box-center` and `--box-size` must be specified or a docked ligand file must be provided. In the case that both are provided, 
   * `--score-mode`: the method by which to calculate an overall score from multiple scored conformations
 - `lookup`
   * `--lookup-path`: the filepath of a CSV file containing score information for each input
@@ -119,7 +120,7 @@ While the default settings of MolPAL were chosen based on hyperparameter optimiz
 Though MolPAL was originally intended for use with protein-ligand docking screens, it was designed with modularity in mind and is easily extendable to other settings as well. In principal, all that is required to adapt MolPAL to a new problem is to write a custom `Objective` subclass that implements the `calc` method. This method takes a sequence SMILES strings as an input and returns a mapping from SMILES string -> objective function value to be utilized by the Explorer. _To this end, we are currently exploring the extension of MolPAL to subsequent stages of virtual discovery (MD, DFT, etc.)_ If you make use of the MolPAL library by implementing a new `Objective` subclass, we would be happy to include your work in the main branch.
 
 ## Reproducing Experimental Results
-### Aenerating data
+### Generating data
 The data used in the original publication was generated through usage of the [`scripts/submit_molpal.py`](scripts/submit_molpal.py) script along with the corresponding configuration file located in `config_experiments` and the library name (e.g., '10k', '50k', 'HTS', or 'AmpC') as the two command line arguments. The submission script was designed to be used with a SLURM scheduler, but if you want to rerun the experiemnts on your machine, then you can simply follow the submission script logic to generate the proper command line arguments or write a new configuration file. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626).
 
 ### Analyzing data

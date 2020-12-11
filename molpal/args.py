@@ -43,7 +43,7 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='the level of output this program should print')
     parser.add_argument('-nw', '-nj', '-np', '--num-workers', '--njobs', 
-                        default=MAX_CPU, type=int, metavar='N_JOBS',
+                        default=MAX_CPU, type=int,
                         help='the total number of workers/jobs/processes/nodes to paralllelize computation over. Only used when distributed=False. In this case, njobs*ncpu should be equal to the total number of cores available')
     parser.add_argument('-nc', '--ncpu', default=1, type=int, metavar='N_CPU',
                         help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
@@ -157,12 +157,11 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         choices={'vina', 'psovina', 'smina', 'qvina'},
                         help='the name of the docking program to use')
     parser.add_argument('--receptor',
-                        required='docking' in sys.argv,
                         help='the filename of the receptor')
-    parser.add_argument('--center', type=float, nargs=3,
+    parser.add_argument('--box-center', type=float, nargs=3,
                         metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
                         help='the x-, y-, and z-coordinates of the center of the docking box')
-    parser.add_argument('--size', type=int, nargs=3,
+    parser.add_argument('--box-size', type=int, nargs=3,
                         metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
                         help='the x-, y-, and z-dimensions of the docking box')
     parser.add_argument('--docked-ligand-file',
@@ -172,7 +171,6 @@ def add_objective_args(parser: ArgumentParser) -> None:
 
     # LookupObjective args
     parser.add_argument('--lookup-path',
-                        required='lookup' in sys.argv,
                         help='filepath pointing to a file containing lookup scoring data')
     parser.add_argument('--no-lookup-title-line', action='store_true',
                         default=False,
@@ -185,24 +183,24 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         help='the column containing the score data in the data lookup file')
 
 def modify_objective_args(args: Namespace) -> None:
-    if args.objective == 'docking':
-        modify_DockingObjective_args(args)
+    # if args.objective == 'docking':
+    #     modify_DockingObjective_args(args)
 
-    elif args.objective == 'lookup':
+    if args.objective == 'lookup':
         modify_LookupObjective_args(args)
 
-def modify_DockingObjective_args(args: Namespace) -> None:
-    rec = Path(args.receptor).stem
-    lib = Path(args.library).stem
+# def modify_DockingObjective_args(args: Namespace) -> None:
+#     rec = Path(args.receptor).stem
+#     lib = Path(args.library).stem
 
-    args.name = args.name or f'{rec}_{lib}'
+#     args.name = args.name or f'{rec}_{lib}'
 
-    if args.input is None:
-        args.input = f'input/{args.name}'
-    if args.output is None:
-        args.output = f'output/{args.name}'
+#     if args.input is None:
+#         args.input = f'input/{args.name}'
+#     if args.output is None:
+#         args.output = f'output/{args.name}'
 
-    args.ncpu = min(MAX_CPU, args.ncpu)
+#     args.ncpu = min(MAX_CPU, args.ncpu)
 
 def modify_LookupObjective_args(args: Namespace) -> None:
     args.lookup_title_line = not args.no_lookup_title_line
@@ -275,7 +273,7 @@ def cleanup_args(args: Namespace) -> None:
         }
     elif args.objective == 'lookup':
         args_to_remove |= {
-            'software', 'receptor', 'center', 'size', 'score_mode',
+            'software', 'receptor', 'box_center', 'box_size', 'score_mode',
         }
 
     if args.metric != 'ei' or args.metric != 'pi':

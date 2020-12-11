@@ -70,8 +70,9 @@ class DockingObjective(Objective):
                  name: Optional[str] = None, root: Optional[str] = None,
                  software: Optional[str] = None,
                  receptor: Optional[str] = None,
-                 center: Optional[Tuple] = None,
-                 size: Optional[Tuple] = None,
+                 box_center: Optional[Tuple] = None,
+                 box_size: Optional[Tuple] = None,
+                 docked_ligand_file: Optional[str] = None,
                  score_mode: Optional[str] = None,
                  num_workers: Optional[int] = None,
                  ncpu: Optional[int] = None,
@@ -81,8 +82,8 @@ class DockingObjective(Objective):
         self.input_map_file = input_map_file
         
         docking_params = {
-            software: 'vina', size: (10., 10., 10.), score_mode: 'best',
-            num_workers: -1, ncpu: 1, distributed: False, verbose: 0
+            'software': 'vina', 'size': (10., 10., 10.), 'score_mode': 'best',
+            'num_workers': -1, 'ncpu': 1, 'distributed': False, 'verbose': 0
         }
         if objective_config is not None:
             docking_params.update(vars(pyscreener_args.gen_args(
@@ -91,12 +92,20 @@ class DockingObjective(Objective):
 
         if software is not None:
             docking_params['software'] = software
+
+        # if receptor is None and 'receptors' not in docking_params:
+        #     raise ValueError('no receptor was provided!')
         if receptor is not None:
             docking_params['receptors'] = [receptor]
-        if center is not None:
-            docking_params['center'] = center
-        if size is not None:
-            docking_params['size'] = size
+
+        # if center is None and 'center' not in docking_params:
+        #     raise ValueError('no center ')
+        if box_center is not None:
+            docking_params['center'] = box_center
+        if box_size is not None:
+            docking_params['size'] = box_size
+        if docked_ligand_file is not None:
+            docking_params['docked_ligand_file'] = docked_ligand_file
         if score_mode is not None:
             docking_params['score_mode'] = score_mode
         if num_workers is not None:
@@ -113,10 +122,10 @@ class DockingObjective(Objective):
             path = Path(tempfile.gettempdir()) / 'molpal_docking'
 
         print(docking_params)
-        
+
         self.docking_screener = docking.screener(**docking_params, path=path)
 
-        exit()
+        # exit()
         # if input_map_file:
         #     self.input_map = self._build_input_map(input_map_file)
         # else:

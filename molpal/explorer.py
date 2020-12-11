@@ -310,9 +310,9 @@ class Explorer:
         )
 
         new_scores = self.objective.calc(
-            inputs, 
-            in_path=f'{self.tmp}/{self.name}/input/initial',
-            out_path=f'{self.tmp}/{self.name}/output/initial'
+            inputs,
+            in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
+            out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
         )
         self._clean_and_update_scores(new_scores)
 
@@ -362,8 +362,8 @@ class Explorer:
 
         new_scores = self.objective.calc(
             inputs,
-            in_path=f'{self.tmp}/{self.name}/input/{self.epoch}',
-            out_path=f'{self.tmp}/{self.name}/output/{self.epoch}'
+            in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
+            out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
         )
         self._clean_and_update_scores(new_scores)
 

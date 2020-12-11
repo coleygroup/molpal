@@ -62,7 +62,7 @@ def add_docking_args(parser: ArgumentParser):
                         help='the filenames of the receptors')
     parser.add_argument('--pdbids', nargs='+',
                         help='the PDB IDs of the crystal structure to dock against')
-    parser.add_argument('-l', '--ligands', required=True, nargs='+',
+    parser.add_argument('-l', '--ligands', nargs='+',
                         help='the filenames containing the ligands to dock')
     parser.add_argument('--use-3d', action='store_true', default='False',
                         help='how to treat the preparation of ligands from files containing three-dimensional information. If False, use only the 2D graph of each molecule in the SDF file when preparing inputs. Faster, but will result in the loss of conformational/tautomeric information. If True, use the 3D information contained in the file when preparing an input. Slower, but will preserve conformational/tautomeric information.')
