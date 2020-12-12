@@ -1,7 +1,6 @@
 name: molpal
 
 channels:
-  - 
   - pytorch
   - conda-forge
   - defaults
