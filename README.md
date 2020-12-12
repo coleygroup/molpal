@@ -21,7 +21,6 @@ This repository contains the source of MolPAL, both a library and software for t
 
 ## Requirements
 - Python (>= 3.6)
-- the [`pyscreener`](https://github.com/coleygroup/pyscreener) library and all of its dependencies if using a `docking` objective
 
 NN and MPN models can make use of GPUs for significantly faster model training and inference. To utilize this, you must have the following:
 - CUDA (>= 8.0)
@@ -136,20 +135,20 @@ The data used in the original publication was generated through usage of the [`s
 ### Analyzing data
 Once all of the data were generated, the directories were containing the data from each run organized according to the following structure:
 ```
-library
+<library>
 ├── online
-│   ├── batch_size
+│   ├── <batch_size>
 |   |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
 │   │   └── ...
-│   ├── batch_size
+│   ├── <batch_size>
 |   |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
 │   │   └── ...
 |   └── ...
 └── retrain
-    ├── batch_size
+    ├── <batch_size>
     |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
     │   └── ...
-    ├── batch_size
+    ├── <batch_size>
     |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
     │   └── ...
     └── ...

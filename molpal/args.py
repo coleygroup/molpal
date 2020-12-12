@@ -71,8 +71,6 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--root', default='.',
                         help='the root directory under which to organize all program outputs')
-    parser.add_argument('--tmp', default=os.environ.get('TMP', '.'),
-                        help='the path of your system\'s tmp or scratch directory')
 
 #####################################
 #       ENCODER ARGUMENTS           #
@@ -236,7 +234,7 @@ def add_model_args(parser: ArgumentParser) -> None:
                         help='the final learning rate for the MPNN model')
 
     # NN/MPNN args
-    parser.add_argument('--conf-method', default='ensemble',
+    parser.add_argument('--conf-method', default='none',
                         choices={'ensemble', 'twooutput', 
                                  'mve', 'dropout', 'none'},
                         help='Confidence estimation method for NN/MPNN models')
