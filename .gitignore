@@ -24,7 +24,6 @@
 .DS_Store
 analyze_test_loss.py
 config_local
-scripts/umap_fig_plotly.py
 scripts/distance.py
 fps_umap.py
 molpal_umap.py
