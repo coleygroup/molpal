@@ -5,6 +5,7 @@ from pathlib import Path
 from molpal import encoder
 from molpal.pools import fingerprints
 
+parser = argparse.ArgumentParser()
 parser.add_argument('--path', default='.',
                     help='the path under which to write the fingerprints file')
 parser.add_argument('--name',
@@ -20,7 +21,7 @@ parser.add_argument('--length', type=int, default=2048,
                     help='the length of the fingerprint')
 
 parser.add_argument('--library', required=True, metavar='LIBRARY_FILEPATH',
-                        help='the file containing members of the MoleculePool')
+                    help='the file containing members of the MoleculePool')
 parser.add_argument('--no-title-line', action='store_true', default=False,
                     help='whether there is no title line in the library file')
 parser.add_argument('--delimiter', default=',',
@@ -48,7 +49,7 @@ def main():
 
     print('Precalculating feature matrix ...', end=' ')
     with open_(args.library) as fid:
-        reader = csv.reader(fid, delimiter=args..delimiter)
+        reader = csv.reader(fid, delimiter=args.delimiter)
 
         total_size = sum(1 for _ in reader); reader.seek(0)
         if args.title_line:
@@ -69,4 +70,4 @@ def main():
               'construction.')
 
 if __name__ == "__main__":
-    pass
+    main()
