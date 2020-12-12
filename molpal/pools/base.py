@@ -208,9 +208,6 @@ class MoleculePool(Sequence[Mol]):
                         + f'or tuples thereof. Received: {type(idx)}')
 
     def get_smi(self, idx: int) -> str:
-        # if isinstance(smi_or_idx, str):
-        #     return smi_or_idx
-        # idx = smi_or_idx
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
 
@@ -230,9 +227,6 @@ class MoleculePool(Sequence[Mol]):
         assert False    # shouldn't reach this point
 
     def get_fp(self, idx: int) -> np.ndarray:
-        # if isinstance(smi_or_idx, str):
-        #     idx = self.d_smi_idx[hash(smi_or_idx)]
-        # else:
         idx = idx
 
         if idx < 0 or idx >= len(self):
@@ -245,9 +239,6 @@ class MoleculePool(Sequence[Mol]):
         assert False    # shouldn't reach this point
 
     def get_cluster_id(self, idx: int) -> Optional[int]:
-        # if isinstance(smi_or_idx, str):
-        #     idx = self.d_smi_idx[hash(smi_or_idx)]
-        # else:
         if idx < 0 or idx >= len(self):
             raise IndexError(f'pool index(={idx}) out of range')
 

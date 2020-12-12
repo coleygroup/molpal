@@ -1,4 +1,5 @@
 import argparse
+import gzip
 from pathlib import Path
 
 from molpal import encoder
@@ -30,7 +31,11 @@ def main():
     
     encoder = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
                               length=args.length)
-                              
+    if Path(args.library).suffix == '.gz':
+            open_ = partial(gzip.open, mode='rt')
+        else:
+            open_ = open
+
     print('Precalculating feature matrix ...', end=' ')
     with open_(args.library) as fid:
         reader = csv.reader(fid, delimiter=args..delimiter)
