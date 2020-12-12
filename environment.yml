@@ -10,12 +10,16 @@ dependencies:
   - h5py
   - importlib_resources
   - numpy
+<<<<<<< HEAD
   - pip
+=======
+>>>>>>> 069aaeb7f9cbe095c5f5079c8ffd677591f351f2
   - python=3.6.10
   - pytorch
   - rdkit
   - scikit-learn
   - tqdm
+  - pip
   - pip:
     - tensorflow
     - tensorflow-addons
