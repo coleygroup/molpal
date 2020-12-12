@@ -9,9 +9,9 @@ dependencies:
   - configargparse
   - h5py
   - importlib_resources
-  - numpy=1.19
+  - numpy
   - pip
-  - python
+  - python=3.6.10
   - pytorch
   - rdkit
   - scikit-learn
