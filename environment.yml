@@ -1,6 +1,7 @@
 name: molpal
 
 channels:
+  - 
   - pytorch
   - conda-forge
   - defaults
@@ -10,6 +11,7 @@ dependencies:
   - h5py
   - importlib_resources
   - numpy
+  - omnia::pdbfixer
   - python=3.6.10
   - pytorch
   - rdkit

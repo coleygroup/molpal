@@ -25,6 +25,7 @@ parser.add_argument('--delimiter', default=',',
                     help='the column separator in the library file')
 parser.add_argument('--smiles-col', default=0, type=int,
                     help='the column containing the SMILES string in the library file')
+                    
 def main():
     args = parser.parse_args()
     args.title_line = not args.no_title_line
@@ -32,9 +33,9 @@ def main():
     encoder = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
                               length=args.length)
     if Path(args.library).suffix == '.gz':
-            open_ = partial(gzip.open, mode='rt')
-        else:
-            open_ = open
+        open_ = partial(gzip.open, mode='rt')
+    else:
+        open_ = open
 
     print('Precalculating feature matrix ...', end=' ')
     with open_(args.library) as fid:
@@ -48,7 +49,8 @@ def main():
         fps, invalid_lines = fingerprints.feature_matrix_hdf5(
             smis, total_size, ncpu=args.ncpu,
             encoder=encoder, name=Path(args.library).stem, path=args.path
-    )
+        )
+
     print('Done!')
     print(f'Feature matrix was saved to "{fps}"', flush=True)
 
