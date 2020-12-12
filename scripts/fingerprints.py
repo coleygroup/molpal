@@ -5,8 +5,10 @@ from pathlib import Path
 from molpal import encoder
 from molpal.pools import fingerprints
 
-parser.add_argument('--path',
+parser.add_argument('--path', default='.',
                     help='the path under which to write the fingerprints file')
+parser.add_argument('--name',
+                    help='what to name the fingerprints file. If no suffix is provided, will add ".h5". If no name is provided, output file will be name <library>.h5')
 parser.add_argument('-nc', '--ncpu', default=1, type=int, metavar='N_CPU',
                     help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
 parser.add_argument('--fingerprint', default='pair',
@@ -25,11 +27,18 @@ parser.add_argument('--delimiter', default=',',
                     help='the column separator in the library file')
 parser.add_argument('--smiles-col', default=0, type=int,
                     help='the column containing the SMILES string in the library file')
-                    
+
 def main():
     args = parser.parse_args()
     args.title_line = not args.no_title_line
     
+    if args.name:
+        name = Path(args.name)
+        if name.suffix == '':
+            name = name.with_suffix('.h5')
+    else:
+        name = Path(args.library).with_suffix('.h5')
+
     encoder = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
                               length=args.length)
     if Path(args.library).suffix == '.gz':
@@ -48,7 +57,7 @@ def main():
         smis = (row[args.smiles_col] for row in reader)
         fps, invalid_lines = fingerprints.feature_matrix_hdf5(
             smis, total_size, ncpu=args.ncpu,
-            encoder=encoder, name=Path(args.library).stem, path=args.path
+            encoder=encoder, name=name, path=args.path
         )
 
     print('Done!')
