@@ -58,7 +58,13 @@ __Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produ
 
 __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
 
+## Preprocessing
+
+For model expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints and that's exactly what the base `MoleculePool` does (also referred to as an `EagerMoleculePool`.) However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.) If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, if there were __no__ invalid smiles, you can pass the `--validated` flag in the options to further speed up MolPAL startup.
+
 ## Running MolPAL
+
+### Examples
 The general command to run MolPAL is as follows:
 
 `python molpal.py -o <objective_type> [additional objective arguments] --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`

@@ -423,6 +423,7 @@ class MoleculePool(Sequence[Mol]):
             if self.verbose > 0:
                 print('Done!')
                 print(f'Feature matrix was saved to "{self.fps_}"', flush=True)
+                print(f'Detected {len(self.invalid_lines)} invalid SMILES!')
         else:
             if self.verbose > 0:
                 print(f'Using feature matrix from "{self.fps_}"', flush=True)
@@ -474,12 +475,6 @@ class MoleculePool(Sequence[Mol]):
         if validated:
             if cache:
                 self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
-                # self.d_smi_idx = {hash(smi): i
-                #                   for i, smi in enumerate(self.smis_)}
-            else:
-                pass
-                # self.d_smi_idx = {hash(smi): i
-                #                   for i, smi in enumerate(smis)}
         else:
             with ProcessPoolExecutor(max_workers=self.ncpu) as pool:
                 valid_smis = pool.map(validate_smi, smis, chunksize=256)
@@ -491,21 +486,16 @@ class MoleculePool(Sequence[Mol]):
                             self.invalid_lines.add(i)
                         else:
                             self.smis_.append(smi)
-                    # self.d_smi_idx = {hash(smi): i 
-                    #                   for i, smi in enumerate(self.smis_)}
                 else:
                     for i, smi in tqdm(enumerate(valid_smis), unit='smi',
                                             desc='Validating', smoothing=0.):
                         if smi is None:
                             self.invalid_lines.add(i)
-                        else:
-                            pass
-                            # self.d_smi_idx[hash(smi)] = i
 
         if self.verbose > 0:
             print('Done!', flush=True)
         if self.verbose > 1:
-            print(f'Detected {len(self.invalid_lines)} invalid SMILES strings')
+            print(f'Detected {len(self.invalid_lines)} invalid SMILES')
 
         return sum(1 for _ in self.smis()) - len(self.invalid_lines)
 
