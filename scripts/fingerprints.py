@@ -55,8 +55,8 @@ def main():
     print('Precalculating feature matrix ...', end=' ')
     with open_(args.library) as fid:
         reader = csv.reader(fid, delimiter=args.delimiter)
-
-        total_size = sum(1 for _ in reader); reader.seek(0)
+        total_size = sum(1 for _ in reader)
+        fid.seek(0)
         if args.title_line:
             total_size -=1; next(reader)
 
