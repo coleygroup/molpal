@@ -40,10 +40,8 @@ def main():
     
     if args.name:
         name = Path(args.name)
-        if name.suffix == '':
-            name = name.with_suffix('.h5')
     else:
-        name = Path(args.library).with_suffix('.h5')
+        name = Path(args.library).with_suffix('')
 
     encoder_ = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
                               length=args.length)
