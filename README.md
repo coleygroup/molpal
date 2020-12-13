@@ -14,6 +14,7 @@ This repository contains the source of MolPAL, both a library and software for t
 - [Object Model](#object-model)
 - [Preprocessing](#preprocessing)
 - [Running MolPAL](#running-molpal)
+  * [Examples](#examples)
   * [Required Settings](#required-settings)
   * [Optional Settings](#optional-settings)
 - [Future Directions](#future-directions)
@@ -35,7 +36,7 @@ The first step in installing MolPAL is to clone this repository: `git clone <thi
 The easiest way to install all dependencies is to use conda along with the supplied [environment.yml](environment.yml) file, but you may also install them manually, if desired. All libraries listed in that file are __required__ before using `MolPAL`
 
 The following packages are _optional_ to install before running MolPAL:
-- cudatoolkit (whichever version matches your CUDA build if utilizing GPU acceleration for PyTorch-based models (MPN); _note_: you must reinstall PyTorch according to the GPU installation instructions on the website if using the `environment.yml` approach)
+- cudatoolkit (whichever version matches your CUDA build if utilizing GPU acceleration for PyTorch-based models (MPN)
 - [map4](https://github.com/reymond-group/map4) and [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
 - [optuna](https://optuna.readthedocs.io/en/stable/installation.html) (if planning to perform hyperparameter optimization)
 
@@ -47,11 +48,11 @@ The following packages are _optional_ to install before running MolPAL:
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
 ## Object Model
-MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements defines several classes that implement various elements of the optimization routine.
+MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements several classes that handle specific elements of the optimization routine.
 
 __Explorer__: An [`Explorer`](molpal/explorer.py) is the abstraction of the optimization routine. It ties together the `MoleculePool`, `Acquirer`, `Encoder`, `Model`, and `Objective`, which each handle (roughly) a single step of a Bayesian optimization loop, into a full optimization procedure. Its main functionality is defined by the `run()` method, which performs the optimization until a stopping condition is met, but it also defines other convenience functions that make it amenable to running a single iteration of the optimization loop and interrogating its current state if optimization is desired to be run interactively.
 
-__MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual library (i.e., domain of inputs)
+__MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual library (i.e., domain of inputs) and caches precomputed feature representations, if feasible.
 
 __Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition of unlabeled inputs from the MoleculePool according to its `metric` and the prior distribution over the data. The [`metric`](molpal/acquirer/metrics.py) is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
 
@@ -63,7 +64,7 @@ __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation o
 
 ## Preprocessing
 
-For model expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints and that's exactly what the base `MoleculePool` does (also referred to as an `EagerMoleculePool`.) However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.) If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, if there were __no__ invalid smiles, you can pass the `--validated` flag in the options to further speed up MolPAL startup.
+For models expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints, and that's exactly what the base `MoleculePool` (also referred to as an `EagerMoleculePool`) does. However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them on disk in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.) If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, if there were __no__ invalid smiles, you can pass the `--validated` flag in the options to further speed up MolPAL startup.
 
 To prepare the fingerprints file corresopnding to the sample command below, issue the following command: `python scripts/fingerprints.py --library libraries/Enamine50k.csv.gz --fingerprint pair --length 2048 --radius 2 --name libraries/fps_enamine50k`
 
@@ -116,13 +117,13 @@ The primary purpose of MolPAL is to accelerate virtual screens in a prospective 
 ### Optional Settings
 MolPAL has a number of different model architectures, encodings, acquisition metrics, and stopping criteria to choose from. Many of these choices have default settings that were arrived at through hyperparameter optimization, but your circumstances may call for modifying these choices. To see the full list, run MolPAL with either the `-h` or `--help` flags. A few common options to specify are shown below.
 
-`-k`: the number of top scores to evaluate when calculating an average. This number may be either a float representing a fraction of the library or an integer to specify precisely how many top scores to average. (Default = 0.005)
+`-k`: the fraction (if between 0 and 1) or number (if greather than 1) of top scores to evaluate when calculating an average. (Default = 0.005)
 
-`--window-size` and `--delta`: the principal stopping criterion of MolPAL is whether or not the current top-k average score is better than the moving average of the `window_size` most recent top-k average scores by at least `delta`. (Default: `window_size` = 3, `delta` = 0.1)
+`--window-size` and `--delta`: the principle stopping criterion of MolPAL is whether or not the current top-k average score is better than the moving average of the `window_size` most recent top-k average scores by at least `delta`. (Default: `window_size` = 3, `delta` = 0.1)
 
 `--max-explore`: if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
 
-`--max-epochs`': Alternatively, you may specify the maximum number of epochs of exploration. (Default = 50)
+`--max-epochs`: Alternatively, you may specify the maximum number of epochs of exploration. (Default = 50)
 
 `--model`: the type of model to use. Choices include `rf`, `gp`, `nn`, and `mpn`. (Default = `rf`)  
   - `--conf-method`: the confidence estimation method to use for the NN or MPN models. Choices include `ensemble`, `dropout`, `mve`, and `none`. (Default = 'none'). NOTE: the MPN model does not support ensembling
@@ -133,7 +134,7 @@ MolPAL has a number of different model architectures, encodings, acquisition met
 While the default settings of MolPAL were chosen based on hyperparameter optimization with Optuna, they were calculated based on the context of structure-based discovery our computational resources. It is possible that these settings are not optimal for your particular problem. To adapt MolPAL to new circumstances, we recommend first generating a dataset that is representative of your particular problem then peforming hyperparameter optimization of your own using the `LookupObjective` class. This class acts as an Oracle for your particular objective function, enabling both consistent and near-instant calculation of the objective function for a particular input, saving time during hyperparameter optimization.
 
 ## Future Directions
-Though MolPAL was originally intended for use with protein-ligand docking screens, it was designed with modularity in mind and is easily extendable to other settings as well. In principal, all that is required to adapt MolPAL to a new problem is to write a custom `Objective` subclass that implements the `calc` method. This method takes a sequence SMILES strings as an input and returns a mapping from SMILES string -> objective function value to be utilized by the Explorer. _To this end, we are currently exploring the extension of MolPAL to subsequent stages of virtual discovery (MD, DFT, etc.)_ If you make use of the MolPAL library by implementing a new `Objective` subclass, we would be happy to include your work in the main branch.
+Though MolPAL was originally intended for use with protein-ligand docking screens, it was designed with modularity in mind and is easily extendable to other settings as well. In principle, all that is required to adapt MolPAL to a new problem is to write a custom `Objective` subclass that implements the `calc` method. This method takes a sequence SMILES strings as an input and returns a mapping from SMILES string -> objective function value to be utilized by the Explorer. _To this end, we are currently exploring the extension of MolPAL to subsequent stages of virtual discovery (MD, DFT, etc.)_ If you make use of the MolPAL library by implementing a new `Objective` subclass, we would be happy to include your work in the main branch.
 
 ## Reproducing Experimental Results
 ### Generating data
