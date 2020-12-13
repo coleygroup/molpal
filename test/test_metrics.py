@@ -8,7 +8,7 @@ class TestMetrics(unittest.TestCase):
     def test_random(self):
         Y_mean = np.arange(10)
 
-        U = metrics.random_metric(Y_mean)
+        U = metrics.random(Y_mean)
         self.assertEqual(U.shape, Y_mean.shape)
 
     def test_greedy(self):
