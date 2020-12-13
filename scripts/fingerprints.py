@@ -1,7 +1,12 @@
 import argparse
 import gzip
 from pathlib import Path
+import os
+import sys
+import csv
+from functools import partial
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from molpal import encoder
 from molpal.pools import fingerprints
 
@@ -40,7 +45,7 @@ def main():
     else:
         name = Path(args.library).with_suffix('.h5')
 
-    encoder = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
+    encoder_ = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
                               length=args.length)
     if Path(args.library).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
@@ -58,7 +63,7 @@ def main():
         smis = (row[args.smiles_col] for row in reader)
         fps, invalid_lines = fingerprints.feature_matrix_hdf5(
             smis, total_size, ncpu=args.ncpu,
-            encoder=encoder, name=name, path=args.path
+            encoder=encoder_, name=name, path=args.path
         )
 
     print('Done!')
