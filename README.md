@@ -23,14 +23,11 @@ This repository contains the source of MolPAL, both a library and software for t
 - Python (>= 3.6)
 
 _if utilizing GPU accelerated model training/inference_
-
-NN and MPN models can make use of GPUs for significantly faster model training and inference. To utilize this, you must have the following:
 - CUDA (>= 8.0)
 - cuDNN
 
 _if performing docking online_
-
-the appropriate requirements as listed in the `pyscreener` [README](https://github.com/coleygroup/pyscreener)
+- the appropriate requirements as listed in the `pyscreener` [README](https://github.com/coleygroup/pyscreener)
 
 ## Installation
 The first step in installing MolPAL is to clone this repository: `git clone <this_repo>`
