@@ -92,14 +92,8 @@ class DockingObjective(Objective):
 
         if software is not None:
             docking_params['software'] = software
-
-        # if receptor is None and 'receptors' not in docking_params:
-        #     raise ValueError('no receptor was provided!')
         if receptor is not None:
             docking_params['receptors'] = [receptor]
-
-        # if center is None and 'center' not in docking_params:
-        #     raise ValueError('no center ')
         if box_center is not None:
             docking_params['center'] = box_center
         if box_size is not None:
@@ -121,15 +115,7 @@ class DockingObjective(Objective):
         else:
             path = Path(tempfile.gettempdir()) / 'molpal_docking'
 
-        print(docking_params)
-
         self.docking_screener = docking.screener(**docking_params, path=path)
-
-        # exit()
-        # if input_map_file:
-        #     self.input_map = self._build_input_map(input_map_file)
-        # else:
-        #     self.input_map = None
 
         super().__init__(minimize=True)
 

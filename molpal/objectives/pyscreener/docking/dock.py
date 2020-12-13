@@ -289,7 +289,7 @@ class DOCK(Screener):
             in_path=self.in_path, out_path=self.out_path,
             repeats=self.repeats, score_mode=self.score_mode
         )
-        CHUNKSIZE = 1
+        CHUNKSIZE = 2
         with self.Pool(self.distributed, self.num_workers) as pool:
             ligs_recs_reps = pool.map(dock_ligand, ligands, 
                                       chunksize=CHUNKSIZE)

@@ -189,7 +189,7 @@ class Vina(Screener):
             extra=self.extra, path=self.out_path,
             repeats=self.repeats, score_mode=self.score_mode
         )
-        CHUNKSIZE = 16
+        CHUNKSIZE = 2
         with self.Pool(self.distributed, self.num_workers, self.ncpu) as pool:
             ligs_recs_reps = pool.map(dock_ligand, ligands, 
                                       chunksize=CHUNKSIZE)

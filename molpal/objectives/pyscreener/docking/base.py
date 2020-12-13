@@ -254,7 +254,6 @@ class Screener(ABC):
 
         ligands = self.prepare_ligands(*smis_or_files, **kwargs)
         recordsss = self.run_docking(ligands)
-        # recordsss = self.parse_docking(recordsss_unparsed)
 
         self.num_docked_ligands += len(recordsss)
 
@@ -292,41 +291,6 @@ class Screener(ABC):
             NOTE: the records contain a 'score' that is None for each entry
                   as the log/out files must first be parsed to obtain the value
         """
-
-    def parse_docking(self, ligs_recs_reps: List[List[List[Dict]]]
-                     ) -> List[List[List[Dict]]]:
-        """Parse the results of all the docking simulations and update the
-        records accordingly
-        
-        Parameter
-        ----------
-        ligs_recs_reps : List[List[List[Dict]]]
-            an NxMxO list of dictionaries where each individual dictionary is a 
-            record of an individual docking run and
-            N is the number of ligands contained in the ligand sources
-            M is the number of receptors in the ensemble against which each 
-                ligand should be docked
-            O is the number of times each docking run should be repeated
-        
-        Returns
-        -------
-        ligs_recs_reps : List[List[List[Dict]]]
-            the same List as the input argument, but with the 'score' key of
-            record updated to reflect the desired score parsed
-            from each docking run
-        """
-        parse_ligand_results_ = partial(self.parse_ligand_results,
-                                        score_mode=self.score_mode)
-        CHUNKSIZE = 128
-        with self.Pool(self.distributed,
-                       self.num_workers, self.ncpu, True) as client:
-            ligs_recs_reps = list(tqdm(
-                client.map(parse_ligand_results_, ligs_recs_reps, 
-                           chunksize=CHUNKSIZE), total = len(ligs_recs_reps),
-                desc='Parsing results', unit='ligand', smoothing=0.
-            ))
-        
-        return ligs_recs_reps
 
     @staticmethod
     @abstractmethod
@@ -450,7 +414,7 @@ class Screener(ABC):
         smis = smis[start:stop]
         paths = (self.in_path for _ in range(len(smis)))
 
-        CHUNKSIZE = 1
+        CHUNKSIZE = 4
         with self.Pool(self.distributed, self.num_workers,
                        self.ncpu, True) as client:
             ligands = client.map(self.prepare_from_smi, smis, names, paths, 
