@@ -4,7 +4,7 @@
 ![overview of molpal structure and implementation](molpal_overview.png)
 
 ## Overview
-This repository contains the source of MolPAL, both a library and software for the accelerated discovery of compounds in high-throughput virtual screening environments.
+This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://arxiv.org/abs/2012.07127) 
 
 ## Table of Contents
 - [Overview](#overview)
