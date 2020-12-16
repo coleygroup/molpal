@@ -32,7 +32,8 @@ class RFModel(Model):
         the number of cores training/inference should be distributed over
     """
 
-    def __init__(self, test_batch_size: Optional[int] = 4096,
+    def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
+                 min_samples_leaf=1, test_batch_size: Optional[int] = 4096,
                  num_workers: int = 1, ncpu: int = 1,
                  distributed: bool = False, **kwargs):
         test_batch_size = test_batch_size or 4096
@@ -57,9 +58,10 @@ class RFModel(Model):
             n_jobs = ncpu * num_workers
 
         self.model = RandomForestRegressor(
-            n_estimators=100,
-            n_jobs=n_jobs,
-            max_depth=8,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            n_jobs=self.ncpu,
         )
 
         super().__init__(test_batch_size, num_workers=num_workers,
@@ -126,6 +128,7 @@ class GPModel(Model):
     ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
     """
+<<<<<<< HEAD
     def __init__(self, gp_kernel: str = 'dotproduct',
                  test_batch_size: Optional[int] = 1024,
                  num_workers: int = 1, ncpu: int = 1,
@@ -136,14 +139,25 @@ class GPModel(Model):
         self.ncpu = ncpu
         self.distributed = distributed
 
+=======
+    def __init__(self, gp_kernel: str = 'dotproduct', ncpu: int = 1,
+                 test_batch_size: Optional[int] = 1000, **kwargs):
+        test_batch_size = test_batch_size or 1000
+        
+        self.ncpu = ncpu
+>>>>>>> main
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
 
+<<<<<<< HEAD
         super().__init__(test_batch_size, num_workers=num_workers,
                          distributed=distributed, **kwargs)
         
+=======
+        super().__init__(test_batch_size, **kwargs)
+>>>>>>> main
     @property
     def provides(self):
         return {'means', 'vars'}
