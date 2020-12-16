@@ -31,17 +31,22 @@ class RFModel(Model):
         the number of cores training/inference should be distributed over
     """
 
-    def __init__(self, test_batch_size: Optional[int] = 10000,
+    def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
+                 min_samples_leaf=1, test_batch_size: Optional[int] = 16384,
                  ncpu: int = 1, **kwargs):
-        test_batch_size = test_batch_size or 10000
-        super().__init__(test_batch_size, ncpu=ncpu, **kwargs)
+        test_batch_size = test_batch_size or 16384
+
+        self.ncpu = ncpu
 
         self.model = RandomForestRegressor(
-            n_estimators=100,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
             n_jobs=self.ncpu,
-            max_depth=8,
-            verbose=1,
+            verbose=0,
         )
+
+        super().__init__(test_batch_size, ncpu=ncpu, **kwargs)
 
     @property
     def provides(self):

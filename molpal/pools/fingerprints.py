@@ -67,8 +67,8 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
         for xs_batch in tqdm(batches(xs, batch_size), total=n_batches,
                              desc='Precalculating fps', unit='batch'):
             # xs_batch = list(xs_batch); print(xs_batch)
-            fps = pool.map(encoder.encode_and_uncompress, xs_batch, 
-                           chunksize=CHUNKSIZE)
+            fps = pool.map(encoder.encode_and_uncompress, xs_batch,) 
+                           #chunksize=CHUNKSIZE)
             for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
                 while fp is None:
                     invalid_idxs.add(i+offset)

@@ -152,7 +152,7 @@ def add_objective_args(parser: ArgumentParser) -> None:
 
     # DockingObjective args
     parser.add_argument('--software', default='vina',
-                        choices={'vina', 'psovina', 'smina', 'qvina'},
+                        choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
                         help='the name of the docking program to use')
     parser.add_argument('--receptor',
                         help='the filename of the receptor')
@@ -181,24 +181,8 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         help='the column containing the score data in the data lookup file')
 
 def modify_objective_args(args: Namespace) -> None:
-    # if args.objective == 'docking':
-    #     modify_DockingObjective_args(args)
-
     if args.objective == 'lookup':
         modify_LookupObjective_args(args)
-
-# def modify_DockingObjective_args(args: Namespace) -> None:
-#     rec = Path(args.receptor).stem
-#     lib = Path(args.library).stem
-
-#     args.name = args.name or f'{rec}_{lib}'
-
-#     if args.input is None:
-#         args.input = f'input/{args.name}'
-#     if args.output is None:
-#         args.output = f'output/{args.name}'
-
-#     args.ncpu = min(MAX_CPU, args.ncpu)
 
 def modify_LookupObjective_args(args: Namespace) -> None:
     args.lookup_title_line = not args.no_lookup_title_line
@@ -216,10 +200,18 @@ def add_model_args(parser: ArgumentParser) -> None:
                         help='the model type to use')
     parser.add_argument('--test-batch-size', type=int,
                         help='the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.')
-    parser.add_argument('--retrain-from-scratch', 
+    parser.add_argument('--retrain-from-scratch',
                         action='store_true', default=False,
                         help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
     
+    # RF args
+    parser.add_argument('--n-estimators', type=int, default=100,
+                        help='the number of trees in the forest')
+    parser.add_argument('--max-depth', nargs='?', type=int,
+                        const=None, default=8,
+                        help='the maximum depth of the tree')
+    parser.add_argument('--min-samples-leaf', type=int, default=1,
+                        help='the minimum number of samples required to be at a leaf node')
     # GP args
     parser.add_argument('--gp-kernel', choices={'dotproduct'},
                         default='dotproduct',
@@ -284,6 +276,8 @@ def cleanup_args(args: Namespace) -> None:
     if not args.cluster:
         args_to_remove |= {'temp_i', 'temp_f'}
 
+    if args.model != 'rf':
+        args_to_remove |= {'n_estimators', 'max_depth', 'min_samples_leaf'}
     if args.model != 'gp':
         args_to_remove |= {'gp_kernel'}
     if args.model != 'nn':
@@ -317,3 +311,6 @@ def restricted_float(arg: str) -> float:
         raise ArgumentTypeError(f'{value} must be in [0,1]')
     
     return value
+
+def optional_int(arg: str):
+    pass

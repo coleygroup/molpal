@@ -49,7 +49,7 @@ class Model(ABC):
     """
     def __init__(self, test_batch_size: int, ncpu: int = 1, **kwargs):
         self.test_batch_size = test_batch_size
-        self.ncpu = ncpu
+        # self.ncpu = ncpu
 
     def __call__(self, *args, **kwargs) -> Tuple[List[float], List[float]]:
         return self.apply(*args, **kwargs)
