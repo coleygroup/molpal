@@ -23,16 +23,6 @@ except ImportError:
 T = TypeVar('T')            # input identifier
 T_comp = TypeVar('T_comp')  # compressed feature representation of an input
 
-# def encoder(encoder: str, **kwargs):
-#     """Encoder factory function"""
-#     return {
-#         'morgan': MorganFingerprinter,
-#         'rdkit': RDKFingerprinter,
-#         'pair': AtomPairFingerprinter,
-#         'maccs': MACCSFingerprinter,
-#         'map4': MAP4Fingerprinter
-#     }.get(encoder, MorganFingerprinter)(**kwargs)
-
 class Encoder:
     """An Encoder implements methods to transforms an identifier into its
     compressed and uncompressed feature representations
@@ -99,7 +89,8 @@ class Encoder:
 
         raise NotImplementedError(f'Unrecognized fingerprint: "{fingerprint}"')
 
-    def uncompress(self, x_comp: T_comp) -> np.ndarray:
+    @staticmethod
+    def uncompress(x_comp: T_comp) -> np.ndarray:
         return np.array(x_comp)
 
     def encode_and_uncompress(self, x: T) -> Optional[np.ndarray]:
