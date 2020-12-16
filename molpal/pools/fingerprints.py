@@ -57,7 +57,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
             chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
         )
         
-        batch_size = CHUNKSIZE*ncpu*2
+        batch_size = CHUNKSIZE*8
         n_batches = size//batch_size + 1
 
         invalid_idxs = set()
