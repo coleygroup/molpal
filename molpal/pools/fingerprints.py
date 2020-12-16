@@ -50,14 +50,14 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
     fps_h5 = str(Path(path)/f'{name}.h5')
 
     with Pool(max_workers=ncpu) as pool, h5py.File(fps_h5, 'w') as h5f:
-        CHUNKSIZE = 1024
+        CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
             'fps', (size, len(encoder)),
             chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
         )
         
-        batch_size = CHUNKSIZE*8
+        batch_size = CHUNKSIZE*ncpu
         n_batches = size//batch_size + 1
 
         invalid_idxs = set()
@@ -67,8 +67,8 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
         for xs_batch in tqdm(batches(xs, batch_size), total=n_batches,
                              desc='Precalculating fps', unit='batch'):
             # xs_batch = list(xs_batch); print(xs_batch)
-            fps = pool.map(encoder.encode_and_uncompress, xs_batch,) 
-                           #chunksize=CHUNKSIZE)
+            fps = pool.map(encoder.encode_and_uncompress, xs_batch,
+                           chunksize=2*ncpu)
             for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
                 while fp is None:
                     invalid_idxs.add(i+offset)
