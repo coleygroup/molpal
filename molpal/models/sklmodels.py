@@ -96,16 +96,17 @@ class GPModel(Model):
     ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
     """
-    def __init__(self, gp_kernel: str = 'dotproduct', ncpu: int = 0,
+    def __init__(self, gp_kernel: str = 'dotproduct', ncpu: int = 1,
                  test_batch_size: Optional[int] = 1000, **kwargs):
         test_batch_size = test_batch_size or 1000
-        super().__init__(test_batch_size, ncpu=ncpu, **kwargs)
-
+        
+        self.ncpu = ncpu
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
-        
+
+        super().__init__(test_batch_size, **kwargs)
     @property
     def provides(self):
         return {'means', 'vars'}
