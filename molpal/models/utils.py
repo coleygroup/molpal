@@ -78,3 +78,4 @@ def dmap(xs: Iterable[T], f: Callable[[T], np.ndarray],
         X = pool.map(f, xs)
         X = list(tqdm(X, smoothing = 0., disable=disable))
     return np.array(X)
+    
