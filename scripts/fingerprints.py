@@ -56,7 +56,7 @@ def main():
         total_size = sum(1 for _ in reader)
         fid.seek(0)
         if args.title_line:
-            total_size -=1; next(reader)
+            total_size -= 1; next(reader)
 
         smis = (row[args.smiles_col] for row in reader)
         fps, invalid_lines = fingerprints.feature_matrix_hdf5(
