@@ -46,7 +46,7 @@ class RFModel(Model):
             verbose=0,
         )
 
-        super().__init__(test_batch_size, ncpu=ncpu, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def provides(self):

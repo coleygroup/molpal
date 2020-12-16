@@ -43,9 +43,9 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='the level of output this program should print')
     parser.add_argument('-nw', '-nj', '-np', '--num-workers', '--njobs', 
-                        default=MAX_CPU, type=int,
+                        default=1, type=int,
                         help='the total number of workers/jobs/processes/nodes to paralllelize computation over. Only used when distributed=False. In this case, njobs*ncpu should be equal to the total number of cores available')
-    parser.add_argument('-nc', '--ncpu', default=1, type=int, metavar='N_CPU',
+    parser.add_argument('-nc', '--ncpu', '--cpus', default=MAX_CPU, type=int, 
                         help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
     parser.add_argument('--distributed', action='store_true', default=False,
                         help='whether the calculations will be distributed over an MPI setup')
