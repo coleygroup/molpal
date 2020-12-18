@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from rdkit import Chem
 
 from .scaler import StandardScaler
-from ..features import get_features_generator, BatchMolGraph, MolGraph
+from ..features import BatchMolGraph, MolGraph
 
 # Cache of graph featurizations
 CACHE_GRAPH = True
@@ -72,19 +72,20 @@ class MoleculeDatapoint:
 
         # Generate additional features if given a generator
         if self.features_generator is not None:
-            self.features = []
+            pass
+            # self.features = []
 
-            for fg in self.features_generator:
-                features_generator = get_features_generator(fg)
-                for m in self.mol:
-                    if m is not None and m.GetNumHeavyAtoms() > 0:
-                        self.features.extend(features_generator(m))
-                    # for H2
-                    elif m is not None and m.GetNumHeavyAtoms() == 0:
-                        # not all features are equally long, so use methane as dummy molecule to determine length
-                        self.features.extend(np.zeros(len(features_generator(Chem.MolFromSmiles('C')))))
+            # for fg in self.features_generator:
+            #     features_generator = get_features_generator(fg)
+            #     for m in self.mol:
+            #         if m is not None and m.GetNumHeavyAtoms() > 0:
+            #             self.features.extend(features_generator(m))
+            #         # for H2
+            #         elif m is not None and m.GetNumHeavyAtoms() == 0:
+            #             # not all features are equally long, so use methane as dummy molecule to determine length
+            #             self.features.extend(np.zeros(len(features_generator(Chem.MolFromSmiles('C')))))
 
-            self.features = np.array(self.features)
+            # self.features = np.array(self.features)
 
         # Fix nans in features
         replace_token = 0
@@ -225,16 +226,16 @@ class MoleculeDataset(Dataset):
             for d in self._data:
                 mol_graphs_list = []
                 for s, m in zip(d.smiles, d.mol):
-                    if s in SMILES_TO_GRAPH:
-                        mol_graph = SMILES_TO_GRAPH[s]
-                    else:
-                        if len(d.smiles) > 1 and d.atom_features is not None:
-                            raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
-                                                      'per input (i.e., number_of_molecules = 1).')
-
-                        mol_graph = MolGraph(m, d.atom_features)
-                        if cache_graph():
-                            SMILES_TO_GRAPH[s] = mol_graph
+                    # if s in SMILES_TO_GRAPH:
+                    #     mol_graph = SMILES_TO_GRAPH[s]
+                    # else:
+                    #     if len(d.smiles) > 1 and d.atom_features is not None:
+                    #         raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
+                    #                                   'per input (i.e., number_of_molecules = 1).')
+                        # mol_graph = MolGraph(m, d.atom_features)
+                    mol_graph = MolGraph(m, d.atom_features)
+                        # if cache_graph():
+                        #     SMILES_TO_GRAPH[s] = mol_graph
                     mol_graphs_list.append(mol_graph)
                 mol_graphs.append(mol_graphs_list)
 

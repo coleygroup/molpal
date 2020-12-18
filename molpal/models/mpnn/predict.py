@@ -34,7 +34,8 @@ def predict(model: nn.Module, data_loader: Iterable,
 
     pred_batches = []
     with torch.no_grad():
-        for batch in data_loader:
+        for batch in tqdm(data_loader, desc='Batch inference', unit='minibatch',
+                          leave=False):
             batch_graph = batch.batch_graph()
             pred_batch = model(batch_graph)
             pred_batches.append(pred_batch.data.cpu().numpy())

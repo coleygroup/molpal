@@ -74,7 +74,8 @@ class NN:
                  dropout: Optional[float] = None,
                  dropout_at_predict: bool = False,
                  activation: Optional[str] = 'relu',
-                 ncpu: int = 1):
+                 num_workers: int = 1, ncpu: int = 1,
+                 distributed: bool = False,):
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
@@ -86,7 +87,10 @@ class NN:
 
         self.mean = 0
         self.std = 0
+
+        self.num_workers = num_workers
         self.ncpu = ncpu
+        self.distributed = distributed
 
     def build(self, layer_sizes, dropout, dropout_at_predict, activation):
         """Build the model, optimizer, and loss function"""
@@ -154,7 +158,8 @@ class NN:
         """
         self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        X = feature_matrix(xs, featurize, self.ncpu)
+        X = feature_matrix(xs, featurize,
+                           self.num_workers, self.ncpu, self.distributed)
         Y = self._normalize(ys)
 
         self.model.fit(
@@ -223,15 +228,18 @@ class NNModel(Model):
     NNTwoOutputModel
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, ncpu: int = 1, **kwargs):
+                 dropout: Optional[float] = 0.0, ncpu: int = 1,
+                 num_workers: int = 1, distributed: bool = False, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   ncpu=ncpu)
+                                   ncpu=ncpu, num_workers=num_workers,
+                                   distributed=distributed)
         self.model = self.build_model()
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size, num_workers=num_workers,
+                         distributed=distributed, **kwargs)
 
     @property
     def provides(self):

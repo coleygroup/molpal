@@ -1,14 +1,9 @@
 """This module contains the Encoder ABC and various implementations thereof.
 Encoders transform input representations into (un)compressed representations
 for use with clustering and model training/prediction."""
-
 from abc import abstractmethod
 from functools import partial
 from typing import Optional, NoReturn, Text, Type, TypeVar
-try:
-    from typing import Protocol
-except ImportError:
-    from typing_extensions import Protocol
 
 import numpy as np
 import rdkit.Chem.rdMolDescriptors as rdmd

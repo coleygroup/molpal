@@ -47,8 +47,14 @@ class Model(ABC):
     test_batch_size : int
     ncpu : int (Default = 1)
     """
-    def __init__(self, test_batch_size: int, ncpu: int = 1, **kwargs):
+    def __init__(self, test_batch_size: int, num_workers: int = 1, 
+                 distributed: bool = False, **kwargs):
         self.test_batch_size = test_batch_size
+<<<<<<< HEAD
+=======
+        self.num_workers = num_workers
+        self.distributed = distributed
+>>>>>>> caa0df9f32bc7501d1ff6ad2de71803da91f18f6
 
     def __call__(self, *args, **kwargs) -> Tuple[List[float], List[float]]:
         return self.apply(*args, **kwargs)
@@ -118,7 +124,7 @@ class Model(ABC):
             the mean predicted values
         variances: List[float]
             the variance in the predicted values, empty if mean_only is True
-        """        
+        """
         if self.type_ == 'mpn':
             # MPNs predict directly on the input identifier
             xs = x_ids
