@@ -2,12 +2,13 @@ from functools import partial
 import logging
 from pathlib import Path
 import pickle
-from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from numpy import ndarray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
+from tqdm import tqdm
 
 from molpal.models.base import Model
 from molpal.models.utils import batches, feature_matrix
@@ -44,16 +45,11 @@ class RFModel(Model):
 
         if self.distributed:
             from mpi4py import MPI
-            from mpi4py.futures import MPIPoolExecutor
-
-            self.MPIPool = MPIPoolExecutor
-            self.comm = MPI.COMM_WORLD
-
-            num_workers = self.comm.Get_size()
+            num_workers = MPI.COMM_WORLD.Get_size()
             n_jobs = ncpu
 
-            if num_workers > 2:
-                test_batch_size *= num_workers
+            # if num_workers > 2:
+            #     test_batch_size *= num_workers
         else:
             n_jobs = ncpu * num_workers
 
@@ -61,7 +57,7 @@ class RFModel(Model):
             n_estimators=n_estimators,
             max_depth=max_depth,
             min_samples_leaf=min_samples_leaf,
-            n_jobs=self.ncpu,
+            n_jobs=n_jobs,
         )
 
         super().__init__(test_batch_size, num_workers=num_workers,
@@ -91,12 +87,14 @@ class RFModel(Model):
 
     def get_means(self, xs: Sequence) -> ndarray:
         # this is only marginally faster
-        if self.distributed and self.num_workers > 2:
-            predict_ = partial(predict, model=self.model)
-            with self.MPIPool(max_workers=self.num_workers) as pool:
-                xs_batches = batches(xs, self.test_batch_size//self.num_workers)
-                Y = list(pool.map(predict_, xs_batches))
-                return np.hstack(Y)
+        # if self.distributed and self.num_workers > 2:
+        #     predict_ = partial(predict, xs=xs)
+        #     with self.MPIPool(max_workers=self.num_workers) as pool:
+        #         # xs_batches = batches(xs, self.test_batch_size//self.num_workers)
+        #         # Y = list(pool.map(predict_, xs_batches))
+        #         # return np.hstack(Y)
+        #         Y = list(pool.map(predict_, self.model.estimators_))
+        #     Y = np.vstack(Y).mean(axis=0)
 
         X = np.vstack(xs)
         return self.model.predict(X)
@@ -108,6 +106,37 @@ class RFModel(Model):
             preds[:, j] = submodel.predict(xs)
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
+
+    def apply(self, *, x_feats: Iterable, size: Optional[int] = None,
+              mean_only: bool = True,
+              **kwargs) -> Tuple[List[float], List[float]]:
+        n_batches = (size//self.test_batch_size) + 1 if size else None
+        xs = batches(x_feats, self.test_batch_size)
+
+        means = []
+        variances = []
+
+        if self.distributed and self.num_workers > 2 and mean_only:
+            from mpi4py.futures import MPIPoolExecutor
+
+            predict_ = partial(predict, model=self.model)
+            with MPIPoolExecutor(max_workers=self.num_workers) as pool:
+                Y = list(pool.map(predict_, xs))
+                return np.hstack(Y)
+
+        if mean_only:
+            for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
+                                 desc='Inference', unit='batch'):
+                batch_means = self.get_means(batch_xs)
+                means.extend(batch_means)
+        else:
+            for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
+                                 desc='Inference', unit='batch'):
+                batch_means, batch_vars = self.get_means_and_vars(batch_xs)
+                means.extend(batch_means)
+                variances.extend(batch_vars)
+
+        return means, variances
 
 def predict(xs, model):
     X = np.vstack(xs)
@@ -128,7 +157,6 @@ class GPModel(Model):
     ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
     """
-<<<<<<< HEAD
     def __init__(self, gp_kernel: str = 'dotproduct',
                  test_batch_size: Optional[int] = 1024,
                  num_workers: int = 1, ncpu: int = 1,
@@ -139,25 +167,14 @@ class GPModel(Model):
         self.ncpu = ncpu
         self.distributed = distributed
 
-=======
-    def __init__(self, gp_kernel: str = 'dotproduct', ncpu: int = 1,
-                 test_batch_size: Optional[int] = 1000, **kwargs):
-        test_batch_size = test_batch_size or 1000
-        
-        self.ncpu = ncpu
->>>>>>> main
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
 
-<<<<<<< HEAD
         super().__init__(test_batch_size, num_workers=num_workers,
                          distributed=distributed, **kwargs)
         
-=======
-        super().__init__(test_batch_size, **kwargs)
->>>>>>> main
     @property
     def provides(self):
         return {'means', 'vars'}

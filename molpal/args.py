@@ -209,7 +209,7 @@ def add_model_args(parser: ArgumentParser) -> None:
                         help='the number of trees in the forest')
     parser.add_argument('--max-depth', nargs='?', type=int,
                         const=None, default=8,
-                        help='the maximum depth of the tree')
+                        help='the maximum depth of the tree. Not specifying this argument at all will default to 8. Adding the flag without specifying number a number will default to an unlimited depth')
     parser.add_argument('--min-samples-leaf', type=int, default=1,
                         help='the minimum number of samples required to be at a leaf node')
     # GP args

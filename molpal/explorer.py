@@ -665,8 +665,7 @@ class Explorer:
             return
 
         self.y_preds, self.y_vars = self.model.apply(
-            x_ids=self.pool.smis(), 
-            x_feats=self.pool.fps(), 
+            x_ids=self.pool.smis(), x_feats=self.pool.fps(), 
             batched_size=None, size=len(self.pool), 
             mean_only='vars' not in self.acquirer.needs
         )

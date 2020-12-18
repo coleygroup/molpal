@@ -46,7 +46,10 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
                 X = list(tqdm(X, desc='Featurizing', unit='batch'))
             return np.vstack(X)
         elif num_workers > ncpu:
-            return dmap(xs, featurize, disable)
+            with Pool(max_workers=num_workers) as pool:
+                X = pool.map(f, xs, chunksize=2*num_workers)
+                X = list(tqdm(X, smoothing = 0., disable=disable))
+            return np.array(X)
         else:
             return pmap(xs, featurize, ncpu, disable)
 
@@ -64,18 +67,7 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
 def pmap(xs: Iterable[T], f: Callable[[T], np.ndarray],
          num_workers: int = 1, disable: bool = False) -> np.ndarray:
     with Pool(max_workers=num_workers) as pool:
-        X = pool.map(f, xs)
-        X = list(tqdm(X, smoothing = 0., disable=disable))
-    return np.array(X)
-
-def dmap(xs: Iterable[T], f: Callable[[T], np.ndarray],
-         disable: bool = False) -> np.ndarray:
-    from mpi4py import MPI
-    from mpi4py.futures import MPIPoolExecutor as Pool
-
-    num_workers = MPI.COMM_WORLD.size
-    with Pool(max_workers=num_workers) as pool:
-        X = pool.map(f, xs)
+        X = pool.map(f, xs, chunksize=2*num_workers)
         X = list(tqdm(X, smoothing = 0., disable=disable))
     return np.array(X)
     
