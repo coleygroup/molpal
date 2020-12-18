@@ -31,42 +31,15 @@ class RFModel(Model):
     ncpu : int (Default = 1)
         the number of cores training/inference should be distributed over
     """
-
-<<<<<<< HEAD
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
-                 min_samples_leaf=1, test_batch_size: Optional[int] = 16384,
+                 min_samples_leaf=1, test_batch_size: Optional[int] = 4096,
                  ncpu: int = 1, **kwargs):
-        test_batch_size = test_batch_size or 16384
-
-        self.ncpu = ncpu
-
-        self.model = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
-            n_jobs=self.ncpu,
-            verbose=0,
-        )
-
-        super().__init__(test_batch_size, **kwargs)
-=======
-    def __init__(self, test_batch_size: Optional[int] = 4096,
-                 num_workers: int = 1, ncpu: int = 1,
-                 distributed: bool = False, **kwargs):
         test_batch_size = test_batch_size or 4096
-
-        self.num_workers = num_workers
-        self.ncpu = ncpu
-        self.distributed = distributed
 
         if self.distributed:
             from mpi4py import MPI
-            from mpi4py.futures import MPIPoolExecutor
 
-            self.MPIPool = MPIPoolExecutor
-            self.comm = MPI.COMM_WORLD
-
-            num_workers = self.comm.Get_size()
+            num_workers = MPI.COMM_WORLD.Get_size()
             n_jobs = ncpu
 
             if num_workers > 2:
@@ -75,14 +48,15 @@ class RFModel(Model):
             n_jobs = ncpu * num_workers
 
         self.model = RandomForestRegressor(
-            n_estimators=100,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
             n_jobs=n_jobs,
-            max_depth=8,
+            verbose=0,
         )
 
         super().__init__(test_batch_size, num_workers=num_workers,
                          distributed=distributed, **kwargs)
->>>>>>> caa0df9f32bc7501d1ff6ad2de71803da91f18f6
 
     @property
     def provides(self):
@@ -108,12 +82,12 @@ class RFModel(Model):
 
     def get_means(self, xs: Sequence) -> ndarray:
         # this is only marginally faster
-        if self.distributed and self.num_workers > 2:
-            predict_ = partial(predict, model=self.model)
-            with self.MPIPool(max_workers=self.num_workers) as pool:
-                xs_batches = batches(xs, self.test_batch_size//self.num_workers)
-                Y = list(pool.map(predict_, xs_batches))
-                return np.hstack(Y)
+        # if self.distributed and self.num_workers > 2:
+        #     predict_ = partial(predict, model=self.model)
+        #     with self.MPIPool(max_workers=self.num_workers) as pool:
+        #         xs_batches = batches(xs, self.test_batch_size//self.num_workers)
+        #         Y = list(pool.map(predict_, xs_batches))
+        #         return np.hstack(Y)
 
         X = np.vstack(xs)
         return self.model.predict(X)
@@ -126,9 +100,9 @@ class RFModel(Model):
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
-def predict(xs, model):
-    X = np.vstack(xs)
-    return model.predict(X)
+# def predict(xs, model):
+#     X = np.vstack(xs)
+#     return model.predict(X)
 
 class GPModel(Model):
     """Gaussian process model
@@ -145,36 +119,22 @@ class GPModel(Model):
     ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
     """
-<<<<<<< HEAD
-    def __init__(self, gp_kernel: str = 'dotproduct', ncpu: int = 1,
-                 test_batch_size: Optional[int] = 1000, **kwargs):
-        test_batch_size = test_batch_size or 1000
-        
-        self.ncpu = ncpu
-=======
     def __init__(self, gp_kernel: str = 'dotproduct',
                  test_batch_size: Optional[int] = 1024,
                  num_workers: int = 1, ncpu: int = 1,
                  distributed: bool = False, **kwargs):
         test_batch_size = test_batch_size or 1024
 
-        self.num_workers = num_workers
         self.ncpu = ncpu
-        self.distributed = distributed
 
->>>>>>> caa0df9f32bc7501d1ff6ad2de71803da91f18f6
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
 
-<<<<<<< HEAD
-        super().__init__(test_batch_size, **kwargs)
-=======
         super().__init__(test_batch_size, num_workers=num_workers,
                          distributed=distributed, **kwargs)
         
->>>>>>> caa0df9f32bc7501d1ff6ad2de71803da91f18f6
     @property
     def provides(self):
         return {'means', 'vars'}
