@@ -1,6 +1,7 @@
 import argparse
 import csv
 from functools import partial
+import gzip
 from pathlib import Path
 import pickle
 import sys
