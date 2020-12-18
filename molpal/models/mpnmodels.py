@@ -177,7 +177,7 @@ class MPNModel(Model):
         self.build_model = partial(MPNN, ncpu=ncpu)
         self.model = self.build_model()
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
 
     @property
     def provides(self):
@@ -216,7 +216,7 @@ class MPNDropoutModel(Model):
 
         self.dropout_size = dropout_size
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
     
     @property
     def type_(self):
@@ -259,7 +259,7 @@ class MPNTwoOutputModel(Model):
         self.build_model = partial(MPNN, uncertainty_method='mve', ncpu=ncpu)
         self.model = self.build_model()
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
 
     @property
     def type_(self):

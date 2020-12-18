@@ -32,11 +32,13 @@ class RFModel(Model):
         the number of cores training/inference should be distributed over
     """
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
-                 min_samples_leaf=1, test_batch_size: Optional[int] = 4096,
-                 ncpu: int = 1, **kwargs):
+                 min_samples_leaf: int = 1,
+                 test_batch_size: Optional[int] = 4096,
+                 num_workers: int = 1, ncpu: int = 1,
+                 distributed: bool = False, **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        if self.distributed:
+        if distributed:
             from mpi4py import MPI
 
             num_workers = MPI.COMM_WORLD.Get_size()
@@ -46,6 +48,8 @@ class RFModel(Model):
                 test_batch_size *= num_workers
         else:
             n_jobs = ncpu * num_workers
+
+        self.ncpu = ncpu
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators,
@@ -145,7 +149,8 @@ class GPModel(Model):
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
-        X = feature_matrix(xs, featurize, self.ncpu)
+        X = feature_matrix(xs, featurize,
+                           self.num_workers, self.ncpu, self.distributed)
         Y = np.array(ys)
 
         self.model = GaussianProcessRegressor(kernel=self.kernel)
@@ -158,12 +163,12 @@ class GPModel(Model):
         return True
 
     def get_means(self, xs: Sequence) -> ndarray:
-        X = np.stack(xs, axis=0)
+        X = np.vstack(xs)
 
         return self.model.predict(X)
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
-        X = np.stack(xs, axis=0)
+        X = np.vstack(xs)
         Y_mean, Y_sd = self.model.predict(X, return_std=True)
 
         return Y_mean, np.power(Y_sd, 2)

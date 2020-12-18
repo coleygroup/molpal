@@ -225,7 +225,7 @@ class MoleculeDataset(Dataset):
             mol_graphs = []
             for d in self._data:
                 mol_graphs_list = []
-                for s, m in zip(d.smiles, d.mol):
+                for _, m in zip(d.smiles, d.mol):
                     # if s in SMILES_TO_GRAPH:
                     #     mol_graph = SMILES_TO_GRAPH[s]
                     # else:

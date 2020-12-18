@@ -45,7 +45,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
         representations generated from the molecules in the input file.
         The row ordering corresponds to the ordering of smis
     invalid_idxs : Set[int]
-        the set of idxs in xs containing invalid inputs
+        the set of indices in xs containing invalid inputs
     """
     fps_h5 = str(Path(path)/f'{name}.h5')
 

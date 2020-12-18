@@ -301,7 +301,7 @@ class NNEnsembleModel(Model):
 
         self.bootstrap_ensemble = bootstrap_ensemble # TODO: Actually use this
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
 
     @property
     def type_(self):
@@ -367,7 +367,7 @@ class NNTwoOutputModel(Model):
                                    ncpu=ncpu)
         self.model = self.build_model()
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
 
     @property
     def type_(self):
@@ -431,7 +431,7 @@ class NNDropoutModel(Model):
         self.model = self.build_model()
         self.dropout_size = dropout_size
 
-        super().__init__(test_batch_size, **kwargs)
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
 
     @property
     def type_(self):
