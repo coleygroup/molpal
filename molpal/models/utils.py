@@ -34,8 +34,7 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
         from mpi4py import MPI
         from mpi4py.futures import MPIPoolExecutor as Pool
 
-        comm = MPI.COMM_WORLD
-        num_workers = comm.Get_size()
+        num_workers = MPI.COMM_WORLD.Get_size()
 
         if ncpu > 1 and num_workers > 1:
             feature_matrix_ = partial(
@@ -47,7 +46,7 @@ def feature_matrix(xs: Iterable[T], featurize: Callable[[T], np.ndarray],
             return np.vstack(X)
         elif num_workers > ncpu:
             with Pool(max_workers=num_workers) as pool:
-                X = pool.map(f, xs, chunksize=2*num_workers)
+                X = pool.map(feature_matrix_, xs, chunksize=2*num_workers)
                 X = list(tqdm(X, smoothing = 0., disable=disable))
             return np.array(X)
         else:
