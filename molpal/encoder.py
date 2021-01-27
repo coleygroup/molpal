@@ -8,7 +8,7 @@ from typing import Optional, NoReturn, Text, Type, TypeVar
 import numpy as np
 import rdkit.Chem.rdMolDescriptors as rdmd
 from rdkit import Chem
-from rdkit.DataStructs.cDataStructs import ExplicitBitVect
+from rdkit.DataStructs import ConvertToNumpyArray, ExplicitBitVect
 
 try:
     from map4 import map4
@@ -86,7 +86,12 @@ class Encoder:
 
     @staticmethod
     def uncompress(x_comp: T_comp) -> np.ndarray:
-        return np.array(x_comp)
+        # if isinstance(x_comp, ExplicitBitVect):
+        #     pass
+        x = np.empty(len(x_comp))
+        ConvertToNumpyArray(x_comp, x)
+        return x
+        # return np.array(x_comp)
 
     def encode_and_uncompress(self, x: T) -> Optional[np.ndarray]:
         """Generate the uncompressed representation of x"""
