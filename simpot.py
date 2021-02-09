@@ -225,9 +225,10 @@ def main():
         distance_hist, range(len(Y)-1), chunksize,
         fps=fps, Y=Y, bins=args.nbins, range=hist_range
     )
-    H = np.zeros((args.nbins, args.nbins))
-    for H_partial in H_partials:
-        H += H_partial
+    # H = np.zeros((args.nbins, args.nbins))
+    # for H_partial in H_partials:
+    #     H += H_partial
+    H = sum(H_partials)
     
     xedges = np.linspace(xmin, xmax, args.nbins)
     yedges = np.linspace(ymin, ymax, args.nbins)
