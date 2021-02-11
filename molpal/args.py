@@ -123,9 +123,17 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
     parser.add_argument('--batch-size',
                         type=restricted_float_or_int, default=0.01,
                         help='the number of ligands or fraction of total library for each batch of exploration')
+
+    parser.add_argument('-b', type=float, default=2.,
+                        help='the number of batches to take for the initial candidate set')
+    parser.add_argument('--prune-mode', default='best',
+                        choices=('best', 'random', 'leader', 'maxmin'),
+                        help='the pruning strategy to use')
+    parser.add_argument('--prune-threshold', type=float, default=0.35,
+                        help='the threshold to use for leader pruning')
+
     parser.add_argument('--epsilon', type=float, default=0.,
                         help='the fraction of each batch that should be acquired randomly')
-
     parser.add_argument('--temp-i', type=float,
                         help='the initial temperature for tempeture scaling when calculating the decay factor for cluster scaling')
     parser.add_argument('--temp-f', type=float, default=1.,

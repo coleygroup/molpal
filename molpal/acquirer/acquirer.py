@@ -3,11 +3,15 @@ a subsequent round of exploration based on prior prediction data."""
 import heapq
 from itertools import chain
 import math
+import random
 from timeit import default_timer
 from typing import (Callable, Dict, Iterable, List, Mapping, 
                     Optional, Set, TypeVar, Union)
 
 import numpy as np
+from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors
+from rdkit.SimDivFilters import rdSimDivPickers
 from tqdm import tqdm
 
 from molpal.acquirer import metrics
@@ -48,6 +52,30 @@ class Acquirer:
     batch_size : Union[int, float] (Default = 0.02)
         the number of ligands or fraction of the pool to acquire
         in each batch
+    b : float, default=2
+        the number of batches to take when generating the initial candidate set.
+        I.e., the initial candidate set will be of size b*self.batch_size.
+        A larger value of b will allow for greater possible in the final
+        candidate set, but it will also lower the average quality because
+        the utility threshold required to be considered in the final set
+        will be lower. NOTE: setting b equal to 1 will result in no pruning
+    prune_mode : str, default='best'
+        the method by which to prune the initial candidate set down to a set
+        of batch_size candidates. Choices include:
+
+        * 'best': prune the candidates by their utility
+        * 'random': randomly select final candidates from the initial set
+        * 'leader': select the most diverse candidates from the initial
+                    candidate set using leader picking
+        * 'maxmin': select the most diverse candidates from the initial
+                    candidate set using MaxMin picking
+    prune_threshold : float, default=0.35
+        the tanimoto distance threshold to use when using leader pruning from 
+        the initial candidate set. This threshold is the minimum distance 
+        between cluster centroids. A higher threshold will gurantee greater 
+        diversity in the final candidate set, but setting it too high might 
+        result in fewer than batch_size candidates being selected.
+ 
     metric : str (Default = 'greedy')
     epsilon : float (Default = 0.)
     temp_i : Optional[float] (Default = None)
@@ -56,7 +84,8 @@ class Acquirer:
     beta : int (Default = 2)
     threshold : float (Default = float('-inf'))
     seed : Optional[int] (Default = None)
-        the random seed to use for initial batch acquisition
+        the random seed to use for initial batch acquisition and diversity
+        picking
     verbose : int (Default = 0)
     **kwargs
         additional and unused keyword arguments
@@ -64,6 +93,8 @@ class Acquirer:
     def __init__(self, size: int,
                  init_size: Union[int, float] = 0.01,
                  batch_size: Union[int, float] = 0.01,
+                 b: float = 2., prune_mode: str = 'best',
+                 prune_threshold: float = 0.35,
                  metric: str = 'greedy',
                  epsilon: float = 0., beta: int = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
@@ -72,6 +103,15 @@ class Acquirer:
         self.size = size
         self.init_size = init_size
         self.batch_size = batch_size
+        
+        self.prune_mode = prune_mode
+        if self.prune_mode != 'best':
+            if b < 1:
+                raise ValueError(f'Arg "b" must be greater than 1!')
+            self.prune_set_size = int(b * self.batch_size)
+        else:
+            self.prune_set_size = self.batch_size
+        self.prune_threshold = prune_threshold
 
         self.metric = metric
         self.stochastic_preds = False
@@ -87,7 +127,9 @@ class Acquirer:
         self.temp_i = temp_i
         self.temp_f = temp_f
 
+        self.seed = seed
         metrics.set_seed(seed)
+
         self.verbose = verbose
 
     def __len__(self) -> int:
@@ -254,7 +296,7 @@ class Acquirer:
             total = default_timer() - begin
             mins, secs = divmod(int(total), 60)
             print(f'      Utility calculation took {mins}m {secs}s')
-        
+
         if cluster_ids is None and cluster_sizes is None:
             # unclustered acquisition maintains one heap that pushes
             # inputs on based on their utility
@@ -263,7 +305,7 @@ class Acquirer:
                 if x in explored:
                     continue
 
-                if len(heap) < self.batch_size:
+                if len(heap) < self.prune_set_size:
                     heapq.heappush(heap, (u, x))
                 else:
                     heapq.heappushpop(heap, (u, x))
@@ -309,7 +351,45 @@ class Acquirer:
             mins, secs = divmod(int(total), 60)
             print(f'      Batch acquisition took {mins}m {secs}s')
 
-        return [x for _, x in heap]
+        return self.prune(heap)
+        # return [x for _, x in heap]
+
+    def prune(self, heap):
+        if len(heap) <= self.batch_size:
+            _, xs = zip(*heap)
+            return xs
+
+        heap = sorted(heap, key=lambda ux: ux[0], reverse=True)
+        _, xs = zip(*heap)
+        if self.prune_mode == 'maxmin' or self.prune_mode == 'leader':
+            mols = [Chem.MolFromSmiles(x) for x in xs]
+            fps = [
+                rdMolDescriptors.GetMorganFingerprintAsBitVect(
+                    m, radius=2, nBits=2048, useChirality=True
+                ) for m in mols if m
+            ]
+            if self.prune_mode == 'maxmin':
+                picker = rdSimDivPickers.MaxMinPicker()
+                idxs = picker.LazyBitVectorPick(
+                    fps, len(fps), pickSize=self.batch_size,
+                    firstPicks=[0], seed=self.seed or -1
+                )
+            else:
+                picker = rdSimDivPickers.LeaderPicker()
+                idxs = picker.LazyBitVectorPick(
+                    fps, len(fps), self.prune_threshold,
+                    pickSize=self.batch_size, firstPicks=[0],
+                )
+            xs = [xs[i] for i in idxs]
+
+        elif self.prune_mode == 'random':
+            xs = list(xs)
+            random.shuffle(xs)
+            xs = xs[:self.batch_size]
+        else:
+            xs = xs[:self.batch_size]
+
+        return xs
 
     def _scale_heaps(self, d_cid_heap: Dict[int, List],
                      pred_global_max: float, epoch: int,
