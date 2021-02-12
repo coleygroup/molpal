@@ -47,7 +47,6 @@ def recursive_conversion(nested_dict):
         return nested_dict
 
     for k in nested_dict:
-        # print(k)
         sub_dict = nested_dict[k]
         nested_dict[k] = recursive_conversion(sub_dict)
     return dict(nested_dict)
@@ -342,10 +341,9 @@ MARKERS = ['circle', 'square', 'diamond']
 def plot_data(d_b_prune_data, size: int, split: float, k: int,
               model='rf', score='scores', metric='greedy'):
     xs = [int(size*split * i) for i in range(1, 7)]
-    print(size, split, xs)
+
     fig, axs = plt.subplots(1, 3, sharex=True, sharey=True,
                             figsize=(4/1.5 * 3, 4))
-    
     fmt = 'o-'
     ms = 5
     capsize = 2
@@ -357,7 +355,7 @@ def plot_data(d_b_prune_data, size: int, split: float, k: int,
             ys, y_sds = d_b_prune_data[b][prune][model][score][metric]
             ys = [y*100 for y in ys]
             y_sds = [y*100 for y in y_sds]
-            # print(ys)
+
             ebar = ax.errorbar(
                 xs, ys, yerr=y_sds, color=PRUNE_COLORS[prune], label=prune,
                 fmt=fmt, ms=ms, mec='black', capsize=capsize
@@ -401,6 +399,7 @@ if __name__ == "__main__":
     parser.add_argument('-k', type=int)
     parser.add_argument('--split', type=float)
     parser.add_argument('--mode')
+    parser.add_argument('--name')
 
     args = parser.parse_args()
 
@@ -411,12 +410,16 @@ if __name__ == "__main__":
     except AttributeError:
         true_data = sorted(true_data, key=itemgetter(1))[:args.k]
 
+    results_dir = Path(f'{args.name}/{args.split}')
+    if not results_dir.is_dir():
+        results_dir.mkdir(parents=True)
+
     if args.mode == 'topk':
         d_b_prune_data = gather_prune_data(
             true_data, args.parent_dir, args.k
         )
         fig = plot_data(d_b_prune_data, size, args.split, args.k)
-        fig.savefig(f'images/E50k/diversity_top{args.k}.png')
+        fig.savefig(f'{results_dir}/top{args.k}_results_plot.png')
         # top_k_metrics(args.true_pkl, args.parent_dir, args.k)
     elif args.mode == 'intersection':
         top_k_intersections(args.parent_dir, args.k)
