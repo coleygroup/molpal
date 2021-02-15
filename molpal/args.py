@@ -1,0 +1,324 @@
+from configargparse import ArgumentTypeError, ArgumentParser, Namespace
+import os
+from pathlib import Path
+import sys
+from typing import Optional, Union
+
+# os.sched_getaffinity(0) returns the set of CPUs this process can use,
+# but it is defined only for some UNIX platforms, so try to use it and, failing
+# that, assume this process can use all system CPUs
+try:
+    MAX_CPU = len(os.sched_getaffinity(0))
+except AttributeError:
+    MAX_CPU = os.cpu_count()
+
+def gen_args(args: Optional[str] = None) -> Namespace:
+    parser = ArgumentParser()
+
+    add_general_args(parser)
+    add_encoder_args(parser)
+    add_pool_args(parser)
+    add_acquisition_args(parser)
+    add_objective_args(parser)
+    add_model_args(parser)
+    add_stopping_args(parser)
+
+    args = parser.parse_args(args)
+
+    modify_objective_args(args)
+    cleanup_args(args)
+
+    return args
+
+#################################
+#       GENERAL ARGUMENTS       #
+#################################
+def add_general_args(parser: ArgumentParser) -> None:
+    parser.add_argument('--config', is_config_file=True,
+                        help='the filepath of the configuration file')
+    parser.add_argument('--name',
+                        help='the general name to be used for outputs')
+    parser.add_argument('--seed', type=int,
+                        help='the random seed to use for initialization.')
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+                        help='the level of output this program should print')
+    parser.add_argument('-nw', '-nj', '-np', '--num-workers', '--njobs', 
+                        default=1, type=int,
+                        help='the total number of workers/jobs/processes/nodes to paralllelize computation over. Only used when distributed=False. In this case, njobs*ncpu should be equal to the total number of cores available')
+    parser.add_argument('-nc', '--ncpu', '--cpus', default=MAX_CPU, type=int, 
+                        help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
+    parser.add_argument('--distributed', action='store_true', default=False,
+                        help='whether the calculations will be distributed over an MPI setup')
+
+    parser.add_argument('--write-intermediate', 
+                        action='store_true', default=False,
+                        help='whether to write a summary file with all of the explored inputs and their associated scores after each round of exploration')
+    parser.add_argument('--write-final', action='store_true', default=False,
+                        help='whether to write a summary file with all of the explored inputs and their associated scores')
+    parser.add_argument('-m', '--top-m', type=restricted_float_or_int, 
+                        default=1., dest='m',
+                        help='the number of top inputs expressed either as a number or as a fraction of the pool to write, if necessary')
+
+    parser.add_argument('--save-preds', action='store_true', default=False,
+                        help='whether to write the full prediction data to a file each time the predictions are updated')
+    parser.add_argument('--save-state', action='store_true', default=False,
+                        help='whether to save the state of the explorer before each batch')
+
+    parser.add_argument('--previous-scores',
+                        help='the path to a file containing the scores from a previous run of molpal to load in as preliminary dataset.')
+    parser.add_argument('--scores-csvs', nargs='+',
+                        help='Either (1) A list of filepaths containing the outputs from a previous exploration or (2) a pickle file containing this list. Will load these files in the order in which they are passed to mimic the intermediate state of a previous exploration. Specifying a single will be interpreted as passing a pickle file. If seeking to mimic the state after only one round of exploration, use the --previous-scores argument instead and leave this option empty.')
+
+    parser.add_argument('--root', default='.',
+                        help='the root directory under which to organize all program outputs')
+
+#####################################
+#       ENCODER ARGUMENTS           #
+#####################################
+def add_encoder_args(parser: ArgumentParser) -> None:
+    parser.add_argument('--fingerprint', default='pair',
+                        choices={'morgan', 'rdkit', 'pair', 'maccs', 'map4'},
+                        help='the type of encoder to use')
+    parser.add_argument('--radius', type=int, default=2,
+                        help='the radius or path length to use for fingerprints')
+    parser.add_argument('--length', type=int, default=2048,
+                        help='the length of the fingerprint')
+
+##############################
+#       POOL ARGUMENTS       #
+##############################
+def add_pool_args(parser: ArgumentParser) -> None:
+    parser.add_argument('--pool', default='eager',
+                        help='the type of MoleculePool to use')
+
+    parser.add_argument('--library', required=True, metavar='LIBRARY_FILEPATH',
+                        help='the file containing members of the MoleculePool')
+    parser.add_argument('--no-title-line', action='store_true', default=False,
+                        help='whether there is no title line in the library file')
+    parser.add_argument('--delimiter', default=',',
+                        help='the column separator in the library file')
+    parser.add_argument('--smiles-col', default=0, type=int,
+                        help='the column containing the SMILES string in the library file')
+    parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
+                        help='an hdf5 file containing the precalculated feature representations of the molecules')
+    parser.add_argument('--cluster', action='store_true', default=False,
+                        help='whether to cluster the MoleculePool')
+    parser.add_argument('--cache', action='store_true', default=False,
+                        help='whether to store the full MoleculePool in memory')
+    parser.add_argument('--validated', action='store_true', default=False,
+                        help='whether the pool has been manually validated and invalid SMILES strings have been removed.')
+
+#####################################
+#       ACQUISITION ARGUMENTS       #
+#####################################
+def add_acquisition_args(parser: ArgumentParser) -> None:
+    parser.add_argument('--metric', '--alpha', default='random',
+                        choices={'random', 'greedy', 'threshold',
+                                 'ucb', 'ei', 'pi', 'thompson'},
+                        help='the acquisition metric to use')
+
+    parser.add_argument('--init-size', 
+                        type=restricted_float_or_int, default=0.01,
+                        help='the number of ligands or fraction of total library to initially dock')
+    parser.add_argument('--batch-size',
+                        type=restricted_float_or_int, default=0.01,
+                        help='the number of ligands or fraction of total library for each batch of exploration')
+
+    parser.add_argument('-b', type=float, default=2.,
+                        help='the number of batches to take for the initial candidate set')
+    parser.add_argument('--prune-mode', default='best',
+                        choices=('best', 'random', 'leader', 'maxmin'),
+                        help='the pruning strategy to use')
+    parser.add_argument('--prune-threshold', type=float, default=0.35,
+                        help='the threshold to use for leader pruning')
+
+    parser.add_argument('--epsilon', type=float, default=0.,
+                        help='the fraction of each batch that should be acquired randomly')
+    parser.add_argument('--temp-i', type=float,
+                        help='the initial temperature for tempeture scaling when calculating the decay factor for cluster scaling')
+    parser.add_argument('--temp-f', type=float, default=1.,
+                        help='the final temperature used in the greedy metric')
+
+    parser.add_argument('--xi', type=float, default=0.01,
+                        help='the xi value to use in EI and PI metrics')
+    parser.add_argument('--beta', type=int, default=2,
+                        help='the beta value to use in the UCB metric')
+    parser.add_argument('--threshold', type=float,
+                        help='the threshold value as a positive number to use in the threshold metric')
+
+###################################
+#       OBJECTIVE ARGUMENTS       #
+###################################
+def add_objective_args(parser: ArgumentParser) -> None:
+    parser.add_argument('-o', '--objective', required=True,
+                        choices={'lookup', 'docking'},
+                        help='the objective function to use')
+    parser.add_argument('--minimize', action='store_true', default=False,
+                        help='whether to minimize the objective function')
+    parser.add_argument('--objective-config',
+                        help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
+
+    # DockingObjective args
+    parser.add_argument('--software', default='vina',
+                        choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
+                        help='the name of the docking program to use')
+    parser.add_argument('--receptor',
+                        help='the filename of the receptor')
+    parser.add_argument('--box-center', type=float, nargs=3,
+                        metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
+                        help='the x-, y-, and z-coordinates of the center of the docking box')
+    parser.add_argument('--box-size', type=int, nargs=3,
+                        metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
+                        help='the x-, y-, and z-dimensions of the docking box')
+    parser.add_argument('--docked-ligand-file',
+                        help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
+    parser.add_argument('--score-mode', default='best',
+                        help='the method by which to calculate an overall score from multiple scored conformations')
+
+    # LookupObjective args
+    parser.add_argument('--lookup-path',
+                        help='filepath pointing to a file containing lookup scoring data')
+    parser.add_argument('--no-lookup-title-line', action='store_true',
+                        default=False,
+                        help='whether there is a title line in the data lookup file')
+    parser.add_argument('--lookup-sep', default=',',
+                        help='the column separator in the data lookup file')
+    parser.add_argument('--lookup-smiles-col', default=0, type=int,
+                        help='the column containing the SMILES strings in the data lookup file')
+    parser.add_argument('--lookup-data-col', default=1, type=int,
+                        help='the column containing the score data in the data lookup file')
+
+def modify_objective_args(args: Namespace) -> None:
+    if args.objective == 'lookup':
+        modify_LookupObjective_args(args)
+
+def modify_LookupObjective_args(args: Namespace) -> None:
+    args.lookup_title_line = not args.no_lookup_title_line
+    delattr(args, 'no_lookup_title_line')
+
+    if args.name is None:
+        args.name = Path(args.library).stem
+
+###############################
+#       MODEL ARGUMENTS       #
+###############################
+def add_model_args(parser: ArgumentParser) -> None:
+    parser.add_argument('--model', choices=('rf', 'gp', 'nn', 'mpn'),
+                        default='rf',
+                        help='the model type to use')
+    parser.add_argument('--test-batch-size', type=int,
+                        help='the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.')
+    parser.add_argument('--retrain-from-scratch',
+                        action='store_true', default=False,
+                        help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
+    
+    # RF args
+    parser.add_argument('--n-estimators', type=int, default=100,
+                        help='the number of trees in the forest')
+    parser.add_argument('--max-depth', nargs='?', type=int,
+                        const=None, default=8,
+                        help='the maximum depth of the tree. Not specifying this argument at all will default to 8. Adding the flag without specifying number a number will default to an unlimited depth')
+    parser.add_argument('--min-samples-leaf', type=int, default=1,
+                        help='the minimum number of samples required to be at a leaf node')
+    # GP args
+    parser.add_argument('--gp-kernel', choices={'dotproduct'},
+                        default='dotproduct',
+                        help='Kernel to use for Gaussian Process model')
+
+    # MPNN args
+    parser.add_argument('--init-lr', type=float, default=1e-4,
+                        help='the initial learning rate for the MPNN model')
+    parser.add_argument('--max-lr', type=float, default=1e-3,
+                        help='the maximum learning rate for the MPNN model')
+    parser.add_argument('--final-lr', type=float, default=1e-4,
+                        help='the final learning rate for the MPNN model')
+
+    # NN/MPNN args
+    parser.add_argument('--conf-method', default='none',
+                        choices={'ensemble', 'twooutput', 
+                                 'mve', 'dropout', 'none'},
+                        help='Confidence estimation method for NN/MPNN models')
+
+##################################
+#       STOPPING ARGUMENTS       #
+##################################
+def add_stopping_args(parser: ArgumentParser) -> None:
+    parser.add_argument('-k', '--top-k', dest='k',
+                        type=restricted_float_or_int, default=0.0005,
+                        help='the top k ligands from which to calculate an average score expressed either as an integer or as a fraction of the pool')
+    parser.add_argument('-w', '--window-size', type=int, default=3,
+                        help='the window size to use for calculation of the moving average of the top-k scores')
+    parser.add_argument('--delta', type=restricted_float, default=0.01,
+                        help='the minimum acceptable difference between the moving average of the top-k scores and the current average the top-k score in order to continue exploration')
+    parser.add_argument('--max-epochs', type=int, default=50,
+                        help='the maximum number of epochs to explore for')
+    parser.add_argument('--max-explore', 
+                        type=restricted_float_or_int, default=1.0,
+                        help='the maximum number of inputs to explore')
+
+def cleanup_args(args: Namespace) -> None:
+    """Remove unnecessary attributes and change some arguments"""
+    if isinstance(args.scores_csvs, list) and len(args.scores_csvs)==1:
+        args.scores_csvs = args.scores_csvs[0]
+    args.title_line = not args.no_title_line
+    
+    args_to_remove = {'no_title_line'}
+
+    if args.objective == 'docking':
+        args_to_remove |= {
+            'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
+            'lookup_data_col', 'lookup_sep'
+        }
+    elif args.objective == 'lookup':
+        args_to_remove |= {
+            'software', 'receptor', 'box_center', 'box_size', 'score_mode',
+        }
+
+    if args.metric != 'ei' or args.metric != 'pi':
+        args_to_remove.add('xi')
+    if args.metric != 'ucb':
+        args_to_remove.add('beta')
+    if args.metric != 'threshold':
+        args_to_remove.add('threshold')
+
+    if not args.cluster:
+        args_to_remove |= {'temp_i', 'temp_f'}
+
+    if args.model != 'rf':
+        args_to_remove |= {'n_estimators', 'max_depth', 'min_samples_leaf'}
+    if args.model != 'gp':
+        args_to_remove |= {'gp_kernel'}
+    if args.model != 'nn':
+        args_to_remove |= set()
+    if args.model != 'mpn':
+        args_to_remove |= {'init_lr', 'max_lr', 'final_lr'}
+    if args.model != 'nn' and args.model != 'mpn':
+        args_to_remove |= {'conf_method'}
+
+    for arg in args_to_remove:
+        delattr(args, arg)
+
+##############################
+#       TYPE FUNCTIONS       #
+##############################
+def restricted_float_or_int(arg: str) -> Union[float, int]:
+    try:
+        value = int(arg)
+        if value < 0:
+            raise ArgumentTypeError(f'{value} is less than 0')
+    except ValueError:
+        value = float(arg)
+        if value < 0 or value > 1:
+            raise ArgumentTypeError(f'{value} must be in [0,1]')
+    
+    return value
+
+def restricted_float(arg: str) -> float:
+    value = float(arg)
+    if value < 0 or value > 1:
+        raise ArgumentTypeError(f'{value} must be in [0,1]')
+    
+    return value
+
+def optional_int(arg: str):
+    pass
