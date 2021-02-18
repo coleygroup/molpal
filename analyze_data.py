@@ -11,6 +11,7 @@ from typing import Iterable, List, Set, Tuple
 
 from matplotlib import pyplot as plt
 from matplotlib import ticker
+import numpy as np
 import seaborn as sns
 from tqdm import tqdm
 
@@ -58,7 +59,7 @@ def read_data(p_data, k) -> List[Tuple]:
         data = [(row[0], -float(row[1]))
                 for row in islice(reader, k) if row[1]]
     
-    return sorted(data, key=itemgetter(1))[:k]
+    return sorted(data, key=itemgetter(1))
 
 def get_smis_from_data(p_data) -> Set:
     with open(p_data) as fid:
@@ -146,7 +147,12 @@ def gather_prune_data(true_data, parent_dir, k):
         d_b_prune_data[b] = {}
         for prune_dir in batches_dir.iterdir():
             prune = prune_dir.name
-            d_b_prune_data[b][prune] = top_k_metrics(true_data, prune_dir, k)
+
+            data = top_k_metrics(true_data, prune_dir, k)
+            if prune=='best':
+                pprint.pprint(data)
+
+            d_b_prune_data[b][prune] = data
     
     # pprint.pprint(d_b_prune_data, compact=True)
 
@@ -338,8 +344,10 @@ SPLITS = [0.4, 0.2, 0.1]
 DASHES = ['dash', 'dot', 'dashdot']
 MARKERS = ['circle', 'square', 'diamond']
 
-def plot_data(d_b_prune_data, size: int, split: float, k: int,
-              model='rf', score='scores', metric='greedy'):
+def plot_prune_data(
+        d_b_prune_data, size: int, split: float, k: int,
+        model='rf', score='scores', metric='greedy'
+    ):
     xs = [int(size*split * i) for i in range(1, 7)]
 
     fig, axs = plt.subplots(1, 3, sharex=True, sharey=True,
@@ -353,6 +361,10 @@ def plot_data(d_b_prune_data, size: int, split: float, k: int,
         for prune in PRUNE_METHODS:
             # if not si_fig:
             ys, y_sds = d_b_prune_data[b][prune][model][score][metric]
+
+            # if prune=='best' and score=='scores':
+            #     print(ys)
+
             ys = [y*100 for y in ys]
             y_sds = [y*100 for y in y_sds]
 
@@ -392,35 +404,84 @@ def plot_data(d_b_prune_data, size: int, split: float, k: int,
 
     return fig
 
+def parse_errors_file(errors_filepath) -> np.ndarray:
+    with open(errors_filepath, 'r') as fid:
+        reader = csv.reader(fid)
+        next(reader)
+        errors = [float(row[1]) for row in reader]
+
+    return np.array(errors)
+
+def gather_error_data(parent_dir):
+    parent_dir = Path(parent_dir)
+    p_errors = parent_dir / 'errors'
+
+    def get_iter(p_error_iter):
+        return int(p_error_iter.stem.split('_')[-1])
+    errors_files = sorted(p_errors.iterdir(), key=get_iter)
+    errors_by_iter = [parse_errors_file(e_file) for e_file in errors_files]
+
+    return errors_by_iter
+
+def plot_error_data(errors_by_iter: np.ndarray, b, prune):
+    fig = plt.Figure(figsize=(4/1.5 * 3, 4))
+    ax = fig.add_subplot(111)
+
+    # for i, error_data in enumerate(errors_by_iter):
+    labels = [f'iter {i}' for i in range(len(errors_by_iter))]
+    ax.hist(errors_by_iter, density=True, label=labels)
+
+    ax.set_title(f'MolPAL Predictive Errors (B={b}, {prune} pruning)')
+    ax.set_xlabel(f'Predictive error / kcal*mol^-1')
+    ax.set_ylabel('Density')
+    ax.grid(True)
+    ax.legend()
+
+    fig.tight_layout()
+
+    return fig
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument('--true-pkl')
-    parser.add_argument('--parent-dir')
-    parser.add_argument('-k', type=int)
-    parser.add_argument('--split', type=float)
-    parser.add_argument('--mode')
-    parser.add_argument('--name')
+    parser.add_argument('--true-pkl',)
+    parser.add_argument('--parent-dir', required=True)
+    parser.add_argument('-k', type=int,)
+    parser.add_argument('--split', type=float, required=True)
+    parser.add_argument('--mode', required=True,
+                        choices=('topk', 'errors', 'intersection', 'union'))
+    parser.add_argument('--name', default='.')
+    parser.add_argument('--format', '--fmt', default='png',
+                        choices=('png', 'pdf'))
 
     args = parser.parse_args()
 
-    true_data = pickle.load(open(args.true_pkl, 'rb'))
-    size = len(true_data)
-    try:
-        true_data = sorted(true_data.items(), key=itemgetter(1))[:args.k]
-    except AttributeError:
-        true_data = sorted(true_data, key=itemgetter(1))[:args.k]
-
-    results_dir = Path(f'{args.name}/{args.split}')
-    if not results_dir.is_dir():
-        results_dir.mkdir(parents=True)
+    if args.true_pkl:
+        true_data = pickle.load(open(args.true_pkl, 'rb'))
+        size = len(true_data)
+        try:
+            true_data = sorted(true_data.items(), key=itemgetter(1))[:args.k]
+        except AttributeError:
+            true_data = sorted(true_data, key=itemgetter(1))[:args.k]
 
     if args.mode == 'topk':
         d_b_prune_data = gather_prune_data(
             true_data, args.parent_dir, args.k
         )
-        fig = plot_data(d_b_prune_data, size, args.split, args.k)
-        fig.savefig(f'{results_dir}/top{args.k}_results_plot.png')
-        # top_k_metrics(args.true_pkl, args.parent_dir, args.k)
+        fig = plot_prune_data(d_b_prune_data, size, args.split, args.k)
+
+        results_dir = Path(f'{args.name}/{args.split}')
+        results_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(f'{results_dir}/top{args.k}_results_plot.{args.format}')
+
+    elif args.mode == 'errors':
+        p_errors = Path(f'{args.name}') / 'errors'
+        p_errors.mkdir(exist_ok=True, parents=True)
+        b, prune = Path(args.parent_dir).name.split('_')[5:]
+
+        error_data = gather_error_data(args.parent_dir)
+        fig = plot_error_data(error_data, b, prune)
+
+        fig.savefig(f'{p_errors}/{b}_{prune}_hist.{args.format}')
+
     elif args.mode == 'intersection':
         top_k_intersections(args.parent_dir, args.k)
     elif args.mode == 'union':

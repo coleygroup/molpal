@@ -121,7 +121,8 @@ def partial_distance_hist_2d(
 
 def distance_hist(d_smi_score: Dict[str, Optional[float]],
                   bins: int, N: Optional[int] = None,
-                  one_d: bool = True) -> Tuple[np.ndarray, np.ndarray]: 
+                  one_d: bool = True, log_scale: bool = False
+                  ) -> Tuple[np.ndarray, np.ndarray]: 
     smis, scores = zip(*d_smi_score.items())
 
     chunksize = int(ray.cluster_resources()['CPU'] * 512)
@@ -164,7 +165,10 @@ def distance_hist(d_smi_score: Dict[str, Optional[float]],
         ]
         hists = [ray.get(r) for r in tqdm(refs, unit='chunk')]
 
-    return sum(hists)
+    H = sum(hists)
+    if log_scale:
+        return np.log10(H)
+    return H
 
 def main():
     parser = argparse.ArgumentParser()
@@ -176,6 +180,7 @@ def main():
     parser.add_argument('--bins', type=int, default=10)
     parser.add_argument('-N', type=int)
     parser.add_argument('--two-d', action='store_true', default=False)
+    parser.add_argument('--log-scale', action='store_true', default=False)
 
     args = parser.parse_args()
     data_by_iter = [
@@ -194,8 +199,8 @@ def main():
         sub_dir = 'sar'
         # print(len(data_by_iter[0]))
 
-        hist = distance_hist(data_by_iter[0], args.bins, args.N, True)
-        # print(hist)
+        hist = distance_hist(data_by_iter[0], args.bins, args.N, args.two_d)
+        print(hist)
         ax.bar(bins, hist, align='edge', width=width)
 
         # fig.savefig(f'{args.name}_hist.png')
