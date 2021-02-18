@@ -151,3 +151,11 @@ class Model(ABC):
                 variances.extend(batch_vars)
 
         return means, variances
+
+    @abstractmethod
+    def save(self, filepath):
+        """Get the mean predicted values for a sequence of inputs"""
+    
+    @abstractmethod
+    def load(self, model_state: str):
+        """Get the mean predicted values for a sequence of inputs"""

@@ -1,6 +1,5 @@
 """This module contains Model implementations that utilize an NN model as their 
 underlying model"""
-
 from functools import partial
 import logging
 import os
@@ -23,6 +22,16 @@ from molpal.models.utils import feature_matrix
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 Dataset = tf.data.Dataset
+
+def mve_loss(y_true, y_pred):
+    mu = y_pred[:, 0]
+    var = tf.math.softplus(y_pred[:, 1])
+
+    return tf.reduce_mean(
+        tf.math.log(2*3.141592)/2
+        + tf.math.log(var)/2
+        + tf.math.square(mu-y_true)/(2*var)
+    )
 
 class NN:
     """A feed-forward neural network model
@@ -81,9 +90,12 @@ class NN:
         self.batch_size = batch_size
 
         layer_sizes = layer_sizes or [100, 100]
-        self.model, self.optimizer, self.loss = self.build(
+        self.model, optimizer, self.loss = self.build(
             layer_sizes, dropout, dropout_at_predict, activation
         )
+        self.model.compile(optimizer=optimizer, loss=self.loss)
+
+        # self.compiled = False
 
         self.mean = 0
         self.std = 0
@@ -121,20 +133,12 @@ class NN:
             optimizer = keras.optimizers.Adam(lr=0.01)
             loss = keras.losses.mse
         elif self.output_size == 2:
-            # second output means we're using MVE approach
             optimizer = keras.optimizers.Adam(lr=0.05)
-            def loss(y_true, y_pred):
-                mu = y_pred[:, 0]
-                var = tf.math.softplus(y_pred[:, 1])
-
-                return tf.reduce_mean(
-                    tf.math.log(2*3.141592)/2
-                    + tf.math.log(var)/2
-                    + tf.math.square(mu-y_true)/(2*var)
-                )
+            loss = mve_loss
         else:
             raise ValueError(
-                f'NN output size ({self.output_size}) must be 1 or 2')
+                f'Arg: "output_size" must be 1 or 2. Got: {self.output_size}'
+            )
 
         return model, optimizer, loss
 
@@ -156,7 +160,7 @@ class NN:
         -------
         True
         """
-        self.model.compile(optimizer=self.optimizer, loss=self.loss)
+        # there used to be a self.model.compile call here in molpal v1
 
         X = feature_matrix(xs, featurize,
                            self.num_workers, self.ncpu, self.distributed)
@@ -188,11 +192,18 @@ class NN:
 
         return Y_pred
     
-    def save(self, path) -> None:
-        self.model.save(path)
+    def save(self, path):
+        self.model.save(path, include_optimizer=True)
     
-    def load(self, path) -> None:
-        self.model = keras.models.load_model(path)
+    def load(self, path):
+        if self.output_size == 2:
+            custom_objects = {'mve_loss': mve_loss}
+        else:
+            custom_objects = {}
+
+        self.model = keras.models.load_model(
+            path, custom_objects=custom_objects
+        )
     
     def _normalize(self, ys: Sequence[float]) -> ndarray:
         Y = np.stack(list(ys))
@@ -261,6 +272,12 @@ class NNModel(Model):
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
         raise TypeError('NNModel can\'t predict variances!')
+
+    def save(self, filepath):
+        self.model.save(filepath)
+    
+    def load(self, filepath):
+        self.model.load(filepath)
 
 class NNEnsembleModel(Model):
     """A feed-forward neural network ensemble model for estimating mean

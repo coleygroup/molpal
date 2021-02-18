@@ -61,6 +61,8 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--save-preds', action='store_true', default=False,
                         help='whether to write the full prediction data to a file each time the predictions are updated')
+    parser.add_argument('--save-errors', action='store_true', default=False,
+                        help='whether to write a file after each iteration containing the explored SMILES strings and their associated predictive errors (= true_score - predicted_score).')
     parser.add_argument('--save-state', action='store_true', default=False,
                         help='whether to save the state of the explorer before each batch')
 

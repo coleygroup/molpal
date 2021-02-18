@@ -12,6 +12,8 @@ import pickle
 import tempfile
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
+import numpy as np
+
 from molpal import acquirer, encoder, models, objectives, pools
 
 T = TypeVar('T')
@@ -80,8 +82,11 @@ class Explorer:
         a list containing the filepath of each score file that was written
         in the order in which they were written. Used only when saving the
         intermediate state to initialize another explorer
-    write_preds : bool
+    save_preds : bool
         whether the predictions should be written after each exploration batch
+    save_errors : bool
+        whether the errors of each prediction should be written after each 
+        exploration batch
     verbose : int
         the level of output the Explorer prints
 
@@ -125,7 +130,8 @@ class Explorer:
                  delta: float = 0.01, max_epochs: int = 50, 
                  max_explore: Union[int, float] = 1., root: str = '.',
                  write_final: bool = True, write_intermediate: bool = False,
-                 save_preds: bool = False, retrain_from_scratch: bool = False,
+                 save_preds: bool = False, save_errors: bool = False,
+                 retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
                  scores_csvs: Union[str, List[str], None] = None,
                  verbose: int = 0, **kwargs):
@@ -158,6 +164,7 @@ class Explorer:
         self.write_final = write_final
         self.write_intermediate = write_intermediate
         self.save_preds = save_preds
+        self.save_errors = save_errors
 
         # stateful attributes (not including model)
         self.epoch = 0
@@ -365,6 +372,10 @@ class Explorer:
             in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
             out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
         )
+        
+        if self.save_errors:
+            self.compute_errors(new_scores, write=True)
+
         self._clean_and_update_scores(new_scores)
 
         self.top_k_avg = self.avg()
@@ -544,52 +555,115 @@ class Explorer:
         if not p_states.is_dir():
             p_states.mkdir(parents=True)
         
+        state_dict = {}
+        state_dict['epoch'] = self.epoch
+        state_dict['scores'] = self.scores
+        state_dict['failures'] = self.failures
+        state_dict['new_scores'] = self.new_scores
+        state_dict['model'] = self.model.save()
+        state_dict['updated_model'] = self.updated_model
+        state_dict['recent_avgs'] = self.recent_avgs
+        state_dict['top_k_avg'] = self.top_k_avg
+        state_dict['preds'] = self.save_preds()
+
         p_state = p_states / f'epoch_{self.epoch}.pkl'
         with open(p_state, 'wb') as fid:
-            pickle.dump(self.scores_csvs, fid)
+            pickle.dump(state_dict, fid)
 
         return str(p_state)
 
-    def load(self) -> None:
+    def load(self, state_pkl: str) -> None:
         """Mimic the intermediate state of a previous explorer run by loading
         the data from the list of output files"""
 
         if self.verbose > 0:
             print(f'Loading in previous state ... ', end='')
 
-        for scores_csv in self.scores_csvs:
-            scores, self.failures = self._read_scores(scores_csv)
+        state_dict = pickle.load(open(state_pkl, 'rb'))
+        self.epoch = state_dict['epoch']
+        self.scores = state_dict['scores']
+        self.failures = state_dict['failures']
+        self.new_scores = state_dict['new_scores']
+        self.model.load(state_dict['model'])
+        self.updated_model = state_dict['updated_model']
+        self.recent_avgs = state_dict['recent_avgs']
+        self.top_k_avg = state_dict['top_k_avg']
+        self.load_preds(state_dict['preds'])
 
-            self.new_scores = {smi: score for smi, score in scores.items()
-                               if smi not in self.scores}
+        # for scores_csv in self.scores_csvs:
+        #     scores, self.failures = self._read_scores(scores_csv)
 
-            if not self.retrain_from_scratch:
-                self._update_model()
+        #     self.new_scores = {smi: score for smi, score in scores.items()
+        #                        if smi not in self.scores}
 
-            self.scores = scores
-            self.epoch += 1
+        #     if not self.retrain_from_scratch:
+        #         self._update_model()
 
-            self.top_k_avg = self.avg()
-            if len(self.scores) >= self.k:
-                self.recent_avgs.append(self.top_k_avg)
+        #     self.scores = scores
+        #     self.epoch += 1
+
+        #     self.top_k_avg = self.avg()
+        #     if len(self.scores) >= self.k:
+        #         self.recent_avgs.append(self.top_k_avg)
 
         if self.verbose > 0:
             print('Done!')
 
-    def write_preds(self) -> None:
-        preds_path = Path(f'{self.root}/{self.name}/preds')
-        if not preds_path.is_dir():
-            preds_path.mkdir(parents=True)
+    def save_preds(self) -> str:
+        path = Path(f'{self.root}/{self.name}/preds')
+        if not path.is_dir():
+            path.mkdir(parents=True)
 
-        with open(f'{preds_path}/preds_iter_{self.epoch}.csv', 'w') as fid:
-            writer = csv.writer(fid)
-            writer.writerow(
-                ['smiles', 'predicted_score', '[predicted_variance]']
-            )
-            writer.writerows(
-                zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
-            )
+        if self.y_vars:
+            Y_pred = np.column_stack(self.y_preds, self.y_vars)
+        else:
+            Y_pred = np.array(self.y_preds)
+        
+        preds_file = f'{path}/preds_iter_{self.epoch}.npy'
+        np.save(preds_file, Y_pred)
+        return preds_file
+        # with open(f'{preds_path}/preds_iter_{self.epoch}.bin', 'w') as fid:
+        #     writer = csv.writer(fid)
+        #     writer.writerow(
+        #         ['smiles', 'predicted_score', '[predicted_variance]']
+        #     )
+        #     writer.writerows(
+        #         zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
+        #     )
     
+    def load_preds(self, preds_file):
+        Y_pred = np.load(preds_file)
+        if Y_pred.ndim == 1:
+            self.y_preds = Y_pred[:]
+            self.y_vars = []
+        else:
+            self.y_preds = Y_pred[:, 0]
+            self.y_vars = Y_pred[:, 1]
+        
+    def compute_errors(self, d_smi_score: Dict[str, Optional[float]],
+                    #    error_type: str = 'mae',
+                       write: bool = False) -> Dict[str, Optional[float]]:
+        # inputs = set(inputs)
+
+        d_smi_error = {}
+        for smi, y_pred in zip(self.pool.smis(), self.y_preds):
+            if smi in d_smi_score and d_smi_score[smi] is not None:
+                d_smi_error[smi] = d_smi_score[smi] - y_pred
+                
+        if not write:
+            return d_smi_error
+        
+        errors_path = Path(f'{self.root}/{self.name}/errors')
+        if not errors_path.is_dir():
+            errors_path.mkdir(parents=True)
+        
+        with open(f'{errors_path}/errors_iter_{self.epoch}.csv', 'w') as fid:
+            writer = csv.writer(fid)
+            writer.writerow(['smiles', 'error'])
+            writer.writerows(d_smi_error.items())
+        
+        return d_smi_error
+
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
         new_scores, scores, and failed accordingly
