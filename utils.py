@@ -1,5 +1,6 @@
 import csv
 from itertools import chain, islice
+import os
 from timeit import default_timer
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, TypeVar
 
@@ -11,6 +12,12 @@ from tqdm import tqdm
 
 T = TypeVar('T')
 U = TypeVar('U')
+
+if not ray.is_initialized():
+    try:
+        ray.init('auto')
+    except ConnectionError:
+        ray.init(num_cpus=len(os.sched_getaffinity(0)))
 
 class Timer:
     def __enter__(self):
@@ -48,21 +55,21 @@ def parse_csv(score_csv: str, title_line: bool = True,
     
     return data
 
-def pmap(f: Callable, xs: Iterable[T], chunksize: int = 1,
-         *args, **kwargs) -> List[U]:
-    if not ray.is_initialized():
-        ray.init()
-
-    @ray.remote
-    def f_(ys: Iterable, *args, **kwargs):
-        return [f(y, *args, **kwargs) for y in ys]
-
-    args = [ray.put(arg) for arg in args]
-    kwargs = {k: ray.put(v) for k, v in kwargs.items()}
-
-    chunk_refs = [
-        f_.remote(xs_batch, *args, **kwargs)
-        for xs_batch in tqdm(chunks(xs, chunksize), desc='Submitting')
+@ray.remote
+def smis_to_fps_(smis: List[str], radius: int = 2, length: int = 2048) -> List:
+    return [
+        rdMolDescriptors.GetMorganFingerprintAsBitVect(
+            Chem.MolFromSmiles(smi), radius, length, useChirality=True
+        ) for smi in smis
     ]
-    y_chunks = [ray.get(ref) for ref in tqdm(chunk_refs, desc='Mapping')]
-    return list(chain(*y_chunks))
+
+def smis_to_fps(smis: List[str], radius: int = 2, length: int = 2048) -> List:
+    chunksize = int(ray.cluster_resources()['CPU'] * 512)
+    refs = [
+        smis_to_fps_.remote(smis_chunk, radius, length)
+        for smis_chunk in chunks(smis, chunksize)
+    ]
+    fps_chunks = [ray.get(r) for r in tqdm(refs, unit='smis chunk')]
+    fps = list(chain(*fps_chunks))
+
+    return fps

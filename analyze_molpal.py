@@ -17,7 +17,7 @@ import ray
 from rdkit import Chem, DataStructs
 from rdkit.Chem import rdMolDescriptors
 import seaborn as sns
-from tqdm import tqdm, trange
+from tqdm import tqdm
 
 sns.set_theme(style='white')
 
@@ -124,12 +124,12 @@ def distance_hist(d_smi_score: Dict[str, Optional[float]],
                   one_d: bool = True, log_scale: bool = False
                   ) -> Tuple[np.ndarray, np.ndarray]: 
     smis, scores = zip(*d_smi_score.items())
-
-    chunksize = int(ray.cluster_resources()['CPU'] * 512)
-    smis_chunks = utils.chunks(smis, chunksize)
-    refs = [smi_to_fp_chunk.remote(smis) for smis in smis_chunks]
-    fps_chunks = [ray.get(r) for r in tqdm(refs)]
-    fps = list(chain(*fps_chunks))
+    fps = utils.smis_to_fps(smis)
+    # chunksize = int(ray.cluster_resources()['CPU'] * 512)
+    # smis_chunks = utils.chunks(smis, chunksize)
+    # refs = [smi_to_fp_chunk.remote(smis) for smis in smis_chunks]
+    # fps_chunks = [ray.get(r) for r in tqdm(refs)]
+    # fps = list(chain(*fps_chunks))
 
     ray.put(fps)
     ray.put(bins)
@@ -197,14 +197,9 @@ def main():
 
     if len(data_by_iter) == 1:
         sub_dir = 'sar'
-        # print(len(data_by_iter[0]))
 
-        hist = distance_hist(data_by_iter[0], args.bins, args.N, args.two_d)
-        print(hist)
+        hist = distance_hist(data_by_iter[0], args.bins, args.N, not args.two_d)
         ax.bar(bins, hist, align='edge', width=width)
-
-        # fig.savefig(f'{args.name}_hist.png')
-        # exit()
 
     else:
         sub_dir = 'molpal'

@@ -437,7 +437,7 @@ def plot_error_data(errors_by_iter: np.ndarray, b, prune):
     ax.grid(True)
     ax.legend()
 
-    fig.tight_layout()
+    plt.tight_layout()
 
     return fig
 if __name__ == "__main__":
