@@ -149,8 +149,8 @@ def gather_prune_data(true_data, parent_dir, k):
             prune = prune_dir.name
 
             data = top_k_metrics(true_data, prune_dir, k)
-            if prune=='best':
-                pprint.pprint(data)
+            # if prune=='best':
+            #     pprint.pprint(data)
 
             d_b_prune_data[b][prune] = data
     
@@ -162,11 +162,6 @@ def top_k_metrics(true_data, parent_dir, k):
     true = true_data
     parent_dir = Path(parent_dir)
 
-    # try:
-    #     true = sorted(true.items(), key=itemgetter(1))[:k]
-    # except AttributeError:
-    #     true = sorted(true, key=itemgetter(1))[:k]
-
     nested_dict = lambda: defaultdict(nested_dict)
     results = nested_dict()
     random = nested_dict()
@@ -177,7 +172,7 @@ def top_k_metrics(true_data, parent_dir, k):
             continue
 
         fields = str(child.stem).split('_')
-        _, model, metric, _, rep, *_ = fields
+        _, _, model, metric, _, rep, *_ = fields
         rep = int(rep)
         # _, model, metric, _, _, repeat, *_ = fields
         
@@ -199,8 +194,6 @@ def top_k_metrics(true_data, parent_dir, k):
     d_model_metric_it_rep_results = recursive_conversion(results)
     random = recursive_conversion(random)
     common_smis = recursive_conversion(common_smis)
-
-    # pprint.pprint(d_model_metric_it_rep_results)
 
     d_model_mode_metric_results = {}
     for model in d_model_metric_it_rep_results:
@@ -224,7 +217,6 @@ def top_k_metrics(true_data, parent_dir, k):
             'smis': metric_results_smis,
             'scores': metric_results_scores
         }
-    # pprint.pprint(d_model_mode_metric_results, compact=True)
 
     if random:
         avg, smis, scores = calculate_metric_results(random)
@@ -233,7 +225,6 @@ def top_k_metrics(true_data, parent_dir, k):
             'smis': (smis[0], smis[1]),
             'scores': (scores[0], scores[1])
         }
-        pprint.pprint(random, compact=True)
     
     return d_model_mode_metric_results
 
@@ -262,7 +253,6 @@ def top_k_intersections(parent_dir, k):
             found = read_data(p_iter, k)
             if metric == 'random':
                 pass
-                # random[it][rep] = compare_results(found, true)
             else:
                 common_smis[model][metric][it][rep] = {smi for smi, _ in found}
 
@@ -274,7 +264,6 @@ def top_k_intersections(parent_dir, k):
                 smis_sets = list(common_smis[model][metric][it].values())
                 n_smis_by_iter.append(len(set.intersection(*smis_sets)))
             common_smis[model][metric] = n_smis_by_iter
-    # pprint.pprint(common_smis, compact=True)
     d_model_metric_results = common_smis
 
     return d_model_metric_results
@@ -318,14 +307,8 @@ def unions(parent_dir):
             
     random = recursive_conversion(random)
     n_random_smis_by_iter = []
-    # for it in range(6):
-    #     smis_sets = list(random[it].values())
-    #     n_random_smis_by_iter.append(len(set.union(*smis_sets)))
 
     d_model_metric_results = total_smis
-    # pprint.pprint(total_smis, compact=True)
-    # pprint.pprint(n_random_smis_by_iter, compact=True)
-
     return d_model_metric_results
 
 sns.set_theme(style='white', context='paper')
@@ -359,12 +342,7 @@ def plot_prune_data(
     n_batches = range(2, 5)
     for i, (b, ax) in enumerate(zip(n_batches, axs)):
         for prune in PRUNE_METHODS:
-            # if not si_fig:
             ys, y_sds = d_b_prune_data[b][prune][model][score][metric]
-
-            # if prune=='best' and score=='scores':
-            #     print(ys)
-
             ys = [y*100 for y in ys]
             y_sds = [y*100 for y in y_sds]
 
@@ -393,9 +371,12 @@ def plot_prune_data(
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{k} {score} Found')
         ax.set_ylim(bottom=0)
+
         ax.set_xlabel(f'Molecules explored')
         ax.set_xlim(left=0)
         ax.xaxis.set_major_locator(ticker.MaxNLocator(7))
+        ax.xaxis.set_tick_params(rotation=30)
+
         ax.grid(True)
     
     handles, labels = axs[0].get_legend_handles_labels()
@@ -427,7 +408,6 @@ def plot_error_data(errors_by_iter: np.ndarray, b, prune):
     fig = plt.Figure(figsize=(4/1.5 * 3, 4))
     ax = fig.add_subplot(111)
 
-    # for i, error_data in enumerate(errors_by_iter):
     labels = [f'iter {i}' for i in range(len(errors_by_iter))]
     ax.hist(errors_by_iter, density=True, label=labels)
 
@@ -440,6 +420,7 @@ def plot_error_data(errors_by_iter: np.ndarray, b, prune):
     plt.tight_layout()
 
     return fig
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--true-pkl',)
