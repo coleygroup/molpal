@@ -126,6 +126,7 @@ class Explorer:
         if max_explore is less than 0
     """
     def __init__(self, name: str = 'molpal',
+                 nn_threshold : Optional[float] = None,
                  k: Union[int, float] = 0.01, window_size: int = 3,
                  delta: float = 0.01, max_epochs: int = 50, 
                  max_explore: Union[int, float] = 1., root: str = '.',
@@ -142,8 +143,10 @@ class Explorer:
 
         self.encoder = encoder.Encoder(**kwargs)
         self.pool = pools.pool(encoder=self.encoder, 
-                               path=tempfile.gettempdir(), **kwargs)
+                               path=tempfile.gettempdir(),
+                               nn_threshold=nn_threshold, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
+        self.nn_uncertainty = nn_threshold is not None
 
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
@@ -323,6 +326,9 @@ class Explorer:
         )
         self._clean_and_update_scores(new_scores)
 
+        if self.save_errors:
+            self.init_scores = self.scores.copy()
+
         self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.top_k_avg)
@@ -360,6 +366,9 @@ class Explorer:
         self._update_model()
         self._update_predictions()
 
+        if self.nn_uncertainty:
+            self._calc_nn_uncertainty()
+
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
             explored={**self.scores, **self.failures},
@@ -373,18 +382,20 @@ class Explorer:
             out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
         )
         
-        if self.save_errors:
-            self.compute_errors(new_scores, write=True)
+        # if self.save_errors:
+        #     self.compute_errors(write=True)
 
         self._clean_and_update_scores(new_scores)
-
+        
         self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.top_k_avg)
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
-        
+        if self.save_errors:
+            self.compute_errors(write=True)
+
         self.epoch += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
@@ -551,7 +562,7 @@ class Explorer:
             print('Done!')
 
     def save(self) -> str:
-        p_states = Path(f'{self.root}/{self.name}/states')
+        p_states = Path(f'{self.root}/{self.name}/states/epoch_{self.epoch}')
         if not p_states.is_dir():
             p_states.mkdir(parents=True)
         
@@ -560,11 +571,11 @@ class Explorer:
         state_dict['scores'] = self.scores
         state_dict['failures'] = self.failures
         state_dict['new_scores'] = self.new_scores
-        state_dict['model'] = self.model.save()
+        state_dict['model'] = self.model.save(p_states / 'model')
         state_dict['updated_model'] = self.updated_model
         state_dict['recent_avgs'] = self.recent_avgs
         state_dict['top_k_avg'] = self.top_k_avg
-        state_dict['preds'] = self.save_preds()
+        state_dict['preds'] = self.write_preds()
 
         p_state = p_states / f'epoch_{self.epoch}.pkl'
         with open(p_state, 'wb') as fid:
@@ -609,7 +620,7 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
 
-    def save_preds(self) -> str:
+    def write_preds(self) -> str:
         path = Path(f'{self.root}/{self.name}/preds')
         if not path.is_dir():
             path.mkdir(parents=True)
@@ -640,15 +651,12 @@ class Explorer:
             self.y_preds = Y_pred[:, 0]
             self.y_vars = Y_pred[:, 1]
         
-    def compute_errors(self, d_smi_score: Dict[str, Optional[float]],
-                    #    error_type: str = 'mae',
+    def compute_errors(self,
                        write: bool = False) -> Dict[str, Optional[float]]:
-        # inputs = set(inputs)
-
         d_smi_error = {}
         for smi, y_pred in zip(self.pool.smis(), self.y_preds):
-            if smi in d_smi_score and d_smi_score[smi] is not None:
-                d_smi_error[smi] = d_smi_score[smi] - y_pred
+            if smi in self.init_scores:# and d_smi_score[smi] is not None:
+                d_smi_error[smi] = self.init_scores[smi] - y_pred
                 
         if not write:
             return d_smi_error
@@ -749,9 +757,22 @@ class Explorer:
         if self.save_preds:
             self.write_preds()
 
+    def _calc_nn_uncertainty(self):
+        """Calculate uncertainty estimates for the molecules based on the 
+        variance in the mean predicted values of each molecules' nearest 
+        neighbors"""
+        self.y_vars = np.empty(len(self.y_preds))
+        for i, neighbors_idxs in enumerate(self.pool.neighbors):
+            neighbor_y_preds = np.array([
+                self.y_preds[idx] for idx in neighbors_idxs
+            ])
+            self.y_vars[i] = np.var(neighbor_y_preds)
+
     def _validate_acquirer(self):
-        """Ensure that the model provides values the Acquirer needs"""
-        if self.acquirer.needs > self.model.provides:
+        """Ensure that the Acquirer has the values it needs"""
+        values = {'means', 'vars'} if self.nn_uncertainty else {'means'}
+        values |= self.model.provides
+        if self.acquirer.needs > values:
             raise IncompatibilityError(
                 f'{self.acquirer.metric} metric needs: '
                 + f'{self.acquirer.needs} '
