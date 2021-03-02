@@ -1,5 +1,6 @@
 import csv
 from itertools import chain, islice
+import math
 import os
 from timeit import default_timer
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, TypeVar
@@ -64,7 +65,7 @@ def smis_to_fps_(smis: List[str], radius: int = 2, length: int = 2048) -> List:
     ]
 
 def smis_to_fps(smis: List[str], radius: int = 2, length: int = 2048) -> List:
-    chunksize = int(ray.cluster_resources()['CPU'] * 512)
+    chunksize = int(math.sqrt(ray.cluster_resources()['CPU']) * 512)
     refs = [
         smis_to_fps_.remote(smis_chunk, radius, length)
         for smis_chunk in chunks(smis, chunksize)
