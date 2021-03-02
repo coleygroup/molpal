@@ -1,6 +1,7 @@
 import argparse
 from collections import Counter
-from functools import reduce
+from itertools import chain
+from math import sqrt
 import os
 from pathlib import Path
 import random
@@ -29,7 +30,29 @@ def get_nearest_neighbors(fps, i: int, k: int) -> np.ndarray:
     return I[X_d[I] != 0]
 
 @ray.remote
-def partial_hist(
+def get_nearest_neighbors_batch(idxs: Sequence[int], fps, threshold: float) -> np.ndarray:
+    def nns(i):
+        X_d = 1. - np.array(DataStructs.BulkTanimotoSimilarity(fps[i], fps))
+        return np.where(X_d < threshold)[0]
+
+    return [nns(i) for i in idxs]
+
+def nearest_neighbors(fps, threshold: float, chunksize: int = 16) -> List:
+    chunksize = int(ray.cluster_resources()['CPU'] * chunksize)
+    
+    idxs = range(len(fps))
+    fps = ray.put(fps)
+
+    refs = [
+        get_nearest_neighbors_batch.remote(idxs_chunk, fps, threshold)
+        for idxs_chunk in tqdm(utils.chunks(idxs, chunksize))
+    ]
+    nn_idxs_chunks = [ray.get(r) for r in tqdm(refs, unit='idxs chunk')]
+    
+    return list(chain(*nn_idxs_chunks))
+
+@ray.remote
+def partial_hist_1d(
         idxs: Sequence[int], fps: Sequence,
         bins: int, k: Optional[int] = None
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -71,24 +94,85 @@ def partial_hist(
 
     return sum(hists)
 
-def distance_hist(
-        fps: Sequence, bins: int,
-        k: Optional[int] = None, log: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray]: 
-    ray.put(fps)
-    ray.put(bins)
+@ray.remote
+def partial_hist_2d(
+        idxs: Sequence[int], fps: Sequence, scores: np.ndarray,
+        bins: int, range_: Sequence, k: Optional[int] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+    """Return the sum of 1D histograms of the pairwise input distances
+    bewteen index i and indices i+1: for all indices in idxs
 
-    chunksize = int(ray.cluster_resources()['CPU'] * 4)
+    Parameters
+    ----------
+    idxs : Sequence[int]
+        the indices
+    fps : Sequence
+        a sequence of fingerprints
+    scores : np.ndarray
+    bins : int
+        the number of bins to generate
+    k : Optional[int], default=None
+        the nearest neighbors to count. If None, use all pairwise distances
+
+    Returns
+    -------
+    np.ndarray
+        the histogram
+    """
+    hists = []
+    for i in idxs:
+        if k:
+            X_d = 1. - np.array(
+                DataStructs.BulkTanimotoSimilarity(fps[i], fps)
+            )
+            Y_d = np.abs(scores[i+1:] - scores[i])
+
+            X_d = np.delete(X_d, i)
+            I = np.argpartition(X_d, k)
+
+            X_d = X_d[I[:k]]
+            Y_d = Y_d[I[:k]]
+        else:
+            X_d = 1. - np.array(
+                DataStructs.BulkTanimotoSimilarity(fps[i], fps[i+1:])
+            )
+            Y_d = np.abs(scores[i+1:] - scores[i])
+
+        H, _, _ = np.histogram2d(
+            X_d, Y_d, bins=bins, range=range_
+        )
+        hists.append(H.T)
+
+    return sum(hists)
+
+def distance_hist(
+        fps: Sequence, scores: np.ndarray, bins: int, range_: Sequence,
+        k: Optional[int] = None, two_d: bool = False, log: bool = False
+    ) -> np.ndarray:
+
+    chunksize = int(sqrt(ray.cluster_resources()['CPU']) * 4)
     idxs_chunks = utils.chunks(range(len(fps)), chunksize)
-    refs = [
-        partial_hist.remote(idxs, fps, bins, k)
-        for idxs in idxs_chunks
-    ]
-    hists = [ray.get(r) for r in tqdm(refs, unit='chunk')]
+
+    fps = ray.put(fps)
+    scores = ray.put(scores)
+    bins = ray.put(bins)
+    range_ = ray.put(range_)
+
+    if not two_d:
+        refs = [
+            partial_hist_1d.remote(idxs, fps, bins, k)
+            for idxs in idxs_chunks
+        ]
+    else:
+        refs = [
+            partial_hist_2d.remote(idxs, fps, scores, bins, range_, k)
+            for idxs in tqdm(idxs_chunks)
+        ]
+    hists = (ray.get(r) for r in tqdm(refs, unit='chunk'))
 
     H = sum(hists)
     if log:
-        H = np.log10(H)
+        H = np.log10(H, where=H > 0)
 
     return H
 
@@ -110,7 +194,7 @@ def cluster_mols(smis, fps: Sequence,
     return cluster_ids
 
 def reduce_fps(fps = Sequence, length: int = 2048,
-             k: Optional[int] = None, min_dist: float = 0.1):
+               k: Optional[int] = None, min_dist: float = 0.1):
     k = k or 15
     reducer = umap.UMAP(
         n_neighbors=k, metric='jaccard',
@@ -132,13 +216,14 @@ def main():
     parser.add_argument('--name')
     parser.add_argument('-N', type=int,
                         help='the number of top candidates in the dataset to look at')
-    parser.add_argument('-k', type=int, default=5,
+    parser.add_argument('-k', type=int,
                         help='the number of nearest neighbors to use')
     parser.add_argument('--mode', default='neighbors',
                         choices=('viz', 'hist', 'cluster',
                                  'umap', 'cluster+umap'))
     parser.add_argument('--bins', type=int, default=50)
     parser.add_argument('--log', action='store_true', default=False)
+    parser.add_argument('--two-d', action='store_true', default=False)
     parser.add_argument('-t', '--threshold', type=float, default=0.65)
     parser.add_argument('--min-dist', type=float, default=0.1)
 
@@ -163,8 +248,12 @@ def main():
     top = f'top{args.N}' if args.N else 'all'
 
     if args.mode == 'viz':
-        idxs = [random.randint(0, len(fps)) for _ in range(5)]
-        for j, idx in enumerate(idxs):
+        smis_scores = sorted(d_smi_score.items(), key=lambda kv: -kv[1])
+        smis, scores = zip(*smis_scores)
+        fps = utils.smis_to_fps(smis, args.radius, args.length)
+
+        idxs = [random.randint(0, args.N) for _ in range(5)]
+        for j, idx in tqdm(enumerate(idxs)):
             nn_idxs = get_nearest_neighbors(fps, idx, args.k)
             
             smis_ = [smis[idx], *[smis[i] for i in nn_idxs]]
@@ -176,22 +265,48 @@ def main():
             plot.save(f'{fig_dir}/{top}_{args.k}NN_{j}.png')
 
     elif args.mode == 'hist':
-        bins = np.linspace(0., 1., args.bins)
-        width = (bins[1] - bins[0])
-
         fig = plt.figure()
         ax = fig.add_subplot(111)
 
-        hist = distance_hist(fps, args.bins, args.k, args.log)
-        ax.bar(bins, hist, align='edge', width=width)
+        scores = utils.normalize(np.array(scores))
 
-        neighbors = f'{args.k}NN' if args.k else 'all'
-        ax.set_title(f'{args.name} {neighbors} distances')
-        ax.set_xlabel('Tanimoto distance')
-        ax.set_ylabel('Count')
+        range_ = [(0., 1.), (0., scores.max() - scores.min())]
+        H = distance_hist(
+            fps, scores, args.bins, range_, args.k, args.two_d, args.log
+        )
+        if not args.two_d:
+            bins = np.linspace(0., 1., args.bins)
+            width = (bins[1] - bins[0])
+            ax.bar(bins, H, align='edge', width=width)
+            ax.set_xlabel('Tanimoto distance')
+            ax.set_ylabel('Count')
+        else:
+            xedges = np.linspace(0., 1., args.bins)
+            yedges = np.linspace(0., range_[1][1], args.bins)
+
+            fig = plt.figure()
+            X, Y = np.meshgrid(xedges, yedges)
+            ax = fig.add_subplot(111)
+            pcm = ax.pcolormesh(X, Y, H, shading='auto')
+            if args.log:
+                fig.colorbar(pcm, ax=ax, label='log(Count)')
+            else:
+                fig.colorbar(pcm, ax=ax, label='Count')
+            ax.set_ylabel('Score Distance')
+            ax.set_xlabel('Tanimoto Distance')
+
+        if args.k is None:
+            comment = 'all'
+        elif args.k >= 1:
+            comment = f'{args.k} nearest neighbors'
+        else:
+            comment = f'{args.k} nearest neighbor'
+        top = f'top-{args.N}' if args.N else 'all'
+
+        ax.set_title(f'{args.name} {top} pairwise distances ({comment})')
 
         plt.tight_layout()
-        fig.savefig(f'{fig_dir}/{top}_{neighbors}.pdf')
+        fig.savefig(f'{fig_dir}/N_{args.N or "all"}_k_{args.k or "all"}_{2 if args.two_d else 1}D.png')
 
     elif args.mode == 'cluster':
         cids = cluster_mols(smis, fps, args.threshold)
@@ -200,7 +315,6 @@ def main():
         sizes = list(d_cid_size.values())
         size_counts = Counter(sizes)
         bins = len(size_counts) * 2
-        print(sorted(sizes, reverse=True))
 
         fig, axs = plt.subplots(2, 1, sharex=True)
         fig.suptitle(f'Cluster sizes in {args.name} {top} (t={args.threshold})')
