@@ -66,15 +66,15 @@ class MoleculePool(Sequence[Mol]):
     Parameters
     ----------
     library : str
-    title_line : bool (Default = True)
-    delimiter : str (Default = ',')
-    smiles_col : int (Default = 0)
+    title_line : bool, default=True
+    delimiter : str, default=','
+    smiles_col : int, default=0
     fps : Optional[str] (Default = None)
         the filepath of an hdf5 file containing the precomputed fingerprints.
         If specified, a user assumes the following:
-        1. the ordering of the fingerprints matches the ordering in the
+        1.  the ordering of the fingerprints matches the ordering in the
             library file
-        2. the encoder used to generate the fingerprints is the same
+        2.  the encoder used to generate the fingerprints is the same
             as the one passed to the model
         If None, the MoleculePool will generate this file automatically 
     encoder : Encoder (Default = Encoder())
@@ -93,6 +93,9 @@ class MoleculePool(Sequence[Mol]):
         whether to cluster the library
     ncluster : int (Default = 100)
         the number of clusters to form. Only used if cluster is True
+    nn_threshold : Optional[float], default=None
+        the distance threshold below which to consider pool members neighbors.
+        Setting this will calculate all pool neighbors.
     path : str
         the path under which the h5 file should be written
     verbose : int (Default = 0)
@@ -105,6 +108,7 @@ class MoleculePool(Sequence[Mol]):
                  encoder: Encoder = Encoder(), ncpu: int = 1,
                  cache: bool = False, validated: bool = False,
                  cluster: bool = False, ncluster: int = 100,
+                 nn_threshold: Optional[float] = None,
                  path: str = '.', verbose: int = 0, **kwargs):
         self.library = library
         self.title_line = title_line
@@ -131,7 +135,38 @@ class MoleculePool(Sequence[Mol]):
         if cluster:
             self._cluster_mols(ncluster)
 
+        self.nn_threshold = nn_threshold
+
         self._mol_generator = None
+
+    @property
+    def neighbors(self) -> List[np.ndarray]:
+        """the indices of each pool member's neighbors
+
+        Raises
+        ------
+        AttributeError
+            if nn_threshold is not set
+        """
+        try:
+            return self.__neighbors
+        except AttributeError:
+            raise AttributeError(
+                'nn_threshold must be set before accessing self.neighbors'
+            )
+    
+    @property
+    def nn_threshold(self) -> Optional[float]:
+        """the distance threshold below which pool members are considered 
+        neighbors. None if neighbors have not been calculated"""
+        return self.__nn_threshold
+
+    @nn_threshold.setter
+    def nn_threshold(self, threshold: Optional[float]):
+        """set the distance threshold below which to consider pool members neighbors and calculate the neighbors accordingly."""
+        if threshold is not None:
+            self.__neighbors = fingerprints.neighbors(self.smis(), threshold)
+        self.__nn_threshold = threshold
 
     def __len__(self) -> int:
         """The number of valid pool inputs"""

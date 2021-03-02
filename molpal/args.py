@@ -1,7 +1,7 @@
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
 import os
 from pathlib import Path
-import sys
+import tempfile
 from typing import Optional, Union
 
 # os.sched_getaffinity(0) returns the set of CPUs this process can use,
@@ -73,6 +73,8 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--root', default='.',
                         help='the root directory under which to organize all program outputs')
+    parser.add_argument('--tmp-dir', default=tempfile.gettempdir(),
+                        help='the root directory under which to organize all program outputs')
 
 #####################################
 #       ENCODER ARGUMENTS           #
@@ -109,6 +111,8 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         help='whether to store the full MoleculePool in memory')
     parser.add_argument('--validated', action='store_true', default=False,
                         help='whether the pool has been manually validated and invalid SMILES strings have been removed.')
+    parser.add_argument('--nn-threshold', type=float, default=None,
+                        help='the distance threshold below which to consider molecules neighbors.')
 
 #####################################
 #       ACQUISITION ARGUMENTS       #

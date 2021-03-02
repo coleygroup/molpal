@@ -7,13 +7,16 @@ from operator import itemgetter
 from pathlib import Path
 import pickle
 import pprint
-from typing import Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Sequence, Set, Tuple
 
 from matplotlib import pyplot as plt
 from matplotlib import ticker
 import numpy as np
 import seaborn as sns
 from tqdm import tqdm
+
+import utils
+import sar
 
 sns.set_theme(style='white', context='paper')
 
@@ -71,7 +74,7 @@ def get_smis_from_data(p_data) -> Set:
 def compare_results(found: List[Tuple], true: List[Tuple],
                     avg: bool = True, smis: bool = True, scores: bool = True
                     ) -> Tuple[float, float, float]:
-    k = len(found)
+    N = len(found)
     found_smis, found_scores = zip(*found)
     true_smis, true_scores = zip(*true)
 
@@ -104,7 +107,7 @@ def compare_results(found: List[Tuple], true: List[Tuple],
             count if count > 0 else 0
             for count in missed_scores.values()
         )
-        f_scores = (k - n_missed_scores) / k
+        f_scores = (N - n_missed_scores) / N
     else:
         f_scores = None
 
@@ -138,7 +141,7 @@ def calculate_metric_results(it_rep_results):
             (smis_means, smis_sds),
             (scores_means, scores_sds))
 
-def gather_prune_data(true_data, parent_dir, k):
+def gather_prune_data(true_data, parent_dir, N):
     d_b_prune_data = {}
 
     parent_dir = Path(parent_dir)
@@ -148,7 +151,7 @@ def gather_prune_data(true_data, parent_dir, k):
         for prune_dir in batches_dir.iterdir():
             prune = prune_dir.name
 
-            data = top_k_metrics(true_data, prune_dir, k)
+            data = top_N_metrics(true_data, prune_dir, N)
             # if prune=='best':
             #     pprint.pprint(data)
 
@@ -158,7 +161,107 @@ def gather_prune_data(true_data, parent_dir, k):
 
     return d_b_prune_data
 
-def top_k_metrics(true_data, parent_dir, k):
+def gather_results(run, true_data, N) -> List[Tuple[float, float, float]]:
+    data = run / 'data'
+
+    d_it_results = {}
+    for it_data in tqdm(data.iterdir(), desc='Analyzing iterations',
+                        leave=False):
+        try:
+            it = int(it_data.stem.split('_')[-1])
+        except ValueError:
+            continue
+
+        found = read_data(it_data, N)
+        d_it_results[it] = compare_results(found, true_data)
+
+    return [d_it_results[it] for it in sorted(d_it_results.keys())]
+
+def average_it_results(it_rep_results: Sequence[Sequence[Tuple]]):
+    d_metric_results = {
+        'avg': [],
+        'smis': [],
+        'scores': []
+    }
+    for it_reps in it_rep_results:
+        it_avgs, it_smiss, it_scoress = zip(*it_reps)
+        d_metric_results['avg'].append(mean_and_sd(it_avgs))
+        d_metric_results['smis'].append(mean_and_sd(it_smiss))
+        d_metric_results['scores'].append(mean_and_sd(it_scoress))
+
+    return d_metric_results
+
+def analyze_nn_data(parent_dir, true_data, N):
+    nested_dict = lambda: defaultdict(nested_dict)
+    results = nested_dict()
+
+    parent_dir = Path(parent_dir)
+    for thresh in parent_dir.iterdir():
+        for model in thresh.iterdir():
+            for metric in model.iterdir():
+                for rep in metric.iterdir():
+                    rep_ = int(rep.name.split('_')[-1])
+                    results[
+                        thresh.name][model.name][metric.name][rep_
+                    ] = gather_results(rep, true_data, N)
+    results = recursive_conversion(results)
+
+    for thresh in results:
+        for model in results[thresh]:
+            for metric in results[thresh][model]:
+                it_rep_results = list(zip(
+                    *results[thresh][model][metric].values()
+                ))
+                it_results = average_it_results(it_rep_results)
+                results[thresh][model][metric] = it_results
+                
+    return results
+
+METRICS = ['greedy', 'ucb', 'thompson', 'ei', 'pi']
+METRIC_NAMES = {'greedy': 'greedy', 'ucb': 'UCB', 'thompson': 'TS',
+                'ei': 'EI', 'pi': 'PI'}
+METRIC_COLORS = dict(zip(METRICS, sns.color_palette('bright')))
+
+def plot_nn_data(d_t_data, size: int, split: float, N: int,
+                 model='rf', reward='scores'):
+    xs = [int(size*split * i) for i in range(1, 7)]
+
+    fig, axs = plt.subplots(1, len(d_t_data), sharex=True, sharey=True,
+                            figsize=(4/1.5 * 3, 4))
+    fmt = 'o-'
+    ms = 5
+    capsize = 2
+    
+    for i, t in enumerate(sorted(d_t_data.keys())):
+        for metric in d_t_data[t][model]:
+            ys, sds = zip(*d_t_data[t][model][metric][reward])
+            ys = [y * 100 for y in ys]
+            sds = [sd * 100 for sd in sds]
+
+            _ = axs[i].errorbar(
+                xs, ys, yerr=sds,
+                color=METRIC_COLORS[metric], label=METRIC_NAMES[metric],
+                fmt=fmt, ms=ms, mec='black', capsize=capsize
+            )
+        axs[i].set_title(' = '.join([t[0], t[1:]]))
+        if i == 0:
+            axs[i].set_ylabel(f'Percentage of Top-{N} {reward} Found')
+        axs[i].set_ylim(bottom=0)
+
+        axs[i].set_xlabel(f'Molecules explored')
+        axs[i].set_xlim(left=0)
+        axs[i].xaxis.set_major_locator(ticker.MaxNLocator(7))
+        axs[i].xaxis.set_tick_params(rotation=30)
+
+        axs[i].grid(True)
+    
+    handles, labels = axs[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc=(0.081, 0.71), title='Metric')
+    fig.tight_layout()
+
+    return fig
+
+def top_N_metrics(true_data, parent_dir, N):
     true = true_data
     parent_dir = Path(parent_dir)
 
@@ -184,7 +287,7 @@ def top_k_metrics(true_data, parent_dir, k):
             except ValueError:
                 continue
 
-            found = read_data(p_iter, k)
+            found = read_data(p_iter, N)
             if metric == 'random':
                 random[it][rep] = compare_results(found, true)
             else:
@@ -228,7 +331,7 @@ def top_k_metrics(true_data, parent_dir, k):
     
     return d_model_mode_metric_results
 
-def top_k_intersections(parent_dir, k):
+def top_N_intersections(parent_dir, N):
     parent_dir = Path(parent_dir)
 
     nested_dict = lambda: defaultdict(nested_dict)
@@ -250,7 +353,7 @@ def top_k_intersections(parent_dir, k):
             except ValueError:
                 continue
 
-            found = read_data(p_iter, k)
+            found = read_data(p_iter, N)
             if metric == 'random':
                 pass
             else:
@@ -328,7 +431,7 @@ DASHES = ['dash', 'dot', 'dashdot']
 MARKERS = ['circle', 'square', 'diamond']
 
 def plot_prune_data(
-        d_b_prune_data, size: int, split: float, k: int,
+        d_b_prune_data, size: int, split: float, N: int,
         model='rf', score='scores', metric='greedy'
     ):
     xs = [int(size*split * i) for i in range(1, 7)]
@@ -369,7 +472,7 @@ def plot_prune_data(
         # )
         ax.set_title(f'B={b}')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{k} {score} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {score} Found')
         ax.set_ylim(bottom=0)
 
         ax.set_xlabel(f'Molecules explored')
@@ -404,15 +507,25 @@ def gather_error_data(parent_dir):
 
     return errors_by_iter
 
-def plot_error_data(errors_by_iter: np.ndarray, b, prune):
+def plot_error_data(errors_by_iter: np.ndarray, b, prune, cumulative=True):
     fig = plt.Figure(figsize=(4/1.5 * 3, 4))
     ax = fig.add_subplot(111)
 
     labels = [f'iter {i}' for i in range(len(errors_by_iter))]
-    ax.hist(errors_by_iter, density=True, label=labels)
+    if cumulative:
+        errors_by_iter = [np.abs(errors) for errors in errors_by_iter]
+        ax.hist(
+            errors_by_iter, density=True, label=labels,
+            cumulative=True, histtype='step', 
+        )
+        ax.set_xlabel(f'Absolute Predictive error / kcal*mol^-1')
+    else:
+        ax.hist(
+            errors_by_iter, density=True, label=labels, #histtype='barstacked'
+        )
+        ax.set_xlabel(f'Predictive error / kcal*mol^-1')
 
     ax.set_title(f'MolPAL Predictive Errors (B={b}, {prune} pruning)')
-    ax.set_xlabel(f'Predictive error / kcal*mol^-1')
     ax.set_ylabel('Density')
     ax.grid(True)
     ax.legend()
@@ -421,17 +534,47 @@ def plot_error_data(errors_by_iter: np.ndarray, b, prune):
 
     return fig
 
+def get_data_by_iter(parent_dir, smiles_col, score_col, N) -> List[Dict]:
+    p_data = Path(parent_dir) / 'data'
+    p_csvs = [p_csv for p_csv in p_data.iterdir() if 'iter' in str(p_csv)]
+
+    data_by_iter = [
+        utils.parse_csv(
+            p_csv, smiles_col=smiles_col,
+            score_col=score_col, k=N
+        ) for p_csv in p_csvs
+    ]
+
+    return sorted(data_by_iter, key=lambda d: len(d))
+
+def partition_data_by_iter(data_by_iter) -> List[Dict]:
+    """separate all of the data by the iteration at which they were acquired"""
+    new_data_by_iter = [data_by_iter[0]]
+    for i in range(1, len(data_by_iter)):
+        current_data = set(data_by_iter[i].items())
+        previous_data = set(data_by_iter[i-1].items())
+        new_data = dict(current_data ^ previous_data)
+        new_data_by_iter.append(new_data)
+
+    return new_data_by_iter
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--true-pkl',)
     parser.add_argument('--parent-dir', required=True)
+    parser.add_argument('--smiles-col', type=int, default=0)
+    parser.add_argument('--score-col', type=int, default=1)
     parser.add_argument('-k', type=int,)
+    parser.add_argument('-N', type=int,)
     parser.add_argument('--split', type=float, required=True)
     parser.add_argument('--mode', required=True,
-                        choices=('topk', 'errors', 'intersection', 'union'))
+                        choices=('topk', 'errors', 'diversity',
+                                 'intersection', 'union'))
     parser.add_argument('--name', default='.')
     parser.add_argument('--format', '--fmt', default='png',
                         choices=('png', 'pdf'))
+    parser.add_argument('--bins', type=int, default=50)
+    parser.add_argument('--log', action='store_true', default=False)
 
     args = parser.parse_args()
 
@@ -439,19 +582,20 @@ if __name__ == "__main__":
         true_data = pickle.load(open(args.true_pkl, 'rb'))
         size = len(true_data)
         try:
-            true_data = sorted(true_data.items(), key=itemgetter(1))[:args.k]
+            true_data = sorted(true_data.items(), key=itemgetter(1))[:args.N]
         except AttributeError:
-            true_data = sorted(true_data, key=itemgetter(1))[:args.k]
+            true_data = sorted(true_data, key=itemgetter(1))[:args.N]
 
     if args.mode == 'topk':
-        d_b_prune_data = gather_prune_data(
-            true_data, args.parent_dir, args.k
-        )
-        fig = plot_prune_data(d_b_prune_data, size, args.split, args.k)
+        # d_b_prune_data = gather_prune_data(
+        #     true_data, args.parent_dir, args.N
+        # )
+        d_t_data = analyze_nn_data(args.parent_dir, true_data, args.N)
+        fig = plot_nn_data(d_t_data, size, args.split, args.N)
 
         results_dir = Path(f'{args.name}/{args.split}')
         results_dir.mkdir(parents=True, exist_ok=True)
-        fig.savefig(f'{results_dir}/top{args.k}_results_plot.{args.format}')
+        fig.savefig(f'{results_dir}/top{args.N}_results_plot.{args.format}')
 
     elif args.mode == 'errors':
         p_errors = Path(f'{args.name}') / 'errors'
@@ -463,8 +607,54 @@ if __name__ == "__main__":
 
         fig.savefig(f'{p_errors}/{b}_{prune}_hist.{args.format}')
 
+    elif args.mode == 'diversity':
+        p_div = Path(f'{args.name}/{args.split}') / 'diversity'
+        p_div.mkdir(exist_ok=True, parents=True)
+
+        data_by_iter = get_data_by_iter(
+            args.parent_dir, args.smiles_col, args.score_col, args.N
+        )
+        new_data_by_iter = partition_data_by_iter(data_by_iter)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+        bins = np.linspace(0., 1., args.bins)
+        width = (bins[1] - bins[0])
+
+        for i, data in enumerate(new_data_by_iter):
+            smis, _ = zip(*data.items())
+            fps = utils.smis_to_fps(smis)
+            hist = sar.distance_hist(fps, args.bins, args.k, args.log)
+            # hist = distance_hist(data, args.bins, True)
+            
+            ax.bar(bins, hist, align='edge', width=width,
+                   label=i, alpha=0.7)
+
+        plt.legend(title='Iteration')
+        k = f'{args.k}' if args.k else 'all'
+
+        name, model, metric, split, *_ = Path(args.parent_dir).name.split('_')
+        
+        base_title = f'{name} {model} {metric} {split} batch diversity'
+        if args.k is None:
+            comment = 'all molecules'
+        elif args.k >= 1:
+            comment = f'{args.k} nearest neighbors'
+        else:
+            comment = f'{args.k} nearest neighbor'
+
+        ax.set_title(f'{base_title} ({comment})')
+        ax.set_xlabel('Tanimoto distance')
+        ax.set_ylabel('Count')
+
+        plt.tight_layout()
+        # hist_type = '2d' if args.two_d else '1d'
+        # fig.savefig(f'{fig_dir}/top{args.k}_{neighbors}_{hist_type}.png')
+        fig.savefig(f'{p_div}/{model}_{metric}_{k}_hist.{args.format}')
+
     elif args.mode == 'intersection':
-        top_k_intersections(args.parent_dir, args.k)
+        top_N_intersections(args.parent_dir, args.N)
     elif args.mode == 'union':
         unions(args.parent_dir)
     else:

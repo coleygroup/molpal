@@ -137,13 +137,12 @@ class Acquirer:
 
     @property
     def needs(self) -> Set[str]:
-        """Set[str] : the values this acquirer needs to calculate acquisition 
-        utilities"""
+        """the values this acquirer needs to calculate acquisition utilities"""
         return metrics.get_needs(self.metric)
     
     @property
     def init_size(self) -> int:
-        """int : the number of inputs to acquire initially"""
+        """the number of inputs to acquire initially"""
         if isinstance(self.__init_size, float):
             return math.ceil(self.size * self.__init_size)
 
@@ -160,7 +159,7 @@ class Acquirer:
 
     @property
     def batch_size(self) -> int:
-        """int : the number of inputs to acquire in each batch"""
+        """the number of inputs to acquire in each batch"""
         if isinstance(self.__batch_size, float):
             return math.ceil(self.size * self.__batch_size)
 
