@@ -1,8 +1,10 @@
+import os
 import signal
 import sys
 from timeit import default_timer as time
 
-# from molpal.args import gen_args
+import ray
+
 from molpal import args, Explorer
 
 def sigterm_handler(signum, frame):
@@ -19,12 +21,32 @@ def main():
 *   \/_/  \/_/   \/_____/   \/_____/   \/_/     \/_/\/_/   \/_____/ *
 *********************************************************************''')
     print('Welcome to MolPAL!')
+    
     params = vars(args.gen_args())
     print(f'MolPAL will be run with the following arguments:')
     for k, v in sorted(params.items()):
         print(f'  {k}: {v}')
     print(flush=True)
     
+    try:
+        if 'redis_password' in os.environ:
+            ray.init(
+                address=os.environ["ip_head"],#'auto',
+                _node_ip_address=os.environ["ip_head"].split(":")[0], 
+                _redis_password=os.environ['redis_password']
+            )
+        else:
+            ray.init(address='auto')
+    except ConnectionError:
+        ray.init(num_cpus=args.MAX_CPU, _temp_dir=params['tmp_dir'])
+    except PermissionError:
+        print('Failed to create a temporary directory for ray')
+        raise
+
+    print('Ray cluster online with resources:')
+    print(ray.cluster_resources())
+    print(flush=True)
+
     explorer = Explorer(**params)
 
     start = time()
