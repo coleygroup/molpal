@@ -1,7 +1,7 @@
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
 import os
 from pathlib import Path
-import sys
+import tempfile
 from typing import Optional, Union
 
 # os.sched_getaffinity(0) returns the set of CPUs this process can use,
