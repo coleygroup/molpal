@@ -51,11 +51,20 @@ def read_data(p_data, k) -> List[Tuple]:
     with open(p_data) as fid:
         reader = csv.reader(fid); next(reader)
         # the data files are always sorted
-        data = [(row[0], -float(row[1]))
-                for row in takewhile(lambda row: bool(row), islice(reader, k))] #if row[1]]
+        data = [
+            (row[0], -float(row[1]))
+            for row in takewhile(lambda row: bool(row), islice(reader, k))
+            if row[1]
+        ]
         # data=[]
         # for row in islice(reader, k):
-        #     data.append((row[0], -float(row[1])))
+        #     try:
+        #         data.append((row[0], -float(row[1])))
+        #     except:
+        #         print(p_data)
+        #         print(len(data))
+        #         print(row)
+        #         raise
     
     return sorted(data, key=itemgetter(1))[:k]
 
