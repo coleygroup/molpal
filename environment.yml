@@ -10,14 +10,14 @@ dependencies:
   - h5py
   - importlib_resources
   - numpy
-  - omnia::pdbfixer
-  - python=3.6.10
+  - python=3.8
   - pytorch
   - rdkit
   - scikit-learn
   - tqdm
   - pip
   - pip:
+    - ray
     - tensorflow
     - tensorflow-addons
     - typing-extensions
