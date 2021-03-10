@@ -1,15 +1,14 @@
-from typing import List, Iterable, Optional
+from typing import Iterable, Optional
 
 import numpy as np
 import torch
 from torch import nn
 from tqdm import tqdm
 
-from ..chemprop.data import MoleculeDataLoader, MoleculeDataset, StandardScaler
-from ..chemprop.features import BatchMolGraph, mol2graph
+from ..chemprop.data import StandardScaler
 
 def predict(model: nn.Module, data_loader: Iterable,
-            disable_progress_bar: bool = False,
+            disable: bool = False,
             scaler: Optional[StandardScaler] = None) -> np.ndarray:
     """Predict the output values of a dataset
 
@@ -19,7 +18,7 @@ def predict(model: nn.Module, data_loader: Iterable,
         the model to use
     data_loader : MoleculeDataLoader
         an iterable of MoleculeDatasets
-    disable_progress_bar : bool (Default = False)
+    disable : bool (Default = False)
         whether to disable the progress bar
     scaler : Optional[StandardScaler] (Default = None)
         A StandardScaler object fit on the training targets
@@ -35,7 +34,7 @@ def predict(model: nn.Module, data_loader: Iterable,
     pred_batches = []
     with torch.no_grad():
         for batch in tqdm(data_loader, desc='Batch inference', unit='minibatch',
-                          leave=False):
+                          leave=False, disable=disable):
             batch_graph = batch.batch_graph()
             pred_batch = model(batch_graph)
             pred_batches.append(pred_batch.data.cpu().numpy())
@@ -56,3 +55,4 @@ def predict(model: nn.Module, data_loader: Iterable,
         preds = scaler.inverse_transform(preds)
 
     return preds
+    
