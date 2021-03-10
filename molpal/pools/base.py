@@ -4,7 +4,6 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import gzip
 from itertools import repeat
-import os
 from pathlib import Path
 from typing import Iterator, List, Optional, Sequence, Tuple, Type, Union
 
