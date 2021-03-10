@@ -3,11 +3,13 @@ their underlying model"""
 
 from argparse import Namespace
 from functools import partial
+from itertools import chain
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from numpy import ndarray
-from tqdm import tqdm
+import ray
+from tqdm import tqdm, trange
 import torch.cuda
 
 from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
@@ -17,7 +19,7 @@ from .chemprop.data.utils import split_data
 from . import chemprop
 
 from molpal.models.base import Model
-from molpal.models import mpnn
+from molpal.models import mpnn, utils
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -61,9 +63,9 @@ class MPNN:
                  final_lr: float = 1e-4, log_frequency: int = 10,
                  ncpu: int = 1):
         if torch.cuda.is_available():
-            self.device = 'cuda' 
+            device = 'cuda' 
         else:
-            self.device = 'cpu'
+            device = 'cpu'
 
         self.ncpu = ncpu
 
@@ -73,9 +75,9 @@ class MPNN:
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             activation=activation, ffn_hidden_size=ffn_hidden_size, 
-            ffn_num_layers=ffn_num_layers, device=self.device,
+            ffn_num_layers=ffn_num_layers, device=device,
         )
-        self.model = self.model.to(self.device)
+        self.device = device
 
         self.epochs = epochs
         self.batch_size = batch_size
@@ -84,12 +86,53 @@ class MPNN:
             epochs=epochs, warmup_epochs=warmup_epochs,
             total_epochs=epochs, batch_size=batch_size,
             init_lr=init_lr, max_lr=max_lr, final_lr=final_lr, num_lrs=1,
-            log_frequency=log_frequency)
+            log_frequency=log_frequency
+        )
 
         self.loss_func = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method)
         self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
+
+        if ray.cluster_resources().get('GPU', 0) > 0:
+            @ray.remote(num_cpus=ncpu, num_gpus=1)
+            def _predict(model, smis, batch_size, ncpu, scaler):
+                model.device = 0
+
+                test_data = MoleculeDataset(
+                    [MoleculeDatapoint(smiles=[smi]) for smi in smis]
+                )
+                data_loader = MoleculeDataLoader(
+                    dataset=test_data, batch_size=batch_size, num_workers=ncpu
+                )
+                return mpnn.predict(
+                    model, data_loader, disable=True, scaler=scaler
+                )
+        else:
+            @ray.remote(num_cpus=ncpu)
+            def _predict(model, smis, batch_size, ncpu, scaler):
+                model.device = 'cpu'
+
+                test_data = MoleculeDataset(
+                    [MoleculeDatapoint(smiles=[smi]) for smi in smis]
+                )
+                data_loader = MoleculeDataLoader(
+                    dataset=test_data, batch_size=batch_size, num_workers=ncpu
+                )
+                return mpnn.predict(
+                    model, data_loader, disable=True, scaler=scaler
+                )
+        
+        self._predict = _predict
+
+    @property
+    def device(self):
+        return self.__device
+
+    @device.setter
+    def device(self, device):
+        self.__device = device
+        self.model.device = device
 
     def train(self, xs: Iterable[str], ys: Sequence[float]) -> bool:
         """Train the model on the inputs xs with the given targets ys"""
@@ -117,15 +160,16 @@ class MPNN:
         best_val_score = float('-inf')
         best_state_dict = self.model.state_dict()
 
-        for _ in tqdm(range(self.epochs), desc='Training', unit='epoch'):
+        for _ in trange(self.epochs, desc='Training', unit='epoch'):
             n_iter = mpnn.train(
                 self.model, train_data_loader, self.loss_func,
                 optimizer, scheduler, self.train_args, n_iter
             )
             # if isinstance(scheduler, exponentialLR)
             #   scheduler.step()
+            # this will need to be changed if we allow classification
             val_scores = mpnn.evaluate(
-                self.model, val_data_loader, self.model.output_size,
+                self.model, val_data_loader, 1,
                 self.metric_func, 'regession', self.scaler)
             val_score = np.nanmean(val_scores)
 
@@ -139,7 +183,7 @@ class MPNN:
 
     def make_datasets(
             self, xs: Iterable[str], ys: Sequence[float]
-            ) -> Tuple[MoleculeDataset, MoleculeDataset]:
+        ) -> Tuple[MoleculeDataset, MoleculeDataset]:
         """Split xs and ys into train and validation datasets"""
 
         data = MoleculeDataset([
@@ -156,23 +200,39 @@ class MPNN:
 
         return train_data, val_data
 
-    def predict(self, xs: Iterable[str]) -> ndarray:
+    def predict(self, smis: Iterable[str]) -> ndarray:
         """Generate predictions for the inputs xs"""
-        test_data = MoleculeDataset([MoleculeDatapoint(smiles=[x]) for x in xs])
-        data_loader = MoleculeDataLoader(
-            dataset=test_data,
-            batch_size=self.batch_size,
-            num_workers=self.ncpu
-        )
+        smis_batches = utils.batches(smis, 10000)
 
-        return mpnn.predict(self.model, data_loader, scaler=self.scaler)
+        model = ray.put(self.model)
+        scaler = ray.put(self.scaler)
+        refs = [
+            self._predict.remote(
+                model, smis, self.batch_size, self.ncpu, scaler
+            ) for smis in smis_batches
+        ]
+        preds_chunks = [
+            ray.get(r) for r in tqdm(refs, desc='Prediction', leave=False)
+        ]
+        preds_chunks = np.column_stack(preds_chunks)
+
+        return preds_chunks
+
+        # test_data = MoleculeDataset([MoleculeDatapoint(smiles=[smi]) for smi in smis])
+        # data_loader = MoleculeDataLoader(
+        #     dataset=test_data,
+        #     batch_size=self.batch_size,
+        #     num_workers=self.ncpu
+        # )
+
+        # return mpnn.predict(self.model, data_loader, scaler=self.scaler)
 
 class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
-    def __init__(self, test_batch_size: Optional[int] = 100000,
+    def __init__(self, test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, **kwargs):
-        test_batch_size = test_batch_size or 100000
+        test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(MPNN, ncpu=ncpu)
         self.model = self.build_model()
@@ -204,11 +264,10 @@ class MPNModel(Model):
 class MPNDropoutModel(Model):
     """Message-passing network model that predicts means and variances through
     stochastic dropout during model inference"""
-
-    def __init__(self, test_batch_size: Optional[int] = 100000,
+    def __init__(self, test_batch_size: Optional[int] = 1000000,
                  dropout: float = 0.2, dropout_size: int = 10,
                  ncpu: int = 1, **kwargs):
-        test_batch_size = test_batch_size or 100000
+        test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(MPNN, uncertainty_method='dropout',
                                    dropout=dropout, ncpu=ncpu)
@@ -251,10 +310,9 @@ class MPNDropoutModel(Model):
 class MPNTwoOutputModel(Model):
     """Message-passing network model that predicts means and variances
     through mean-variance estimation"""
-
-    def __init__(self, test_batch_size: Optional[int] = 100000,
+    def __init__(self, test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, **kwargs):
-        test_batch_size = test_batch_size or 100000
+        test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(MPNN, uncertainty_method='mve', ncpu=ncpu)
         self.model = self.build_model()
