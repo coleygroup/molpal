@@ -1,6 +1,6 @@
 from argparse import Namespace
 from logging import Logger
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import torch
 from torch import nn
@@ -15,7 +15,7 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
           loss_func: Callable, optimizer: Optimizer,
           scheduler: _LRScheduler, args: Namespace,
           n_iter: int = 0, logger: Optional[Logger] = None,
-          writer: Optional = None) -> int:
+          writer: Optional[Any] = None) -> int:
     """Trains a model for an epoch
 
     Parameters
@@ -49,7 +49,7 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
     # loss_sum = 0
     # iter_count = 0
 
-    for batch in tqdm(data_loader, desc='Step', unit='minibatch',
+    for batch in tqdm(data_loader, desc='Training', unit='step',
                       leave=False):
         # Prepare batch
         mol_batch = batch.batch_graph()
