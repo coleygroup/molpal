@@ -52,13 +52,13 @@ class MoleculeModel(nn.Module):
             self.sigmoid = nn.Sigmoid()
 
         self.output_size = num_tasks
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.encoder = self.build_encoder(
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation, device=self.device,
+            activation=activation, device=device,
         )
         self.ffn = self.build_ffn(
             output_size=num_tasks, hidden_size=hidden_size, dropout=dropout, 
@@ -66,8 +66,21 @@ class MoleculeModel(nn.Module):
             ffn_hidden_size=ffn_hidden_size
         )
 
+        self.device = device
+
         initialize_weights(self)
 
+    @property
+    def device(self):
+        return self.__device
+
+    @device.setter
+    def device(self, device):
+        self.__device = device
+        self.encoder.device = device
+        self.encoder.encoder.device = device
+        self.to(device)
+    
     def build_encoder(self, atom_messages: bool = False, bias: bool = False,
                       hidden_size: int = 300, depth: int = 3,
                       dropout: float = 0.0, undirected: bool = False,
