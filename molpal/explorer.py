@@ -4,13 +4,13 @@ for batched, Bayesian optimization."""
 from collections import deque
 import csv
 import heapq
-from itertools import zip_longest
-import os
 from operator import itemgetter
 from pathlib import Path
 import pickle
 import tempfile
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
+
+import numpy as np
 
 from molpal import acquirer, encoder, models, objectives, pools
 
@@ -80,7 +80,7 @@ class Explorer:
         a list containing the filepath of each score file that was written
         in the order in which they were written. Used only when saving the
         intermediate state to initialize another explorer
-    write_preds : bool
+    save_preds : bool
         whether the predictions should be written after each exploration batch
     verbose : int
         the level of output the Explorer prints
@@ -576,19 +576,20 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
 
-    def write_preds(self) -> None:
-        preds_path = Path(f'{self.root}/{self.name}/preds')
-        if not preds_path.is_dir():
-            preds_path.mkdir(parents=True)
+    def write_preds(self) -> str:
+        path = Path(f'{self.root}/{self.name}/preds')
+        if not path.is_dir():
+            path.mkdir(parents=True)
 
-        with open(f'{preds_path}/preds_iter_{self.epoch}.csv', 'w') as fid:
-            writer = csv.writer(fid)
-            writer.writerow(
-                ['smiles', 'predicted_score', '[predicted_variance]']
-            )
-            writer.writerows(
-                zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
-            )
+        if self.y_vars:
+            Y_pred = np.column_stack(self.y_preds, self.y_vars)
+        else:
+            Y_pred = np.array(self.y_preds)
+        
+        preds_file = f'{path}/preds_iter_{self.epoch}.npy'
+        np.save(preds_file, Y_pred)
+
+        return preds_file
     
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
