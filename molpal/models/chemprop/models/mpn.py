@@ -170,11 +170,17 @@ class MPN(nn.Module):
         if self.features_only:
             return
 
-        if args.mpn_shared:
-            self.encoder = nn.ModuleList([MPNEncoder(args, self.atom_fdim, self.bond_fdim)] * args.number_of_molecules)
-        else:
-            self.encoder = nn.ModuleList([MPNEncoder(args, self.atom_fdim, self.bond_fdim)
-                                          for _ in range(args.number_of_molecules)])
+        # if args.mpn_shared:
+        #     self.encoder = nn.ModuleList(
+        #         [MPNEncoder(args, self.atom_fdim, self.bond_fdim)]
+        #         * args.number_of_molecules
+        #     )
+        # else:
+            # self.encoder = nn.ModuleList([
+            #     MPNEncoder(args, self.atom_fdim, self.bond_fdim)
+            #     for _ in range(args.number_of_molecules)]
+            # )
+        self.encoder = MPNEncoder(args, self.atom_fdim, self.bond_fdim)
 
     def forward(self,
                 batch: Union[List[List[str]], List[List[Chem.Mol]], BatchMolGraph],
@@ -211,9 +217,16 @@ class MPN(nn.Module):
                 raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
                                           'per input (i.e., number_of_molecules = 1).')
 
-            encodings = [enc(ba, atom_descriptors_batch) for enc, ba in zip(self.encoder, batch)]
+            encodings = [
+                self.encoder(ba, atom_descriptors_batch) for ba in batch
+                #zip(self.encoder, batch)
+            ]
         else:
-            encodings = [enc(ba) for enc, ba in zip(self.encoder, batch)]
+            encodings = [
+                self.encoder(ba, atom_descriptors_batch) for ba in batch
+                #zip(self.encoder, batch)
+            ]
+            # encodings = [enc(ba) for enc, ba in zip(self.encoder, batch)]
 
         output = reduce(lambda x, y: torch.cat((x, y), dim=1), encodings)
 
