@@ -13,9 +13,8 @@ from ..chemprop.nn_utils import compute_gnorm, compute_pnorm, NoamLR
 
 def train(model: nn.Module, data_loader: MoleculeDataLoader,
           loss_func: Callable, optimizer: Optimizer,
-          scheduler: _LRScheduler, args: Namespace,
-          n_iter: int = 0, logger: Optional[Logger] = None,
-          writer: Optional[Any] = None) -> int:
+          scheduler: _LRScheduler, uncertainty: bool,
+          n_iter: int = 0, disable: bool = False) -> int:
     """Trains a model for an epoch
 
     Parameters
@@ -30,27 +29,24 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
         the optimizer
     scheduler : _LRScheduler
         the learning rate scheduler
-    args : Namespace
-        a Namespace object the containing necessary attributes
-    n_iter : int
+    uncertainty : bool
+        whether the model predicts its own uncertainty
+    n_iter : int, default=0
         the current number of training iterations
-    logger : Optional[Logger] (Default = None)
-        a logger for printing intermediate results. If None, print
-        intermediate results to stdout
-    writer : Optional[SummaryWriter] (Default = None)
-        A tensorboardX SummaryWriter
+    disable : bool, default=False
+        whether to disable the progress bar
 
     Returns
     -------
     n_iter : int
-        The total number of iterations (training examples) trained on so far
+        The total number of samples trained on so far
     """
     model.train()
     # loss_sum = 0
     # iter_count = 0
 
     for batch in tqdm(data_loader, desc='Training', unit='step',
-                      leave=False):
+                      leave=False, disable=disable,):
         # Prepare batch
         mol_batch = batch.batch_graph()
         features_batch = batch.features()
@@ -75,7 +71,7 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
         #         ], dim=1) * class_weights * mask
         #     )
 
-        if model.uncertainty:
+        if uncertainty:
             pred_means = preds[:, 0::2]
             pred_vars = preds[:, 1::2]
 
