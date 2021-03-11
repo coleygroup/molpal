@@ -74,7 +74,7 @@ def evaluate_predictions(
     return results
 
 def evaluate(model: nn.Module, data_loader: MoleculeDataLoader, num_tasks: int,
-             metric_func: Callable, dataset_type: str,
+             uncertainty: bool, metric_func: Callable, dataset_type: str,
              scaler: StandardScaler = None,
              logger: logging.Logger = None) -> List[float]:
     """Evaluates a model on a dataset.
@@ -103,7 +103,7 @@ def evaluate(model: nn.Module, data_loader: MoleculeDataLoader, num_tasks: int,
     """
     preds = predict(model, data_loader, disable=True, scaler=scaler)
 
-    if model.uncertainty:
+    if uncertainty:
         preds = preds[0]
 
     targets = list(chain(*[dataset.targets() for dataset in data_loader]))

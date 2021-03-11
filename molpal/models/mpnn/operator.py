@@ -76,7 +76,7 @@ class MPNNOperator(TrainingOperator):
         val_loader = [item for item in val_loader]
         #print(val_loader)
         val_scores = mpnn.evaluate(
-            self.model, val_loader, 1,
+            self.model, val_loader, 1, self.uncertainty,
             self.metric_func, 'regession', self.scaler)
         val_score = np.nanmean(val_scores)
 
