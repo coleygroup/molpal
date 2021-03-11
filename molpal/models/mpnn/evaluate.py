@@ -101,7 +101,8 @@ def evaluate(model: nn.Module, data_loader: MoleculeDataLoader, num_tasks: int,
     List[float]
         A list with the score for each task based on metric_func
     """
-    preds = predict(model, data_loader, disable=True, scaler=scaler)
+    preds = predict(model, data_loader, uncertainty,
+                    disable=True, scaler=scaler)
 
     if uncertainty:
         preds = preds[0]
