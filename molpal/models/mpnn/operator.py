@@ -46,6 +46,8 @@ class MPNNOperator(TrainingOperator):
         criterion = mpnn.utils.get_loss_func(
             train_args.dataset_type, model.uncertainty_method
         )
+
+        self.uncertainty = model.uncertainty
         self.metric_func = chemprop.utils.get_metric_func(train_args.metric)
 
         self.n_iter = 0
@@ -66,7 +68,7 @@ class MPNNOperator(TrainingOperator):
         #print(train_loader)
         self.n_iter += mpnn.train(
             self.model, train_loader, self.criterion,
-            self.optimizer, self.scheduler, self.train_args, self.n_iter
+            self.optimizer, self.scheduler, self.uncertainty, self.n_iter, True
         )
         return {}
     
