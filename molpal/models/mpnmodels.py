@@ -78,6 +78,7 @@ class MPNN:
             activation=activation, ffn_hidden_size=ffn_hidden_size, 
             ffn_num_layers=ffn_num_layers, device=device,
         )
+        self.uncertainty = uncertainty_method in {'mve'}
         self.device = device
 
         self.epochs = epochs
@@ -107,7 +108,8 @@ class MPNN:
                     dataset=test_data, batch_size=batch_size, num_workers=ncpu
                 )
                 return mpnn.predict(
-                    model, data_loader, disable=True, scaler=scaler
+                    model, data_loader, self.uncertainty,
+                    disable=True, scaler=scaler
                 )
         else:
             @ray.remote(num_cpus=ncpu)
@@ -121,7 +123,8 @@ class MPNN:
                     dataset=test_data, batch_size=batch_size, num_workers=ncpu
                 )
                 return mpnn.predict(
-                    model, data_loader, disable=True, scaler=scaler
+                    model, data_loader, self.uncertainty,
+                    disable=True, scaler=scaler
                 )
         
         self._predict = _predict
@@ -139,7 +142,8 @@ class MPNN:
         """Train the model on the inputs SMILES with the given targets"""
         config = {
             'smis': smis, 'targets': targets, 'model': self.model,
-            'train_args': self.train_args, 'ncpu': self.ncpu, 
+            'uncertainty': self.uncertainty, 'train_args': self.train_args, 
+            'ncpu': self.ncpu, 
         }
         ngpu = int(ray.cluster_resources().get('GPU', 0))
         if ngpu > 0:

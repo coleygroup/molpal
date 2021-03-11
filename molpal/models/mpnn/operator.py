@@ -47,7 +47,7 @@ class MPNNOperator(TrainingOperator):
             train_args.dataset_type, model.uncertainty_method
         )
 
-        self.uncertainty = model.uncertainty
+        self.uncertainty = config['uncertainty']
         self.metric_func = chemprop.utils.get_metric_func(train_args.metric)
 
         self.n_iter = 0

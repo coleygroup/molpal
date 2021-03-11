@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from ..chemprop.data import StandardScaler
 
-def predict(model: nn.Module, data_loader: Iterable,
+def predict(model: nn.Module, data_loader: Iterable, uncertainty: bool,
             disable: bool = False,
             scaler: Optional[StandardScaler] = None) -> np.ndarray:
     """Predict the output values of a dataset
@@ -18,6 +18,8 @@ def predict(model: nn.Module, data_loader: Iterable,
         the model to use
     data_loader : MoleculeDataLoader
         an iterable of MoleculeDatasets
+    uncertainty : bool
+        whether the model predicts its own uncertainty
     disable : bool (Default = False)
         whether to disable the progress bar
     scaler : Optional[StandardScaler] (Default = None)
@@ -40,7 +42,7 @@ def predict(model: nn.Module, data_loader: Iterable,
             pred_batches.append(pred_batch.data.cpu().numpy())
     preds = np.concatenate(pred_batches)
 
-    if model.uncertainty:
+    if uncertainty:
         means = preds[:, 0::2]
         variances = preds[:, 1::2]
 
