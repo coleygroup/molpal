@@ -137,29 +137,31 @@ class MPNN:
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
-        # config = {
-        #     'smis': smis, 'targets': targets, 'model': self.model,
-        #     'train_args': self.train_args, 'ncpu': self.ncpu, 
-        # }
-        # ngpu = int(ray.cluster_resources().get('GPU', 0))
-        # if ngpu > 0:
-        #     num_workers = ngpu #- 1
-        # else:
-        #     num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+        config = {
+            'smis': smis, 'targets': targets, 'model': self.model,
+            'train_args': self.train_args, 'ncpu': self.ncpu, 
+        }
+        ngpu = int(ray.cluster_resources().get('GPU', 0))
+        if ngpu > 0:
+            num_workers = ngpu #- 1
+        else:
+            num_workers = ray.cluster_resources()['CPU'] // self.ncpu
 
-        # trainer = TorchTrainer(
-        #     training_operator_cls=mpnn.MPNNOperator, config=config,
-        #     num_workers=num_workers, use_gpu=False, backend='gloo'
-        # )
+        trainer = TorchTrainer(
+            training_operator_cls=mpnn.MPNNOperator, config=config,
+            num_workers=num_workers, use_gpu=ngpu>0, #backend='gloo'
+            scheduler_step_freq='manual'
+        )
 
-        # metricss, val_metricss = [], []
-        # for _ in trange(self.epochs, desc='Training', unit='epoch'):
-        #     metricss.append(trainer.train())
-        #     val_metricss.append(trainer.validate())
+        
+        for _ in trange(self.epochs, desc='Training', unit='epoch'):
+            trainer.train()
+            trainer.validate()
+        self.model = trainer.get_model()
+        #print(metricss)
+        #print(val_metricss)
+        return True
 
-        # print(metricss)
-        # print(val_metricss)
-        # return True
         train_data, val_data = self.make_datasets(smis, targets)
         n_xs = len(train_data) + len(val_data)
         self.train_args.train_data_size = n_xs

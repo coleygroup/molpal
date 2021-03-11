@@ -1,3 +1,4 @@
+from itertools import chain
 import logging
 from typing import Callable, List
 
@@ -32,6 +33,7 @@ def evaluate_predictions(
     List[float]
         a list with the score for each task based on metric_func
     """
+    #print(len(preds)); print(len(targets))
     info = logger.info if logger else print
 
     if len(preds) == 0:
@@ -104,8 +106,10 @@ def evaluate(model: nn.Module, data_loader: MoleculeDataLoader, num_tasks: int,
     if model.uncertainty:
         preds = preds[0]
 
+    targets = list(chain(*[dataset.targets() for dataset in data_loader]))
+    # print(targets)
     results = evaluate_predictions(
-        preds=preds, targets=data_loader.targets, num_tasks=num_tasks,
+        preds=preds, targets=targets, num_tasks=num_tasks,
         metric_func=metric_func, dataset_type=dataset_type, logger=logger
     )
 

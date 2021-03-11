@@ -62,8 +62,6 @@ class MPNNOperator(TrainingOperator):
         )
     
     def train_epoch(self, train_loader, info):
-        #train_loader = [x for x in train_loader]
-        #print(train_loader)
         self.n_iter += mpnn.train(
             self.model, train_loader, self.criterion,
             self.optimizer, self.scheduler, self.train_args, self.n_iter
@@ -71,8 +69,6 @@ class MPNNOperator(TrainingOperator):
         return {}
     
     def validate(self, val_loader, info):
-        val_loader = [item for item in val_loader]
-        #print(val_loader)
         val_scores = mpnn.evaluate(
             self.model, val_loader, 1,
             self.metric_func, 'regession', self.scaler)
@@ -82,7 +78,7 @@ class MPNNOperator(TrainingOperator):
             self.best_val_score = val_score
             self.best_state_dict = self.model.state_dict()
 
-        return {}
+return {}
     def get_model(self):
         model = super().get_model()
         model.load_state_dict(self.best_state_dict)
