@@ -582,7 +582,7 @@ class Explorer:
             path.mkdir(parents=True)
 
         if self.y_vars:
-            Y_pred = np.column_stack(self.y_preds, self.y_vars)
+            Y_pred = np.column_stack((self.y_preds, self.y_vars))
         else:
             Y_pred = np.array(self.y_preds)
         
