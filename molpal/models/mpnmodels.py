@@ -79,21 +79,25 @@ class MPNN:
             activation=activation, ffn_hidden_size=ffn_hidden_size, 
             ffn_num_layers=ffn_num_layers, device=device,
         )
+        self.uncertainty_method = uncertainty_method
         self.uncertainty = uncertainty_method in {'mve'}
+        self.dataset_type = dataset_type
+        self.num_tasks = num_tasks
         self.device = device
 
         self.epochs = epochs
         self.batch_size = batch_size
-        self.train_args = Namespace(
-            dataset_type='regression', metric=metric,
-            epochs=epochs, warmup_epochs=warmup_epochs,
-            total_epochs=epochs, batch_size=batch_size,
-            init_lr=init_lr, max_lr=max_lr, final_lr=final_lr, num_lrs=1,
-            log_frequency=log_frequency
+        self.init_lr = init_lr
+        
+        self.scheduler_args = dict(
+            warmup_epochs=warmup_epochs, epochs=epochs, num_lrs=1,
+            batch_size=batch_size,
+            init_lr=init_lr, max_lr=max_lr, final_lr=final_lr,
         )
 
         self.loss_func = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method)
+        # self.metric = metric
         self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
@@ -143,9 +147,13 @@ class MPNN:
         """Train the model on the inputs SMILES with the given targets"""
         if self.ddp:
             config = {
-                'smis': smis, 'targets': targets, 'model': self.model,
-                'uncertainty': self.uncertainty, 'train_args': self.train_args, 
-                'ncpu': self.ncpu, 
+                'smis': smis, 'targets': targets,
+                'batch_size': self.batch_size, 'ncpu': self.ncpu, 
+                'model': self.model, 'init_lr': self.init_lr,
+                'scheduler_args': self.scheduler_args,
+                'dataset_type': self.dataset_type,
+                'uncertainty_method': self.uncertainty_method,
+                'metric': self.metric,
             }
             ngpu = int(ray.cluster_resources().get('GPU', 0))
             if ngpu > 0:
@@ -167,8 +175,7 @@ class MPNN:
             return True
 
         train_data, val_data = self.make_datasets(smis, targets)
-        n_xs = len(train_data) + len(val_data)
-        self.train_args.train_data_size = n_xs
+        train_data_size = len(train_data) + len(val_data)
 
         train_data_loader = MoleculeDataLoader(
             dataset=train_data,
@@ -181,10 +188,9 @@ class MPNN:
             num_workers=self.ncpu
         )
 
-        optimizer = chemprop.utils.build_optimizer(
-            self.model, self.train_args)
+        optimizer = chemprop.utils.build_optimizer(self.model, self.init_lr)
         scheduler = chemprop.utils.build_lr_scheduler(
-            optimizer, self.train_args)
+            optimizer, train_data_size=train_data_size, **self.scheduler_args)
 
         n_iter = 0
         best_val_score = float('-inf')
@@ -193,13 +199,13 @@ class MPNN:
         for _ in trange(self.epochs, desc='Training', unit='epoch'):
             n_iter = mpnn.train(
                 self.model, train_data_loader, self.loss_func,
-                optimizer, scheduler, self.train_args, n_iter
+                optimizer, scheduler, self.uncertainty, n_iter
             )
             # if isinstance(scheduler, exponentialLR)
             #   scheduler.step()
             # this will need to be changed if we allow classification
             val_scores = mpnn.evaluate(
-                self.model, val_data_loader, 1,
+                self.model, val_data_loader, self.num_tasks, self.uncertainty,
                 self.metric_func, 'regession', self.scaler)
             val_score = np.nanmean(val_scores)
 

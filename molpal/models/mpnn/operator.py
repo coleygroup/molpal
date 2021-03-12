@@ -24,31 +24,35 @@ class MPNNOperator(TrainingOperator):
 
         self.scaler = None
         train_data, val_data = self.make_datasets(smis, targets)
-        
-        train_args = config['train_args']
-        train_args.train_data_size = len(train_data) + len(val_data)
-        self.train_args = train_args
+        train_data_size = len(train_data) + len(val_data)
+
+        # scheduler_args = config['scheduler_args']
+        # self.scheduler_args = scheduler_args
         
         train_loader = MoleculeDataLoader(
             dataset=train_data,
-            batch_size=train_args.batch_size,
+            batch_size=config['batch_size'],
             num_workers=config.get('ncpu', 1)
         )
         val_loader = MoleculeDataLoader(
             dataset=val_data,
-            batch_size=train_args.batch_size,
+            batch_size=config['batch_size'],
             num_workers=config.get('ncpu', 1)
         )
 
         model = config['model']
-        optimizer = chemprop.utils.build_optimizer(model, train_args)
-        scheduler = chemprop.utils.build_lr_scheduler(optimizer, train_args)
+        optimizer = chemprop.utils.build_optimizer(
+            model, config['init_lr']
+        )
+        scheduler = chemprop.utils.build_lr_scheduler(
+            optimizer, train_data_size=train_data_size,
+            **config['scheduler_args'])
         criterion = mpnn.utils.get_loss_func(
-            train_args.dataset_type, model.uncertainty_method
+            config['dataset_type'], config['uncertainty_method']
         )
 
-        self.uncertainty = config['uncertainty']
-        self.metric_func = chemprop.utils.get_metric_func(train_args.metric)
+        self.uncertainty = config['uncertainty_method'] in {'mve'}
+        self.metric_func = chemprop.utils.get_metric_func(config['metric'])
 
         self.n_iter = 0
         self.best_val_score = float('-inf')
