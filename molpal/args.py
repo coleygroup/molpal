@@ -233,6 +233,9 @@ def add_model_args(parser: ArgumentParser) -> None:
                                  'mve', 'dropout', 'none'},
                         help='Confidence estimation method for NN/MPNN models')
 
+    parser.add_argument('--ddp', action='store_true', default=False,
+                        help='Whether to perform distributed MPN training over a multi-gpu setup  via PyTorch DDP. Currently only works with CUDA >= 11.0')
+                        
 ##################################
 #       STOPPING ARGUMENTS       #
 ##################################

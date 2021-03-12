@@ -62,13 +62,14 @@ class MPNN:
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
                  final_lr: float = 1e-4, log_frequency: int = 10,
-                 ncpu: int = 1):
+                 ncpu: int = 1, ddp: bool = False):
         if torch.cuda.is_available():
             device = 'cuda' 
         else:
             device = 'cpu'
 
         self.ncpu = ncpu
+        self.ddp = ddp
 
         self.model = mpnn.MoleculeModel(
             uncertainty_method=uncertainty_method,
@@ -140,31 +141,30 @@ class MPNN:
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
-        config = {
-            'smis': smis, 'targets': targets, 'model': self.model,
-            'uncertainty': self.uncertainty, 'train_args': self.train_args, 
-            'ncpu': self.ncpu, 
-        }
-        ngpu = int(ray.cluster_resources().get('GPU', 0))
-        if ngpu > 0:
-            num_workers = ngpu #- 1
-        else:
-            num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+        if self.ddp:
+            config = {
+                'smis': smis, 'targets': targets, 'model': self.model,
+                'uncertainty': self.uncertainty, 'train_args': self.train_args, 
+                'ncpu': self.ncpu, 
+            }
+            ngpu = int(ray.cluster_resources().get('GPU', 0))
+            if ngpu > 0:
+                num_workers = ngpu
+            else:
+                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
 
-        trainer = TorchTrainer(
-            training_operator_cls=mpnn.MPNNOperator, config=config,
-            num_workers=num_workers, use_gpu=ngpu>0, #backend='gloo'
-            scheduler_step_freq='manual'
-        )
+            trainer = TorchTrainer(
+                training_operator_cls=mpnn.MPNNOperator, config=config,
+                num_workers=num_workers, use_gpu=ngpu>0,
+                scheduler_step_freq='manual'
+            )
+            
+            for _ in trange(self.epochs, desc='Training', unit='epoch'):
+                trainer.train()
+                trainer.validate()
+            self.model = trainer.get_model()
 
-        
-        for _ in trange(self.epochs, desc='Training', unit='epoch'):
-            trainer.train()
-            trainer.validate()
-        self.model = trainer.get_model()
-        #print(metricss)
-        #print(val_metricss)
-        return True
+            return True
 
         train_data, val_data = self.make_datasets(smis, targets)
         n_xs = len(train_data) + len(val_data)
@@ -261,10 +261,10 @@ class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
-                 ncpu: int = 1, **kwargs):
+                 ncpu: int = 1, ddp: bool = False, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
-        self.build_model = partial(MPNN, ncpu=ncpu)
+        self.build_model = partial(MPNN, ncpu=ncpu, ddp=ddp)
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
@@ -296,11 +296,13 @@ class MPNDropoutModel(Model):
     stochastic dropout during model inference"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  dropout: float = 0.2, dropout_size: int = 10,
-                 ncpu: int = 1, **kwargs):
+                 ncpu: int = 1, ddp: bool = False, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
-        self.build_model = partial(MPNN, uncertainty_method='dropout',
-                                   dropout=dropout, ncpu=ncpu)
+        self.build_model = partial(
+            MPNN, uncertainty_method='dropout', dropout=dropout, 
+            ncpu=ncpu, ddp=ddp
+        )
         self.model = self.build_model()
 
         self.dropout_size = dropout_size
@@ -341,10 +343,12 @@ class MPNTwoOutputModel(Model):
     """Message-passing network model that predicts means and variances
     through mean-variance estimation"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
-                 ncpu: int = 1, **kwargs):
+                 ncpu: int = 1, ddp: bool = False, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
-        self.build_model = partial(MPNN, uncertainty_method='mve', ncpu=ncpu)
+        self.build_model = partial(
+            MPNN, uncertainty_method='mve', ncpu=ncpu, ddp=ddp
+        )
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
