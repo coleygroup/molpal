@@ -1,21 +1,20 @@
 """This module contains Model implementations that utilize the MPNN model as 
 their underlying model"""
-
-from argparse import Namespace
 from functools import partial
-from itertools import chain
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from numpy import ndarray
 import ray
 from ray.util.sgd import TorchTrainer
+from ray.util.sgd.torch import TrainingOperator
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from tqdm import tqdm, trange
 import torch.cuda
 
 from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
                                  MoleculeDataLoader)
-from .chemprop.data.scaler import StandardScaler
 from .chemprop.data.utils import split_data
 from . import chemprop
 
@@ -87,8 +86,13 @@ class MPNN:
 
         self.epochs = epochs
         self.batch_size = batch_size
+
+        self.warmup_epochs = warmup_epochs
         self.init_lr = init_lr
-        
+        self.max_lr = max_lr
+        self.final_lr = final_lr
+        self.metric = metric
+
         self.scheduler_args = dict(
             warmup_epochs=warmup_epochs, epochs=epochs, num_lrs=1,
             batch_size=batch_size,
@@ -97,40 +101,40 @@ class MPNN:
 
         self.loss_func = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method)
-        # self.metric = metric
         self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
-        if ray.cluster_resources().get('GPU', 0) > 0:
-            @ray.remote(num_cpus=ncpu, num_gpus=1)
-            def _predict(model, smis, batch_size, ncpu, scaler):
-                model.device = 0
+        self.use_gpu = ray.cluster_resources().get('GPU', 0) > 0
+        if self.use_gpu:
+            _predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+            # def _predict(model, smis, batch_size, ncpu, scaler):
+            #     model.device = 0
 
-                test_data = MoleculeDataset(
-                    [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-                )
-                data_loader = MoleculeDataLoader(
-                    dataset=test_data, batch_size=batch_size, num_workers=ncpu
-                )
-                return mpnn.predict(
-                    model, data_loader, self.uncertainty,
-                    disable=True, scaler=scaler
-                )
+            #     test_data = MoleculeDataset(
+            #         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
+            #     )
+            #     data_loader = MoleculeDataLoader(
+            #         dataset=test_data, batch_size=batch_size, num_workers=ncpu
+            #     )
+            #     return mpnn.predict(
+            #         model, data_loader, self.uncertainty,
+            #         disable=True, scaler=scaler
+            #     )
         else:
-            @ray.remote(num_cpus=ncpu)
-            def _predict(model, smis, batch_size, ncpu, scaler):
-                model.device = 'cpu'
+            _predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
+            # def _predict(model, smis, batch_size, ncpu, scaler):
+            #     model.device = 'cpu'
 
-                test_data = MoleculeDataset(
-                    [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-                )
-                data_loader = MoleculeDataLoader(
-                    dataset=test_data, batch_size=batch_size, num_workers=ncpu
-                )
-                return mpnn.predict(
-                    model, data_loader, self.uncertainty,
-                    disable=True, scaler=scaler
-                )
+            #     test_data = MoleculeDataset(
+            #         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
+            #     )
+            #     data_loader = MoleculeDataLoader(
+            #         dataset=test_data, batch_size=batch_size, num_workers=ncpu
+            #     )
+            #     return mpnn.predict(
+            #         model, data_loader, self.uncertainty,
+            #         disable=True, scaler=scaler
+            #     )
         
         self._predict = _predict
 
@@ -145,75 +149,107 @@ class MPNN:
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
+        return True
+
+        train_data, val_data = self.make_datasets(smis, targets)
+        steps_per_epoch = len(train_data) // self.batch_size
+
+        train_dataloader = MoleculeDataLoader(
+            dataset=train_data,
+            batch_size=self.batch_size,
+            num_workers=self.ncpu
+        )
+        val_dataloader = MoleculeDataLoader(
+            dataset=val_data,
+            batch_size=self.batch_size,
+            num_workers=self.ncpu
+        )
+
+        config = {
+            'model': self.model,
+            'dataset_type': self.dataset_type,
+            'uncertainty_method': self.uncertainty_method,
+            'warmup_epochs': self.warmup_epochs,
+            'max_epochs': self.epochs,
+            'steps_per_epoch': steps_per_epoch,
+            'init_lr': self.init_lr,
+            'max_lr': self.max_lr,
+            'final_lr': self.final_lr,
+            'metric': self.metric,
+            'train_loader': train_dataloader,
+            'val_loader': val_dataloader
+        }
         if self.ddp:
-            config = {
-                'smis': smis, 'targets': targets,
-                'batch_size': self.batch_size, 'ncpu': self.ncpu, 
-                'model': self.model, 'init_lr': self.init_lr,
-                'scheduler_args': self.scheduler_args,
-                'dataset_type': self.dataset_type,
-                'uncertainty_method': self.uncertainty_method,
-                'metric': self.metric,
-            }
             ngpu = int(ray.cluster_resources().get('GPU', 0))
             if ngpu > 0:
                 num_workers = ngpu
             else:
                 num_workers = ray.cluster_resources()['CPU'] // self.ncpu
 
+            operator = TrainingOperator.from_ptl(mpnn.LitMPNN)
             trainer = TorchTrainer(
-                training_operator_cls=mpnn.MPNNOperator, config=config,
-                num_workers=num_workers, use_gpu=ngpu>0,
-                scheduler_step_freq='manual'
+                training_operator_cls=operator,
+                num_workers=num_workers,
+                config=config,
+                use_gpu=ngpu>0,
+                use_tqdm=True,
             )
             
             for _ in trange(self.epochs, desc='Training', unit='epoch'):
                 trainer.train()
                 trainer.validate()
-            self.model = trainer.get_model()
 
+            self.model = trainer.get_model()
             return True
 
-        train_data, val_data = self.make_datasets(smis, targets)
-        train_data_size = len(train_data) + len(val_data)
-
-        train_data_loader = MoleculeDataLoader(
-            dataset=train_data,
-            batch_size=self.batch_size,
-            num_workers=self.ncpu
-        )
-        val_data_loader = MoleculeDataLoader(
-            dataset=val_data,
-            batch_size=self.batch_size,
-            num_workers=self.ncpu
+        model = mpnn.LitMPNN(config
+            # self.model, self.uncertainty_method,
+            # self.dataset_type, self.warmup_epochs,
+            # self.init_lr, self.max_lr, self.final_lr, self.metric
         )
 
-        optimizer = chemprop.utils.build_optimizer(self.model, self.init_lr)
-        scheduler = chemprop.utils.build_lr_scheduler(
-            optimizer, train_data_size=train_data_size, **self.scheduler_args)
+        early_stop_callback = EarlyStopping(
+            monitor='avg_val_loss',
+            patience=5,
+            verbose=True,
+            mode='min'
+        )
+        trainer = pl.Trainer(
+            gpus=1, max_epochs=self.epochs,
+            replace_sampler_ddp=False,#, accelerator='ddp'
+            callbacks=[early_stop_callback]
+        )
+        trainer.fit(model, train_dataloader, val_dataloader)
 
-        n_iter = 0
-        best_val_score = float('-inf')
-        best_state_dict = self.model.state_dict()
+        self.model = model.mpnn
+        return True
 
-        for _ in trange(self.epochs, desc='Training', unit='epoch'):
-            n_iter = mpnn.train(
-                self.model, train_data_loader, self.loss_func,
-                optimizer, scheduler, self.uncertainty, n_iter
-            )
-            # if isinstance(scheduler, exponentialLR)
-            #   scheduler.step()
-            # this will need to be changed if we allow classification
-            val_scores = mpnn.evaluate(
-                self.model, val_data_loader, self.num_tasks, self.uncertainty,
-                self.metric_func, 'regession', self.scaler)
-            val_score = np.nanmean(val_scores)
+        # optimizer = chemprop.utils.build_optimizer(self.model, self.init_lr)
+        # scheduler = chemprop.utils.build_lr_scheduler(
+        #     optimizer, train_data_size=train_data_size, **self.scheduler_args)
 
-            if val_score > best_val_score:
-                best_val_score = val_score
-                best_state_dict = self.model.state_dict()
+        # n_iter = 0
+        # best_val_score = float('-inf')
+        # best_state_dict = self.model.state_dict()
 
-        self.model.load_state_dict(best_state_dict)
+        # for _ in trange(self.epochs, desc='Training', unit='epoch'):
+        #     n_iter = mpnn.train(
+        #         self.model, train_dataloader, self.loss_func,
+        #         optimizer, scheduler, self.uncertainty, n_iter
+        #     )
+        #     # if isinstance(scheduler, exponentialLR)
+        #     #   scheduler.step()
+        #     # this will need to be changed if we allow classification
+        #     val_scores = mpnn.evaluate(
+        #         self.model, val_dataloader, self.num_tasks, self.uncertainty,
+        #         self.metric_func, 'regession', self.scaler)
+        #     val_score = np.nanmean(val_scores)
+
+        #     if val_score > best_val_score:
+        #         best_val_score = val_score
+        #         best_state_dict = self.model.state_dict()
+
+        # self.model.load_state_dict(best_state_dict)
 
         return True
 
@@ -228,11 +264,8 @@ class MPNN:
         ])
         train_data, val_data, _ = split_data(data=data, sizes=(0.8, 0.2, 0.0))
 
-        train_targets = train_data.targets()
-        self.scaler = StandardScaler().fit(train_targets)
-
-        scaled_targets = self.scaler.transform(train_targets).tolist()
-        train_data.set_targets(scaled_targets)
+        self.scaler = train_data.normalize_targets()    
+        val_data.scale_targets(self.scaler)
 
         return train_data, val_data
 
@@ -244,7 +277,8 @@ class MPNN:
         scaler = ray.put(self.scaler)
         refs = [
             self._predict.remote(
-                model, smis, self.batch_size, self.ncpu, scaler
+                model, smis, self.batch_size, self.ncpu,
+                self.uncertainty, scaler, self.use_gpu
             ) for smis in smis_batches
         ]
         preds_chunks = [

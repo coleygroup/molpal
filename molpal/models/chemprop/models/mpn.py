@@ -29,7 +29,7 @@ class MPNEncoder(nn.Module):
         self.dropout = args.dropout
         self.layers_per_message = 1
         self.undirected = args.undirected
-        self.device = args.device
+        # self.device = args.device
         self.aggregation = args.aggregation
         self.aggregation_norm = args.aggregation_norm
 
@@ -73,15 +73,20 @@ class MPNEncoder(nn.Module):
         :param atom_descriptors_batch: A list of numpy arrays containing additional atomic descriptors
         :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` containing the encoding of each molecule.
         """
+        device = next(self.W_i.parameters()).device
+
         if atom_descriptors_batch is not None:
             atom_descriptors_batch = [np.zeros([1, atom_descriptors_batch[0].shape[1]])] + atom_descriptors_batch   # padding the first with 0 to match the atom_hiddens
-            atom_descriptors_batch = torch.from_numpy(np.concatenate(atom_descriptors_batch, axis=0)).float().to(self.device)
+            atom_descriptors_batch = torch.from_numpy(np.concatenate(atom_descriptors_batch, axis=0)).float()#.to(device)
 
         f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope = mol_graph.get_components(atom_messages=self.atom_messages)
-        f_atoms, f_bonds, a2b, b2a, b2revb = f_atoms.to(self.device), f_bonds.to(self.device), a2b.to(self.device), b2a.to(self.device), b2revb.to(self.device)
+        f_atoms, f_bonds, a2b, b2a, b2revb = (
+            f_atoms.to(device), f_bonds.to(device),
+            a2b.to(device), b2a.to(device), b2revb.to(device)
+        )
 
         if self.atom_messages:
-            a2a = mol_graph.get_a2a().to(self.device)
+            a2a = mol_graph.get_a2a()#.to(self.device)
 
         # Input
         if self.atom_messages:
@@ -158,13 +163,13 @@ class MPN(nn.Module):
         :param atom_fdim: Atom feature vector dimension.
         :param bond_fdim: Bond feature vector dimension.
         """
-        super(MPN, self).__init__()
+        super().__init__()
         self.atom_fdim = atom_fdim or get_atom_fdim()
         self.bond_fdim = bond_fdim or get_bond_fdim(atom_messages=args.atom_messages)
 
         self.features_only = args.features_only
         self.use_input_features = args.use_input_features
-        self.device = args.device
+        self.device = 'cpu' #args.device
         self.atom_descriptors = args.atom_descriptors
 
         if self.features_only:

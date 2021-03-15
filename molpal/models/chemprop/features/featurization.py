@@ -234,17 +234,22 @@ class BatchMolGraph:
 
         self.max_num_bonds = max(1, max(len(in_bonds) for in_bonds in a2b))  # max with 1 to fix a crash in rare case of all single-heavy-atom mols
 
-        self.f_atoms = torch.FloatTensor(f_atoms)
-        self.f_bonds = torch.FloatTensor(f_bonds)
-        self.a2b = torch.LongTensor([a2b[a] + [0] * (self.max_num_bonds - len(a2b[a])) for a in range(self.n_atoms)])
-        self.b2a = torch.LongTensor(b2a)
-        self.b2revb = torch.LongTensor(b2revb)
+        self.f_atoms = torch.tensor(f_atoms)
+        self.f_bonds = torch.tensor(f_bonds)
+        self.a2b = torch.tensor([
+            a2b[a] + [0] * (self.max_num_bonds - len(a2b[a]))
+            for a in range(self.n_atoms)
+        ])
+        self.b2a = torch.tensor(b2a)
+        self.b2revb = torch.tensor(b2revb)
         self.b2b = None  # try to avoid computing b2b b/c O(n_atoms^3)
         self.a2a = None  # only needed if using atom messages
 
-    def get_components(self, atom_messages: bool = False) -> Tuple[torch.FloatTensor, torch.FloatTensor,
-                                                                   torch.LongTensor, torch.LongTensor, torch.LongTensor,
-                                                                   List[Tuple[int, int]], List[Tuple[int, int]]]:
+    def get_components(
+            self, atom_messages: bool = False
+        ) -> Tuple[torch.FloatTensor, torch.FloatTensor,
+                   torch.LongTensor, torch.LongTensor, torch.LongTensor,
+                   List[Tuple[int, int]], List[Tuple[int, int]]]:
         """
         Returns the components of the :class:`BatchMolGraph`.
 

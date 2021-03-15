@@ -361,6 +361,11 @@ class MoleculeDataset(Dataset):
 
         return scaler
 
+    def scale_targets(self, scaler: StandardScaler):
+        targets = [d.raw_targets for d in self._data]
+        scaled_targets = scaler.transform(targets).tolist()
+        self.set_targets(scaled_targets)
+
     def set_targets(self, targets: List[List[Optional[float]]]) -> None:
         """
         Sets the targets for each molecule in the dataset. Assumes the targets are aligned with the datapoints.
@@ -510,14 +515,14 @@ class MoleculeDataLoader(DataLoader):
             seed=self._seed
         )
 
-        super(MoleculeDataLoader, self).__init__(
+        super().__init__(
             dataset=self._dataset,
             batch_size=self._batch_size,
             sampler=self._sampler,
             num_workers=self._num_workers,
             collate_fn=construct_molecule_batch,
             multiprocessing_context=self._context,
-            timeout=self._timeout
+            timeout=self._timeout,
         )
 
     @property

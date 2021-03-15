@@ -70,16 +70,16 @@ class MoleculeModel(nn.Module):
 
         initialize_weights(self)
 
-    @property
-    def device(self):
-        return self.__device
+    # @property
+    # def device(self):
+    #     return self.__device
 
-    @device.setter
-    def device(self, device):
-        self.__device = device
-        self.encoder.device = device
-        self.encoder.encoder.device = device
-        self.to(device)
+    # @device.setter
+    # def device(self, device):
+    #     self.__device = device
+    #     self.encoder.device = device
+    #     self.encoder.encoder.device = device
+    #     self.to(device)
     
     def build_encoder(self, atom_messages: bool = False, bias: bool = False,
                       hidden_size: int = 300, depth: int = 3,
@@ -137,25 +137,25 @@ class MoleculeModel(nn.Module):
 
     def forward(self, *inputs):
         """Runs the MoleculeModel on the input."""
-        output = self.ffn(self.encoder(*inputs))
+        z = self.ffn(self.encoder(*inputs))
 
         if self.uncertainty:
-            mean_idxs = torch.tensor(range(0, list(output.size())[1], 2))
-            mean_idxs = mean_idxs.to(self.device)
-            pred_means = torch.index_select(output, 1, mean_idxs)
+            # mean_idxs = torch.tensor(range(0, list(z.size())[1], 2))
+            # mean_idxs = mean_idxs.to(self.device)
+            pred_means = z[:, 0::2] #torch.index_select(z, 1, mean_idxs)
 
-            var_idxs = torch.tensor(range(1, list(output.size())[1], 2))
-            var_idxs = var_idxs.to(self.device)
-            pred_vars = torch.index_select(output, 1, var_idxs)
+            # var_idxs = torch.tensor(range(1, list(z.size())[1], 2))
+            # var_idxs = var_idxs.to(self.device)
+            pred_vars = z[:, 1::2] #torch.index_select(z, 1, var_idxs)
             capped_vars = nn.functional.softplus(pred_vars)
 
-            output = torch.stack(
-                (pred_means, capped_vars), dim=2
-            ).view(output.size())
+            z = torch.clone(z)
+            z[:, 1::2] = capped_vars
+            # z = torch.stack((pred_means, capped_vars), dim=2).view(z.size())
 
         # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
         if self.classification and not self.training:
-            output = self.sigmoid(output)
+            z = self.sigmoid(z)
 
         # if self.multiclass:
         #     # batch size x num targets x num classes per target
@@ -165,4 +165,4 @@ class MoleculeModel(nn.Module):
         #         # training as we're using CrossEntropyLoss
         #         output = self.multiclass_softmax(output)
 
-        return output
+        return z
