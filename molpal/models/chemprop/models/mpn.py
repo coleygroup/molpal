@@ -193,7 +193,9 @@ class MPN(nn.Module):
         self.encoder = MPNEncoder(args, self.atom_fdim, self.bond_fdim)
 
     def forward(self,
-                batch: Union[List[List[str]], List[List[Chem.Mol]], BatchMolGraph],
+                batch: Union[
+                    List[List[str]], List[List[Chem.Mol]], List[BatchMolGraph]
+                ],
                 features_batch: List[np.ndarray] = None,
                 atom_descriptors_batch: List[np.ndarray] = None) -> torch.FloatTensor:
         """
@@ -205,6 +207,7 @@ class MPN(nn.Module):
         :param atom_descriptors_batch: A list of numpy arrays containing additional atom descriptors.
         :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` containing the encoding of each molecule.
         """
+        print(batch)
         if type(batch[0]) != BatchMolGraph:
             # TODO: handle atom_descriptors_batch with multiple molecules per input
             if self.atom_descriptors == 'feature':
