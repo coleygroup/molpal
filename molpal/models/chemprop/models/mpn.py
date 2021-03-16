@@ -1,4 +1,5 @@
 from argparse import Namespace
+from sys import base_exec_prefix
 from typing import List, Union
 from functools import reduce
 
@@ -211,7 +212,7 @@ class MPN(nn.Module):
         self.encoder = MPNEncoder(args, self.atom_fdim, self.bond_fdim)
 
     def forward(self,
-                batch: Union[
+                batches: Union[
                     List[List[str]], List[List[Chem.Mol]], List[BatchMolGraph]
                 ],
                 #features_batch: List[np.ndarray] = None,
@@ -226,16 +227,18 @@ class MPN(nn.Module):
         :param atom_descriptors_batch: A list of numpy arrays containing additional atom descriptors.
         :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` containing the encoding of each molecule.
         """
-        if type(batch[0]) != BatchMolGraph:
+        if type(batches[0]) != BatchMolGraph:
             # TODO: handle atom_descriptors_batch with multiple molecules per input
             if self.atom_descriptors == 'feature':
-                if len(batch[0]) > 1:
+                if len(batches[0]) > 1:
                     raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
                                               'per input (i.e., number_of_molecules = 1).')
 
-                batch = [mol2graph(b, atom_descriptors_batch) for b in batch]
+                batches = [
+                    mol2graph(b, atom_descriptors_batch) for b in batches
+                ]
             else:
-                batch = [mol2graph(b) for b in batch]
+                batches = [mol2graph(b) for b in batches]
 
         if self.use_input_features:
             features_batch = torch.from_numpy(np.stack(features_batch)).float().to(self.device)
@@ -244,17 +247,19 @@ class MPN(nn.Module):
                 return features_batch
 
         if self.atom_descriptors == 'descriptor':
-            if len(batch) > 1:
-                raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
-                                          'per input (i.e., number_of_molecules = 1).')
+            if len(batches) > 1:
+                raise NotImplementedError(
+                    'Atom descriptors are currently only supported with one '
+                    'molecule per input (i.e., number_of_molecules = 1).'
+                )
 
             encodings = [
-                self.encoder(ba, atom_descriptors_batch) for ba in batch
+                self.encoder(b, atom_descriptors_batch) for b in batches
                 #zip(self.encoder, batch)
             ]
         else:
             encodings = [
-                self.encoder(ba) for ba in batch
+                self.encoder(b) for b in batches
                 # self.encoder(ba, atom_descriptors_batch) for ba in batch
                 #zip(self.encoder, batch)
             ]
