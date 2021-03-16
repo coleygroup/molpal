@@ -109,10 +109,10 @@ class LitMPNN(pl.LightningModule):
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],
-            total_epochs=[self.max_epochs] * self.num_lrs,
-            #total_epochs=[self.trainer.num_epochs] * self.num_lrs
-            steps_per_epoch=self.steps_per_epoch,
-            # steps_per_epoch=self.num_training_steps,
+            # total_epochs=[self.max_epochs] * self.num_lrs,
+            total_epochs=[self.trainer.max_epochs] * self.num_lrs,
+            # steps_per_epoch=self.steps_per_epoch,
+            steps_per_epoch=self.num_training_steps,
             init_lr=[self.init_lr],
             max_lr=[self.max_lr],
             final_lr=[self.final_lr]
