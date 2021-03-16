@@ -1,20 +1,14 @@
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-import numpy as np
 import pytorch_lightning as pl
-from tqdm import tqdm
 import torch
 from torch import nn
 from torch.optim import Adam
 
 from molpal.models import mpnn
-from ..chemprop.data import StandardScaler, MoleculeDataset, MoleculeDataLoader
+from ..chemprop.data import MoleculeDataset
 from ..chemprop.nn_utils import NoamLR
-from ..chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
-                                 MoleculeDataLoader)
-from ..chemprop.data.scaler import StandardScaler
-from ..chemprop.data.utils import split_data
 from .. import chemprop
 
 class LitMPNN(pl.LightningModule):
@@ -102,40 +96,6 @@ class LitMPNN(pl.LightningModule):
         res = torch.sqrt(nn.MSELoss()(preds, targets))
         return res
 
-        # num_tasks = preds.shape[1]
-
-        # # valid_preds and valid_targets have shape (num_tasks, data_size)
-        # valid_preds = [[]] * num_tasks
-        # valid_targets = [[]] * num_tasks
-        # for j in range(num_tasks):
-        #     for i in range(len(preds_)):
-        #         valid_preds[j].append(preds_[i][j])
-        #         valid_targets[j].append(targets[i][j])
-
-        # # Compute metric
-        # results = []
-        # for preds, targets in zip(valid_preds, valid_targets):
-        #     # if all targets or preds are identical classification will crash
-        #     # if dataset_type == 'classification':
-        #     #     if all(t == 0 for t in targets) or all(targets):
-        #     #         # info('Warning: Found a task with targets all 0s or all 1s')
-        #     #         results.append(float('nan'))
-        #     #         continue
-        #     #     if all(p == 0 for p in preds) or all(preds):
-        #     #         # info('Warning: Found a task with predictions all 0s or all 1s')
-        #     #         results.append(float('nan'))
-        #     #         continue
-
-        #     if len(targets) == 0:
-        #         continue
-
-        #     results.append(self.metric_func(targets, preds))
-
-        # # print(f'val_loss: {results}')
-        # self.log('val_loss', results)
-        # print(results)
-        # return results
-
     def validation_epoch_end(self, outputs):
         avg_val_loss = torch.stack(outputs).cpu().numpy().mean()
         self.log('avg_val_loss', avg_val_loss)
@@ -149,7 +109,7 @@ class LitMPNN(pl.LightningModule):
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],
-            total_epochs=[self.max_epochs] * self.num_lrs, #self.trainer.*
+            total_epochs=[self.max_epochs] * self.num_lrs, #self.trainer.num_epochs
             steps_per_epoch=self.steps_per_epoch, #self.num_training_steps,
             init_lr=[self.init_lr],
             max_lr=[self.max_lr],
@@ -179,49 +139,4 @@ class LitMPNN(pl.LightningModule):
         return (batches // effective_accum) * self.trainer.max_epochs
 
     def forward(self, *inputs):
-        return self.mpnn(*inputs)
-        
-    # def predict(self, data_loader: MoleculeDataLoader,
-    #             scaler: Optional[StandardScaler] = None,
-    #             disable: bool = False) -> List[List[float]]:
-    #     self.mpnn.eval()
-
-    #     pred_batches = []
-    #     with torch.no_grad():
-    #         for batch in tqdm(data_loader, desc='Inference', unit='batch',
-    #                           leave=False, disable=disable):
-    #             batch_graph = batch.batch_graph()
-    #             pred_batch = self.mpnn(batch_graph)
-    #             pred_batches.append(pred_batch.data.cpu().numpy())
-    #     preds = np.concatenate(pred_batches)
-
-    #     if self.uncertainty:
-    #         means = preds[:, 0::2]
-    #         variances = preds[:, 1::2]
-
-    #         if scaler:
-    #             means = scaler.inverse_transform(means)
-    #             variances = scaler.stds**2 * variances
-
-    #         return means, variances
-
-    #     if scaler:
-    #         preds = scaler.inverse_transform(preds)
-
-    #     return preds
-
-    # def make_datasets(
-    #         self, xs: Iterable[str], ys: Sequence[float]
-    #     ) -> Tuple[MoleculeDataset, MoleculeDataset]:
-    #     """Split xs and ys into train and validation datasets"""
-
-    #     data = MoleculeDataset([
-    #         MoleculeDatapoint(smiles=[x], targets=[y])
-    #         for x, y in zip(xs, ys)
-    #     ])
-    #     train_data, val_data, _ = split_data(data=data, sizes=(0.8, 0.2, 0.0))
-
-    #     self.scaler = train_data.normalize_targets()    
-    #     val_data.scale_targets(self.scaler)
-
-    #     return train_data, val_data
+        return self.mpnn(inputs)
