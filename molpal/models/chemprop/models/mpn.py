@@ -70,7 +70,7 @@ class MPNEncoder(nn.Module):
 
     def forward(self,
                 mol_graph: BatchMolGraph,
-                #atom_descriptors_batch: List[np.ndarray] = None
+                atom_descriptors_batch: List[np.ndarray] = None
                 ) -> torch.FloatTensor:
         """
         Encodes a batch of molecular graphs.
