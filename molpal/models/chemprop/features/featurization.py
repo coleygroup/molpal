@@ -305,9 +305,10 @@ class BatchMolGraph:
         return self.a2a
 
 
-def mol2graph(mols: Union[List[str], List[Chem.Mol]], atom_descriptors_batch: List[np.array] = None) -> BatchMolGraph:
-    """
-    Converts a list of SMILES or RDKit molecules to a :class:`BatchMolGraph` containing the batch of molecular graphs.
+def mol2graph(mols: Union[List[str], List[Chem.Mol]],
+              atom_descriptors_batch: List[np.array] = None) -> BatchMolGraph:
+    """Converts a list of SMILES or RDKit molecules to a :class:`BatchMolGraph` 
+    containing the batch of molecular graphs.
 
     :param mols: A list of SMILES or a list of RDKit molecules.
     :param atom_descriptors_batch: A list of 2D numpy array containing additional atom descriptors to featurize the molecule

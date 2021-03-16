@@ -1,10 +1,10 @@
 from argparse import Namespace
-from typing import Iterable, Optional, Sequence, Tuple, TypeVar
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from ray.util.sgd.torch import TrainingOperator
 import torch
-import torch.cuda
+from torch import nn, cuda
 
 from ..chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
                                  MoleculeDataLoader)
@@ -76,6 +76,39 @@ class MPNNOperator(TrainingOperator):
         )
         return {}
     
+    def train_batch(self, batch: MoleculeDataset, batch_info: Dict) -> Dict:
+        mol_batch = batch.batch_graph()
+        
+        preds = self.model(mol_batch)
+        targets = batch.targets()
+        mask = torch.tensor(
+            [list(map(bool, ys)) for ys in targets], device=self.device
+        )
+        targets = torch.tensor(
+            [[y or 0 for y in ys] for ys in targets], device=self.device
+        )
+        class_weights = torch.ones(targets.shape, device=self.device)
+        
+        # if args.dataset_type == 'multiclass':
+        #     targets = targets.long()
+        #     loss = (torch.cat([
+        #         loss_func(preds[:, target_index, :],
+        #                    targets[:, target_index]).unsqueeze(1)
+        #         for target_index in range(preds.size(1))
+        #         ], dim=1) * class_weights * mask
+        #     )
+
+        if self.uncertainty:
+            pred_means = preds[:, 0::2]
+            pred_vars = preds[:, 1::2]
+
+            loss = self.criterion(pred_means, pred_vars, targets)
+        else:
+            loss = self.criterion(preds, targets) * class_weights * mask
+
+        loss = loss.sum() / mask.sum()
+        return loss
+    
     def validate(self, val_loader, info):
         val_loader = [item for item in val_loader]
         #print(val_loader)
@@ -89,6 +122,20 @@ class MPNNOperator(TrainingOperator):
             self.best_state_dict = self.model.state_dict()
 
         return {}
+    
+    def validation_step(self, batch: MoleculeDataset, batch_idx) -> List[float]:
+        preds = self.mpnn(batch.batch_graph())
+
+        if self.uncertainty:
+            preds = preds[:, 0::2]
+
+        # preds_ = preds.cpu().numpy()
+        targets_ = batch.targets()
+        targets = torch.tensor(targets_, device=self.device)
+
+        res = torch.sqrt(nn.MSELoss()(preds, targets))
+        return res
+    
     def get_model(self):
         model = super().get_model()
         model.load_state_dict(self.best_state_dict)

@@ -69,7 +69,8 @@ class MPNEncoder(nn.Module):
 
     def forward(self,
                 mol_graph: BatchMolGraph,
-                atom_descriptors_batch: List[np.ndarray] = None) -> torch.FloatTensor:
+                #atom_descriptors_batch: List[np.ndarray] = None
+                ) -> torch.FloatTensor:
         """
         Encodes a batch of molecular graphs.
 
@@ -81,10 +82,16 @@ class MPNEncoder(nn.Module):
         device = next(self.W_i.parameters()).device
 
         if atom_descriptors_batch is not None:
-            atom_descriptors_batch = [np.zeros([1, atom_descriptors_batch[0].shape[1]])] + atom_descriptors_batch   # padding the first with 0 to match the atom_hiddens
-            atom_descriptors_batch = torch.from_numpy(np.concatenate(atom_descriptors_batch, axis=0)).float().to(device)
+            # padding the first with 0 to match the atom_hiddens
+            atom_descriptors_batch = [
+                np.zeros([1, atom_descriptors_batch[0].shape[1]])
+            ] + atom_descriptors_batch
+            atom_descriptors_batch = torch.from_numpy(
+                np.concatenate(atom_descriptors_batch, axis=0)
+            ).float().to(device)
 
-        f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope = mol_graph.get_components(atom_messages=self.atom_messages)
+        components = mol_graph.get_components(atom_messages=self.atom_messages)
+        f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope = components
         f_atoms, f_bonds, a2b, b2a, b2revb = (
             f_atoms.to(device), f_bonds.to(device),
             a2b.to(device), b2a.to(device), b2revb.to(device)
@@ -101,7 +108,7 @@ class MPNEncoder(nn.Module):
         message = self.act_func(input)  # num_bonds x hidden_size
 
         # Message passing
-        for depth in range(self.depth - 1):
+        for _ in range(self.depth - 1):
             if self.undirected:
                 message = (message + message[b2revb]) / 2
 
@@ -123,17 +130,27 @@ class MPNEncoder(nn.Module):
             message = self.dropout_layer(message)  # num_bonds x hidden
 
         a2x = a2a if self.atom_messages else a2b
-        nei_a_message = index_select_ND(message, a2x)  # num_atoms x max_num_bonds x hidden
-        a_message = nei_a_message.sum(dim=1)  # num_atoms x hidden
-        a_input = torch.cat([f_atoms, a_message], dim=1)  # num_atoms x (atom_fdim + hidden)
-        atom_hiddens = self.act_func(self.W_o(a_input))  # num_atoms x hidden
-        atom_hiddens = self.dropout_layer(atom_hiddens)  # num_atoms x hidden
+        # num_atoms x max_num_bonds x hidden
+        nei_a_message = index_select_ND(message, a2x)
+        # num_atoms x hidden
+        a_message = nei_a_message.sum(dim=1)
+        # num_atoms x (atom_fdim + hidden)
+        a_input = torch.cat([f_atoms, a_message], dim=1)
+        # num_atoms x hidden
+        atom_hiddens = self.act_func(self.W_o(a_input))
+        # num_atoms x hidden
+        atom_hiddens = self.dropout_layer(atom_hiddens)
 
         # concatenate the atom descriptors
         if atom_descriptors_batch is not None:
-            atom_hiddens = torch.cat([atom_hiddens, atom_descriptors_batch], dim=1)     # num_atoms x (hidden + descriptor size)
-            atom_hiddens = self.atom_descriptors_layer(atom_hiddens)                    # num_atoms x (hidden + descriptor size)
-            atom_hiddens = self.dropout_layer(atom_hiddens)                             # num_atoms x (hidden + descriptor size)
+            # num_atoms x (hidden + descriptor size)
+            atom_hiddens = torch.cat(
+                [atom_hiddens, atom_descriptors_batch], dim=1
+            )
+            # num_atoms x (hidden + descriptor size
+            atom_hiddens = self.atom_descriptors_layer(atom_hiddens)
+            # num_atoms x (hidden + descriptor size)
+            atom_hiddens = self.dropout_layer(atom_hiddens)
 
         # Readout
         mol_vecs = []
@@ -157,7 +174,8 @@ class MPNEncoder(nn.Module):
 
 
 class MPN(nn.Module):
-    """An :class:`MPN` is a wrapper around :class:`MPNEncoder` which featurizes input as needed."""
+    """An :class:`MPN` is a wrapper around :class:`MPNEncoder` which featurizes 
+    input as needed."""
 
     def __init__(self,
                  args: Namespace,
@@ -196,8 +214,9 @@ class MPN(nn.Module):
                 batch: Union[
                     List[List[str]], List[List[Chem.Mol]], List[BatchMolGraph]
                 ],
-                features_batch: List[np.ndarray] = None,
-                atom_descriptors_batch: List[np.ndarray] = None) -> torch.FloatTensor:
+                #features_batch: List[np.ndarray] = None,
+                #atom_descriptors_batch: List[np.ndarray] = None
+                ) -> torch.FloatTensor:
         """
         Encodes a batch of molecules.
 
