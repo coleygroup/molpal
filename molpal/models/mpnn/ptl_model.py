@@ -178,6 +178,9 @@ class LitMPNN(pl.LightningModule):
         effective_accum = self.trainer.accumulate_grad_batches * num_devices
         return (batches // effective_accum) * self.trainer.max_epochs
 
+    def forward(self, *inputs):
+        return self.mpnn(*inputs)
+        
     # def predict(self, data_loader: MoleculeDataLoader,
     #             scaler: Optional[StandardScaler] = None,
     #             disable: bool = False) -> List[List[float]]:
