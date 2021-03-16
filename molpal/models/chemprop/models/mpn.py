@@ -254,7 +254,8 @@ class MPN(nn.Module):
             ]
         else:
             encodings = [
-                self.encoder(ba, atom_descriptors_batch) for ba in batch
+                self.encoder(ba) for ba in batch
+                # self.encoder(ba, atom_descriptors_batch) for ba in batch
                 #zip(self.encoder, batch)
             ]
             # encodings = [enc(ba) for enc, ba in zip(self.encoder, batch)]
