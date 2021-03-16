@@ -151,30 +151,30 @@ class MPNN:
             'final_lr': self.final_lr,
             'metric': self.metric,
         }
-        if self.ddp:
-            ngpu = int(ray.cluster_resources().get('GPU', 0))
-            if ngpu > 0:
-                num_workers = ngpu
-            else:
-                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+        # if self.ddp:
+        #     ngpu = int(ray.cluster_resources().get('GPU', 0))
+        #     if ngpu > 0:
+        #         num_workers = ngpu
+        #     else:
+        #         num_workers = ray.cluster_resources()['CPU'] // self.ncpu
 
-            operator = TrainingOperator.from_ptl(
-                mpnn.LitMPNN, train_dataloader, val_dataloader
-            )
-            trainer = TorchTrainer(
-                training_operator_cls=operator,
-                num_workers=num_workers,
-                config=config,
-                use_gpu=ngpu>0,
-                use_tqdm=True,
-            )
+        #     operator = TrainingOperator.from_ptl(
+        #         mpnn.LitMPNN, train_dataloader, val_dataloader
+        #     )
+        #     trainer = TorchTrainer(
+        #         training_operator_cls=operator,
+        #         num_workers=num_workers,
+        #         config=config,
+        #         use_gpu=ngpu>0,
+        #         use_tqdm=True,
+        #     )
             
-            for _ in trange(self.epochs, desc='Training', unit='epoch'):
-                trainer.train()
-                trainer.validate()
+        #     for _ in trange(self.epochs, desc='Training', unit='epoch'):
+        #         trainer.train()
+        #         trainer.validate()
 
-            self.model = trainer.get_model()
-            return True
+        #     self.model = trainer.get_model()
+        #     return True
 
         model = mpnn.LitMPNN(config
             # self.model, self.uncertainty_method,
@@ -189,9 +189,12 @@ class MPNN:
             mode='min'
         )
         trainer = pl.Trainer(
-            gpus=1, max_epochs=self.epochs,
-            replace_sampler_ddp=False,#, accelerator='ddp'
-            callbacks=[early_stop_callback]
+            max_epochs=self.epochs,
+            replace_sampler_ddp=False,
+            callbacks=[early_stop_callback],
+            gpus=int(ray.cluster_resources().get('GPU', 0)),
+            num_nodes=len(ray.nodes()),
+            accelerator='ddp'
         )
         trainer.fit(model, train_dataloader, val_dataloader)
 

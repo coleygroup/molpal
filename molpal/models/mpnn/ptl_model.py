@@ -109,8 +109,10 @@ class LitMPNN(pl.LightningModule):
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],
-            total_epochs=[self.max_epochs] * self.num_lrs, #self.trainer.num_epochs
-            steps_per_epoch=self.steps_per_epoch, #self.num_training_steps,
+            total_epochs=[self.max_epochs] * self.num_lrs,
+            #total_epochs=[self.trainer.num_epochs] * self.num_lrs
+            steps_per_epoch=self.steps_per_epoch,
+            # steps_per_epoch=self.num_training_steps,
             init_lr=[self.init_lr],
             max_lr=[self.max_lr],
             final_lr=[self.final_lr]
@@ -137,9 +139,3 @@ class LitMPNN(pl.LightningModule):
 
         effective_accum = self.trainer.accumulate_grad_batches * num_devices
         return (batches // effective_accum) * self.trainer.max_epochs
-
-    def forward(self, batch, batch_idx):
-        return self.mpnn(batch.batch_graph())
-    
-    def backward(self, loss, optimizer, optimizer_idx):
-        print(loss, optimizer, optimizer_idx)
