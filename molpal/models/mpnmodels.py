@@ -188,12 +188,15 @@ class MPNN:
             verbose=True,
             mode='min'
         )
+
+        ngpu = int(ray.cluster_resources().get('GPU', 0))
+        num_nodes = len(ray.nodes())
         trainer = pl.Trainer(
             max_epochs=self.epochs,
             replace_sampler_ddp=False,
             callbacks=[early_stop_callback],
-            gpus=int(ray.cluster_resources().get('GPU', 0)),
-            num_nodes=len(ray.nodes()),
+            gpus=ngpu // num_nodes,
+            num_nodes=num_nodes,
             accelerator='ddp'
         )
         trainer.fit(model, train_dataloader, val_dataloader)
