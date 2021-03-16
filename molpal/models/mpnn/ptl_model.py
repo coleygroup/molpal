@@ -138,6 +138,8 @@ class LitMPNN(pl.LightningModule):
         effective_accum = self.trainer.accumulate_grad_batches * num_devices
         return (batches // effective_accum) * self.trainer.max_epochs
 
-    def forward(self, *inputs):
-        x = inputs[0].batch_graph()
-        return self.mpnn(x)
+    def forward(self, batch, batch_idx):
+        return self.mpnn(batch.batch_graph())
+    
+    def backward(self, loss, optimizer, optimizer_idx):
+        print(loss, optimizer, optimizer_idx)
