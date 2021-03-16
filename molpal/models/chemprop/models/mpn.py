@@ -207,7 +207,6 @@ class MPN(nn.Module):
         :param atom_descriptors_batch: A list of numpy arrays containing additional atom descriptors.
         :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` containing the encoding of each molecule.
         """
-        print(batch)
         if type(batch[0]) != BatchMolGraph:
             # TODO: handle atom_descriptors_batch with multiple molecules per input
             if self.atom_descriptors == 'feature':
