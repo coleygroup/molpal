@@ -5,22 +5,51 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
-from ..chemprop.data import StandardScaler, MoleculeDataLoader, MoleculeDataset, MoleculeDatapoint
+from ..chemprop.data import (
+    StandardScaler, MoleculeDataLoader, MoleculeDataset, MoleculeDatapoint
+)
 
-def predict(model, smis: Iterable[str], batch_size: int, ncpu: int, 
-            uncertainty: bool, scaler, use_gpu: bool, disable: bool = False):
+def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1, 
+            uncertainty: bool = False, scaler: Optional[StandardScaler] = None,
+            use_gpu: bool = False, disable: bool = False):
+    """Predict the target values of the given SMILES strings with the input 
+    model
+
+    Parameters
+    ----------
+    model : mpnn.MoleculeModel
+        the model to use
+    smis : Iterable[str]
+        the SMILES strings to perform inference on
+    batch_size : int, default=50
+        the size of each minibatch (impacts performance)
+    ncpu : int, default=1
+        the number of cores over which to parallelize input preparation
+    uncertainty : bool, default=False
+        whether the model predicts its own uncertainty
+    scaler : StandardScaler, default=None
+        A StandardScaler object fit on the training targets. If none,
+        prediction values will not be transformed to original dataset
+    use_gpu : bool, default=False
+        whether to use the GPU during inference
+    disable : bool, default=False
+        whether to disable the progress bar
+
+    Returns
+    -------
+    predictions : np.ndarray
+        an NxM array where N is the number of inputs for which to produce 
+        predictions and M is the number of prediction tasks
+    """
     if use_gpu:
         model = model.to(0)
-        pin_memory = True
-    else:
-        pin_memory = False
 
     test_data = MoleculeDataset(
         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
     )
     data_loader = MoleculeDataLoader(
         dataset=test_data, batch_size=batch_size,
-        num_workers=ncpu, pin_memory=pin_memory
+        num_workers=ncpu, pin_memory=use_gpu
     )
     model.eval()
 
