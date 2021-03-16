@@ -8,20 +8,46 @@ from tqdm import tqdm
 from ..chemprop.data import StandardScaler, MoleculeDataLoader, MoleculeDataset, MoleculeDatapoint
 
 def predict(model, smis: Iterable[str], batch_size: int, ncpu: int, 
-            uncertainty: bool, scaler, use_gpu: bool):
+            uncertainty: bool, scaler, use_gpu: bool, disable: bool = False):
     if use_gpu:
         model = model.to(0)
+        pin_memory = True
+    else:
+        pin_memory = False
 
     test_data = MoleculeDataset(
         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
     )
     data_loader = MoleculeDataLoader(
-        dataset=test_data, batch_size=batch_size, num_workers=ncpu
+        dataset=test_data, batch_size=batch_size,
+        num_workers=ncpu, pin_memory=pin_memory
     )
-    return _predict(
-        model, data_loader, uncertainty,
-        disable=True, scaler=scaler
-    )
+    model.eval()
+
+    pred_batches = []
+    with torch.no_grad():
+        for batch in tqdm(data_loader, desc='Inference', unit='batch',
+                          leave=False, disable=disable):
+            batch_graph = batch.batch_graph()
+            pred_batch = model(batch_graph)
+            pred_batches.append(pred_batch.data.cpu().numpy())
+    preds = np.concatenate(pred_batches)
+
+    if uncertainty:
+        means = preds[:, 0::2]
+        variances = preds[:, 1::2]
+
+        if scaler:
+            means = scaler.inverse_transform(means)
+            variances = scaler.stds**2 * variances
+
+        return means, variances
+
+    # Inverse scale if regression
+    if scaler:
+        preds = scaler.inverse_transform(preds)
+
+    return preds
 
 # @ray.remote(num_cpus=ncpu)
 # def predict(model, smis, batch_size, ncpu, scaler, use_gpu: bool):

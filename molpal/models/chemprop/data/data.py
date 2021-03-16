@@ -483,7 +483,8 @@ class MoleculeDataLoader(DataLoader):
                  num_workers: int = 8,
                  class_balance: bool = False,
                  shuffle: bool = False,
-                 seed: int = 0):
+                 seed: int = 0,
+                 pin_memory: bool = False):
         """
         :param dataset: The :class:`MoleculeDataset` containing the molecules to load.
         :param batch_size: Batch size.
@@ -523,6 +524,7 @@ class MoleculeDataLoader(DataLoader):
             collate_fn=construct_molecule_batch,
             multiprocessing_context=self._context,
             timeout=self._timeout,
+            pin_memory=pin_memory
         )
 
     @property

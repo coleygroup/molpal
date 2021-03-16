@@ -42,7 +42,7 @@ class MoleculeModel(nn.Module):
                  aggregation: str = 'mean', aggregation_norm: int = 100,
                  activation: str = 'ReLU', hidden_size: int = 300, 
                  ffn_hidden_size: Optional[int] = None,
-                 ffn_num_layers: int = 2, device: str = 'cpu'):
+                 ffn_num_layers: int = 2):
         super().__init__()
 
         self.uncertainty_method = uncertainty_method
@@ -52,21 +52,18 @@ class MoleculeModel(nn.Module):
             self.sigmoid = nn.Sigmoid()
 
         self.output_size = num_tasks
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.encoder = self.build_encoder(
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation, device=device,
+            activation=activation
         )
         self.ffn = self.build_ffn(
             output_size=num_tasks, hidden_size=hidden_size, dropout=dropout, 
             activation=activation, ffn_num_layers=ffn_num_layers, 
             ffn_hidden_size=ffn_hidden_size
         )
-
-        self.device = device
 
         initialize_weights(self)
 
@@ -140,13 +137,8 @@ class MoleculeModel(nn.Module):
         z = self.ffn(self.encoder(*inputs))
 
         if self.uncertainty:
-            # mean_idxs = torch.tensor(range(0, list(z.size())[1], 2))
-            # mean_idxs = mean_idxs.to(self.device)
-            pred_means = z[:, 0::2] #torch.index_select(z, 1, mean_idxs)
-
-            # var_idxs = torch.tensor(range(1, list(z.size())[1], 2))
-            # var_idxs = var_idxs.to(self.device)
-            pred_vars = z[:, 1::2] #torch.index_select(z, 1, var_idxs)
+            pred_means = z[:, 0::2]
+            pred_vars = z[:, 1::2]
             capped_vars = nn.functional.softplus(pred_vars)
 
             z = torch.clone(z)

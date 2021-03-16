@@ -18,8 +18,7 @@ from ..chemprop.data.utils import split_data
 from .. import chemprop
 
 class LitMPNN(pl.LightningModule):
-    """A message-passing neural network base class
-    """
+    """A message-passing neural network base class"""
     def __init__(self, config: Dict,
                 #  model: nn.Module,
                 #  uncertainty_method: Optional[str] = None,
@@ -40,9 +39,6 @@ class LitMPNN(pl.LightningModule):
         max_lr = config['max_lr']
         final_lr = config['final_lr']
         metric = config['metric']
-
-        self.train_loader = config['train_loader']
-        self.val_loader = config['val_loader']
 
         self.mpnn = model
         self.uncertainty = uncertainty_method in {'mve'}
@@ -181,12 +177,6 @@ class LitMPNN(pl.LightningModule):
 
         effective_accum = self.trainer.accumulate_grad_batches * num_devices
         return (batches // effective_accum) * self.trainer.max_epochs
-
-    def train_dataloader(self):
-        return self.train_loader
-
-    def val_dataloader(self):
-        return self.val_loader
 
     # def predict(self, data_loader: MoleculeDataLoader,
     #             scaler: Optional[StandardScaler] = None,

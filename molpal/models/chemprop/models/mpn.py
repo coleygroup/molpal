@@ -29,7 +29,6 @@ class MPNEncoder(nn.Module):
         self.dropout = args.dropout
         self.layers_per_message = 1
         self.undirected = args.undirected
-        # self.device = args.device
         self.aggregation = args.aggregation
         self.aggregation_norm = args.aggregation_norm
 
@@ -40,7 +39,9 @@ class MPNEncoder(nn.Module):
         self.act_func = get_activation_function(args.activation)
 
         # Cached zeros
-        self.cached_zero_vector = nn.Parameter(torch.zeros(self.hidden_size), requires_grad=False)
+        self.cached_zero_vector = nn.Parameter(
+            torch.zeros(self.hidden_size), requires_grad=False
+        )
 
         # Input
         input_dim = self.atom_fdim if self.atom_messages else self.bond_fdim
@@ -54,13 +55,17 @@ class MPNEncoder(nn.Module):
         # Shared weight matrix across depths (default)
         self.W_h = nn.Linear(w_h_input_size, self.hidden_size, bias=self.bias)
 
-        self.W_o = nn.Linear(self.atom_fdim + self.hidden_size, self.hidden_size)
+        self.W_o = nn.Linear(
+            self.atom_fdim + self.hidden_size, self.hidden_size
+        )
 
         # layer after concatenating the descriptors if args.atom_descriptors == descriptors
         if args.atom_descriptors == 'descriptor':
             self.atom_descriptors_size = args.atom_descriptors_size
-            self.atom_descriptors_layer = nn.Linear(self.hidden_size + self.atom_descriptors_size,
-                                                    self.hidden_size + self.atom_descriptors_size,)
+            self.atom_descriptors_layer = nn.Linear(
+                self.hidden_size + self.atom_descriptors_size,
+                self.hidden_size + self.atom_descriptors_size
+            )
 
     def forward(self,
                 mol_graph: BatchMolGraph,
@@ -77,7 +82,7 @@ class MPNEncoder(nn.Module):
 
         if atom_descriptors_batch is not None:
             atom_descriptors_batch = [np.zeros([1, atom_descriptors_batch[0].shape[1]])] + atom_descriptors_batch   # padding the first with 0 to match the atom_hiddens
-            atom_descriptors_batch = torch.from_numpy(np.concatenate(atom_descriptors_batch, axis=0)).float()#.to(device)
+            atom_descriptors_batch = torch.from_numpy(np.concatenate(atom_descriptors_batch, axis=0)).float().to(device)
 
         f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope = mol_graph.get_components(atom_messages=self.atom_messages)
         f_atoms, f_bonds, a2b, b2a, b2revb = (
@@ -86,7 +91,7 @@ class MPNEncoder(nn.Module):
         )
 
         if self.atom_messages:
-            a2a = mol_graph.get_a2a()#.to(self.device)
+            a2a = mol_graph.get_a2a().to(self.device)
 
         # Input
         if self.atom_messages:

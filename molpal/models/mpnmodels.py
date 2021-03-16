@@ -60,8 +60,7 @@ class MPNN:
                  ffn_num_layers: int = 2, metric: str = 'rmse',
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
-                 final_lr: float = 1e-4, log_frequency: int = 10,
-                 ncpu: int = 1, ddp: bool = False):
+                 final_lr: float = 1e-4, ncpu: int = 1, ddp: bool = False):
         if torch.cuda.is_available():
             device = 'cuda' 
         else:
@@ -76,8 +75,10 @@ class MPNN:
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             activation=activation, ffn_hidden_size=ffn_hidden_size, 
-            ffn_num_layers=ffn_num_layers, device=device,
+            ffn_num_layers=ffn_num_layers
         )
+        self.device = device
+
         self.uncertainty_method = uncertainty_method
         self.uncertainty = uncertainty_method in {'mve'}
         self.dataset_type = dataset_type
@@ -107,34 +108,8 @@ class MPNN:
         self.use_gpu = ray.cluster_resources().get('GPU', 0) > 0
         if self.use_gpu:
             _predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
-            # def _predict(model, smis, batch_size, ncpu, scaler):
-            #     model.device = 0
-
-            #     test_data = MoleculeDataset(
-            #         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-            #     )
-            #     data_loader = MoleculeDataLoader(
-            #         dataset=test_data, batch_size=batch_size, num_workers=ncpu
-            #     )
-            #     return mpnn.predict(
-            #         model, data_loader, self.uncertainty,
-            #         disable=True, scaler=scaler
-            #     )
         else:
             _predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
-            # def _predict(model, smis, batch_size, ncpu, scaler):
-            #     model.device = 'cpu'
-
-            #     test_data = MoleculeDataset(
-            #         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-            #     )
-            #     data_loader = MoleculeDataLoader(
-            #         dataset=test_data, batch_size=batch_size, num_workers=ncpu
-            #     )
-            #     return mpnn.predict(
-            #         model, data_loader, self.uncertainty,
-            #         disable=True, scaler=scaler
-            #     )
         
         self._predict = _predict
 
@@ -145,12 +120,11 @@ class MPNN:
     @device.setter
     def device(self, device):
         self.__device = device
+        self.model.to(device)
         self.model.device = device
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
-        return True
-
         train_data, val_data = self.make_datasets(smis, targets)
         steps_per_epoch = len(train_data) // self.batch_size
 
@@ -176,8 +150,6 @@ class MPNN:
             'max_lr': self.max_lr,
             'final_lr': self.final_lr,
             'metric': self.metric,
-            'train_loader': train_dataloader,
-            'val_loader': val_dataloader
         }
         if self.ddp:
             ngpu = int(ray.cluster_resources().get('GPU', 0))
@@ -186,7 +158,9 @@ class MPNN:
             else:
                 num_workers = ray.cluster_resources()['CPU'] // self.ncpu
 
-            operator = TrainingOperator.from_ptl(mpnn.LitMPNN)
+            operator = TrainingOperator.from_ptl(
+                mpnn.LitMPNN, train_dataloader, val_dataloader
+            )
             trainer = TorchTrainer(
                 training_operator_cls=operator,
                 num_workers=num_workers,
@@ -271,14 +245,14 @@ class MPNN:
 
     def predict(self, smis: Iterable[str]) -> ndarray:
         """Generate predictions for the inputs xs"""
-        smis_batches = utils.batches(smis, 10000)
+        smis_batches = utils.batches(smis, 20000)
 
         model = ray.put(self.model)
         scaler = ray.put(self.scaler)
         refs = [
             self._predict.remote(
                 model, smis, self.batch_size, self.ncpu,
-                self.uncertainty, scaler, self.use_gpu
+                self.uncertainty, scaler, self.use_gpu, True
             ) for smis in smis_batches
         ]
         preds_chunks = [
