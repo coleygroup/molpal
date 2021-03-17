@@ -1,11 +1,12 @@
 from argparse import Namespace
 from sys import base_exec_prefix
-from typing import List, Union
+from typing import List, Optional, Tuple, Union
 from functools import reduce
 
 import numpy as np
 from rdkit import Chem
 import torch
+from torch import FloatTensor, LongTensor
 import torch.nn as nn
 
 from ..features import BatchMolGraph, get_atom_fdim, get_bond_fdim, mol2graph
@@ -69,66 +70,96 @@ class MPNEncoder(nn.Module):
             )
 
     def forward(self,
-                mol_graph: BatchMolGraph,
-                atom_descriptors_batch: List[np.ndarray] = None
+                components: Tuple[
+                    FloatTensor, FloatTensor, LongTensor, LongTensor, 
+                    LongTensor, List[Tuple[int, int]], List[Tuple[int, int]], 
+                    Optional[LongTensor], Optional[LongTensor]
+                ],
+                # mol_graph: BatchMolGraph,
+                # atom_descriptors_batch: List[np.ndarray] = None
                 ) -> torch.FloatTensor:
-        """
-        Encodes a batch of molecular graphs.
+        """Encodes a batch of molecular graphs.
 
-        :param mol_graph: A :class:`~chemprop.features.featurization.BatchMolGraph` representing
-                          a batch of molecular graphs.
-        :param atom_descriptors_batch: A list of numpy arrays containing additional atomic descriptors
-        :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` containing the encoding of each molecule.
+        Parameters
+        ----------
+        components : Tuple
+            The components of a batch of molecular graphs returned from a call
+            to BatchMolGraph.get_components(). The components are in the 
+            following order:
+                f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope, b2b, a2a 
+            NOTE: b2b and a2a are lazily computed in a BatchMolGraph and are 
+            None unless preceding calls to BatchMolGraph.get_b2b() and
+            BatchMolGraph.get_a2a(), respectively, are performed.
+        :param mol_graph: A :class:`~chemprop.features.featurization.
+            BatchMolGraph` representing a batch of molecular graphs.
+        :param atom_descriptors_batch: A list of numpy arrays containing 
+            additional atomic descriptors
+        :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` 
+            containing the encoding of each molecule.
         """
         device = next(self.W_i.parameters()).device
 
-        if atom_descriptors_batch is not None:
-            # padding the first with 0 to match the atom_hiddens
-            atom_descriptors_batch = [
-                np.zeros([1, atom_descriptors_batch[0].shape[1]])
-            ] + atom_descriptors_batch
-            atom_descriptors_batch = torch.from_numpy(
-                np.concatenate(atom_descriptors_batch, axis=0)
-            ).float().to(device)
+        # if atom_descriptors_batch is not None:
+        #     # padding the first with 0 to match the atom_hiddens
+        #     atom_descriptors_batch = [
+        #         np.zeros([1, atom_descriptors_batch[0].shape[1]])
+        #     ] + atom_descriptors_batch
+        #     atom_descriptors_batch = torch.from_numpy(
+        #         np.concatenate(atom_descriptors_batch, axis=0)
+        #     ).float().to(device)
 
-        components = mol_graph.get_components(atom_messages=self.atom_messages)
-        f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope = components
-        f_atoms, f_bonds, a2b, b2a, b2revb = (
-            f_atoms.to(device), f_bonds.to(device),
-            a2b.to(device), b2a.to(device), b2revb.to(device)
-        )
-
+        # components = mol_graph.get_components(atom_messages=self.atom_messages)
+        # print(components)
+        f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope, b2b, a2a = \
+            components
+        # f_atoms, f_bonds, a2b, b2a, b2revb = (
+        #     f_atoms.to(device), f_bonds.to(device),
+        #     a2b.to(device), b2a.to(device), b2revb.to(device)
+        # )
+        if self.atom_messages and a2a is None:
+            raise ValueError(
+                'a2a is "None" but atom_messages is True! Reminder: a2a '
+                'component of BatchMolGraph is lazily computed and must be '
+                'precalculated via a call to BatchMolGraph.get_a2a() before '
+                'BatchMolGraph.get_components()'
+            )
         if self.atom_messages:
-            a2a = mol_graph.get_a2a().to(self.device)
-
-        # Input
-        if self.atom_messages:
+            f_bonds = f_bonds[:, :get_bond_fdim(self.atom_messages)]
+            # a2a = a2a.to(self.device)
             input = self.W_i(f_atoms)  # num_atoms x hidden_size
         else:
+            f_bonds = f_bonds
             input = self.W_i(f_bonds)  # num_bonds x hidden_size
         message = self.act_func(input)  # num_bonds x hidden_size
 
-        # Message passing
-        for _ in range(self.depth - 1):
-            if self.undirected:
-                message = (message + message[b2revb]) / 2
+        if self.atom_messages:
+            for _ in range(self.depth - 1):
+                if self.undirected:
+                    message = (message + message[b2revb]) / 2
 
-            if self.atom_messages:
                 nei_a_message = index_select_ND(message, a2a)  # num_atoms x max_num_bonds x hidden
                 nei_f_bonds = index_select_ND(f_bonds, a2b)  # num_atoms x max_num_bonds x bond_fdim
                 nei_message = torch.cat((nei_a_message, nei_f_bonds), dim=2)  # num_atoms x max_num_bonds x hidden + bond_fdim
                 message = nei_message.sum(dim=1)  # num_atoms x hidden + bond_fdim
-            else:
+
+                message = self.W_h(message)
+                message = self.act_func(input + message)  # num_bonds x hidden_size
+                message = self.dropout_layer(message)  # num_bonds x hidden
+        else:
+            for _ in range(self.depth - 1):
+                if self.undirected:
+                    message = (message + message[b2revb]) / 2
+
                 # m(a1 -> a2) = [sum_{a0 \in nei(a1)} m(a0 -> a1)] - m(a2 -> a1)
-                # message      a_message = sum(nei_a_message)      rev_message
+                # message a_message = sum(nei_a_message) rev_message
                 nei_a_message = index_select_ND(message, a2b)  # num_atoms x max_num_bonds x hidden
                 a_message = nei_a_message.sum(dim=1)  # num_atoms x hidden
                 rev_message = message[b2revb]  # num_bonds x hidden
                 message = a_message[b2a] - rev_message  # num_bonds x hidden
 
-            message = self.W_h(message)
-            message = self.act_func(input + message)  # num_bonds x hidden_size
-            message = self.dropout_layer(message)  # num_bonds x hidden
+                message = self.W_h(message)
+                message = self.act_func(input + message)  # num_bonds x hidden_size
+                message = self.dropout_layer(message)  # num_bonds x hidden
 
         a2x = a2a if self.atom_messages else a2b
         # num_atoms x max_num_bonds x hidden
@@ -143,15 +174,15 @@ class MPNEncoder(nn.Module):
         atom_hiddens = self.dropout_layer(atom_hiddens)
 
         # concatenate the atom descriptors
-        if atom_descriptors_batch is not None:
-            # num_atoms x (hidden + descriptor size)
-            atom_hiddens = torch.cat(
-                [atom_hiddens, atom_descriptors_batch], dim=1
-            )
-            # num_atoms x (hidden + descriptor size
-            atom_hiddens = self.atom_descriptors_layer(atom_hiddens)
-            # num_atoms x (hidden + descriptor size)
-            atom_hiddens = self.dropout_layer(atom_hiddens)
+        # if atom_descriptors_batch is not None:
+        #     # num_atoms x (hidden + descriptor size)
+        #     atom_hiddens = torch.cat(
+        #         [atom_hiddens, atom_descriptors_batch], dim=1
+        #     )
+        #     # num_atoms x (hidden + descriptor size
+        #     atom_hiddens = self.atom_descriptors_layer(atom_hiddens)
+        #     # num_atoms x (hidden + descriptor size)
+        #     atom_hiddens = self.dropout_layer(atom_hiddens)
 
         # Readout
         mol_vecs = []
@@ -213,7 +244,7 @@ class MPN(nn.Module):
 
     def forward(self,
                 batches: Union[
-                    List[List[str]], List[List[Chem.Mol]], List[BatchMolGraph]
+                    List[List[str]], List[List[Chem.Mol]], List[Tuple]
                 ],
                 #features_batch: List[np.ndarray] = None,
                 #atom_descriptors_batch: List[np.ndarray] = None
@@ -221,56 +252,67 @@ class MPN(nn.Module):
         """
         Encodes a batch of molecules.
 
-        :param batch: A list of list of SMILES, a list of list of RDKit molecules, or a
-                      :class:`~chemprop.features.featurization.BatchMolGraph`.
-        :param features_batch: A list of numpy arrays containing additional features.
-        :param atom_descriptors_batch: A list of numpy arrays containing additional atom descriptors.
-        :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` containing the encoding of each molecule.
+        :param batch: A list of list of SMILES, a list of list of RDKit 
+            molecules, or a
+            :class:`~chemprop.features.featurization.BatchMolGraph`.
+        :param features_batch: A list of numpy arrays containing additional 
+            features.
+        :param atom_descriptors_batch: A list of numpy arrays containing 
+            additional atom descriptors.
+        :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` 
+            containing the encoding of each molecule.
         """
-        if type(batches[0]) != BatchMolGraph:
+        if all(isinstance(x, (str, Chem.Mol)) for x in batches[0]):
+        # if type(batches[0]) != BatchMolGraph:
             # TODO: handle atom_descriptors_batch with multiple molecules per input
-            if self.atom_descriptors == 'feature':
-                if len(batches[0]) > 1:
-                    raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
-                                              'per input (i.e., number_of_molecules = 1).')
+            # if self.atom_descriptors == 'feature':
+            #     if len(batches[0]) > 1:
+            #         raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
+            #                                   'per input (i.e., number_of_molecules = 1).')
 
-                batches = [
-                    mol2graph(b, atom_descriptors_batch) for b in batches
-                ]
-            else:
-                batches = [mol2graph(b) for b in batches]
+            #     batches = [
+            #         mol2graph(b, atom_descriptors_batch) for b in batches
+            #     ]
+            # else:
+            batches = [mol2graph(b) for b in batches]
 
-        if self.use_input_features:
-            features_batch = torch.from_numpy(np.stack(features_batch)).float().to(self.device)
+        # if self.use_input_features:
+        #     features_batch = torch.from_numpy(
+        #         np.stack(features_batch)
+        #     ).float().to(self.device)
 
-            if self.features_only:
-                return features_batch
+        #     if self.features_only:
+        #         return features_batch
 
-        if self.atom_descriptors == 'descriptor':
-            if len(batches) > 1:
-                raise NotImplementedError(
-                    'Atom descriptors are currently only supported with one '
-                    'molecule per input (i.e., number_of_molecules = 1).'
-                )
+        # if self.atom_descriptors == 'descriptor':
+        #     if len(batches) > 1:
+        #         raise NotImplementedError(
+        #             'Atom descriptors are currently only supported with one '
+        #             'molecule per input (i.e., number_of_molecules = 1).'
+        #         )
 
-            encodings = [
-                self.encoder(b, atom_descriptors_batch) for b in batches
-                #zip(self.encoder, batch)
-            ]
-        else:
-            encodings = [
-                self.encoder(b) for b in batches
-                # self.encoder(ba, atom_descriptors_batch) for ba in batch
-                #zip(self.encoder, batch)
-            ]
-            # encodings = [enc(ba) for enc, ba in zip(self.encoder, batch)]
+        #     encodings = [
+        #         self.encoder(b, atom_descriptors_batch) for b in batches
+        #         #zip(self.encoder, batch)
+        #     ]
+        # else:
+        # print(len(batches))
+        # print(batches)
+        # print(len(batches[0]))
+        # print(batches[0])
+        encodings = [
+            self.encoder(b) for b in batches
+            # self.encoder(b, atom_descriptors_batch) for b in batch
+            #zip(self.encoder, batch)
+        ]
+            # encodings = [enc(b) for enc, b in zip(self.encoder, batch)]
 
         output = reduce(lambda x, y: torch.cat((x, y), dim=1), encodings)
 
-        if self.use_input_features:
-            if len(features_batch.shape) == 1:
-                features_batch = features_batch.view(1, -1)
+        # if self.use_input_features:
+        #     if len(features_batch.shape) == 1:
+        #         features_batch = features_batch.view(1, -1)
 
-            output = torch.cat([output, features_batch], dim=1)
+        #     output = torch.cat([output, features_batch], dim=1)
 
         return output

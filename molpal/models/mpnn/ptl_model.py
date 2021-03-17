@@ -1,5 +1,4 @@
-
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pytorch_lightning as pl
 import torch
@@ -50,11 +49,10 @@ class LitMPNN(pl.LightningModule):
         )
         self.metric_func = chemprop.utils.get_metric_func(metric)
 
-    def training_step(self, batch: MoleculeDataset, batch_idx) -> torch.Tensor:
-        mol_batch = batch.batch_graph()
+    def training_step(self, batch: Tuple, batch_idx) -> torch.Tensor:
+        componentss, targets = batch
         
-        preds = self.mpnn(mol_batch)
-        targets = batch.targets()
+        preds = self.mpnn(componentss)
         mask = torch.tensor(
             [list(map(bool, ys)) for ys in targets], device=self.device
         )
@@ -83,15 +81,18 @@ class LitMPNN(pl.LightningModule):
         loss = loss.sum() / mask.sum()
         return loss
     
-    def validation_step(self, batch: MoleculeDataset, batch_idx) -> List[float]:
-        preds = self.mpnn(batch.batch_graph())
+    def validation_step(self, batch: Tuple, batch_idx) -> List[float]:
+        componentss, targets = batch#.batch_graph()
+        # print(batch_graph)
+        preds = self.mpnn(componentss)
+        # preds = self.mpnn(batch.batch_graph())
 
         if self.uncertainty:
             preds = preds[:, 0::2]
 
         # preds_ = preds.cpu().numpy()
-        targets_ = batch.targets()
-        targets = torch.tensor(targets_, device=self.device)
+        # targets = batch.targets()
+        targets = torch.tensor(targets, device=self.device)
 
         res = torch.sqrt(nn.MSELoss()(preds, targets))
         return res

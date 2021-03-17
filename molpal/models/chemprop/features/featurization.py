@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from rdkit import Chem
 import torch
@@ -47,9 +47,9 @@ def get_bond_fdim(atom_messages: bool = False) -> int:
     """
     Gets the dimensionality of the bond feature vector.
 
-    :param atom_messages: Whether atom messages are being used. If atom messages are used,
-                          then the bond feature vector only contains bond features.
-                          Otherwise it contains both atom and bond features.
+    :param atom_messages: Whether atom messages are being used. If atom 
+        messages are used, then the bond feature vector only contains bond 
+        features. Otherwise, it contains both atom and bond features.
     :return: The dimensionality of the bond feature vector.
     """
     return BOND_FDIM + (not atom_messages) * get_atom_fdim()
@@ -249,7 +249,8 @@ class BatchMolGraph:
             self, atom_messages: bool = False
         ) -> Tuple[torch.FloatTensor, torch.FloatTensor,
                    torch.LongTensor, torch.LongTensor, torch.LongTensor,
-                   List[Tuple[int, int]], List[Tuple[int, int]]]:
+                   List[Tuple[int, int]], List[Tuple[int, int]],
+                   Optional[torch.LongTensor], Optional[torch.LongTensor]]:
         """
         Returns the components of the :class:`BatchMolGraph`.
 
@@ -262,38 +263,50 @@ class BatchMolGraph:
         * :code:`b2revb`
         * :code:`a_scope`
         * :code:`b_scope`
+        * :code:`b2b`
+        * :code:`a2a`
 
-        :param atom_messages: Whether to use atom messages instead of bond messages. This changes the bond feature
-                              vector to contain only bond features rather than both atom and bond features.
-        :return: A tuple containing PyTorch tensors with the atom features, bond features, graph structure,
-                 and scope of the atoms and bonds (i.e., the indices of the molecules they belong to).
+        :param atom_messages: Whether to use atom messages instead of bond 
+            messages. This changes the bond feature vector to contain only bond 
+            features rather than both atom and bond features.
+        :return: A tuple containing PyTorch tensors with the atom features, 
+            bond features, graph structure, and scope of the atoms and bonds (i.
+            e., the indices of the molecules they belong to).
         """
-        if atom_messages:
-            f_bonds = self.f_bonds[:, :get_bond_fdim(atom_messages=atom_messages)]
-        else:
-            f_bonds = self.f_bonds
-
-        return self.f_atoms, f_bonds, self.a2b, self.b2a, self.b2revb, self.a_scope, self.b_scope
+        # if atom_messages:
+        #     f_bonds = self.f_bonds[:, :get_bond_fdim(atom_messages)]
+        # else:
+        #     f_bonds = self.f_bonds
+        f_bonds = self.f_bonds
+        return (
+            self.f_atoms, f_bonds, self.a2b, self.b2a, self.b2revb,
+            self.a_scope, self.b_scope,
+            self.b2b, self.a2a
+        )
 
     def get_b2b(self) -> torch.LongTensor:
-        """
-        Computes (if necessary) and returns a mapping from each bond index to all the incoming bond indices.
+        """Computes (if necessary) and returns a mapping from each bond index 
+        to all the incoming bond indices.
 
-        :return: A PyTorch tensor containing the mapping from each bond index to all the incoming bond indices.
+        :return: A PyTorch tensor containing the mapping from each bond index 
+            to all the incoming bond indices.
         """
         if self.b2b is None:
             b2b = self.a2b[self.b2a]  # num_bonds x max_num_bonds
             # b2b includes reverse edge for each bond so need to mask out
-            revmask = (b2b != self.b2revb.unsqueeze(1).repeat(1, b2b.size(1))).long()  # num_bonds x max_num_bonds
+            revmask = (
+                b2b != self.b2revb.unsqueeze(1).repeat(1, b2b.size(1))
+            ).long()  # num_bonds x max_num_bonds
             self.b2b = b2b * revmask
 
         return self.b2b
 
     def get_a2a(self) -> torch.LongTensor:
-        """
-        Computes (if necessary) and returns a mapping from each atom index to all neighboring atom indices.
+        """Computes (if necessary) and returns a mapping from each atom index 
+        to all neighboring atom indices.
 
-        :return: A PyTorch tensor containing the mapping from each bond index to all the incoming bond indices.
+        :return: A PyTorch tensor containing the mapping from each bond index 
+            to all the incoming bond indices.
         """
         if self.a2a is None:
             # b = a1 --> a2

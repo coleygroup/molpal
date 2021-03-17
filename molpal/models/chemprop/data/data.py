@@ -172,7 +172,8 @@ class MoleculeDataset(Dataset):
         self._batch_graph = None
         self._random = Random()
 
-    def smiles(self, flatten: bool = False) -> Union[List[str], List[List[str]]]:
+    def smiles(self,
+               flatten: bool = False) -> Union[List[str], List[List[str]]]:
         """
         Returns a list containing the SMILES list associated with each :class:`MoleculeDatapoint`.
 
@@ -222,24 +223,32 @@ class MoleculeDataset(Dataset):
         if self._batch_graph is None:
             self._batch_graph = []
 
-            mol_graphs = []
-            for d in self._data:
-                mol_graphs_list = []
-                for _, m in zip(d.smiles, d.mol):
-                    # if s in SMILES_TO_GRAPH:
-                    #     mol_graph = SMILES_TO_GRAPH[s]
-                    # else:
-                    #     if len(d.smiles) > 1 and d.atom_features is not None:
-                    #         raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
-                    #                                   'per input (i.e., number_of_molecules = 1).')
-                        # mol_graph = MolGraph(m, d.atom_features)
-                    mol_graph = MolGraph(m, d.atom_features)
-                        # if cache_graph():
-                        #     SMILES_TO_GRAPH[s] = mol_graph
-                    mol_graphs_list.append(mol_graph)
-                mol_graphs.append(mol_graphs_list)
+            mol_graphss = [
+                [MolGraph(m, d.atom_features) for m in d.mol]
+                for d in self._data
+            ]
+            # mol_graphss = []
+            # for d in self._data:
+            #     mol_graphs = [MolGraph(m, d.atom_features) for m in d.mol]
+            #     # mol_graphs = []
+            #     # for _, m in zip(d.smiles, d.mol):
+            #     #     # if s in SMILES_TO_GRAPH:
+            #     #     #     mol_graph = SMILES_TO_GRAPH[s]
+            #     #     # else:
+            #     #     #     if len(d.smiles) > 1 and d.atom_features is not None:
+            #     #     #         raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
+            #     #     #                                   'per input (i.e., number_of_molecules = 1).')
+            #     #         # mol_graph = MolGraph(m, d.atom_features)
+            #     #     mol_graph = MolGraph(m, d.atom_features)
+            #     #         # if cache_graph():
+            #     #         #     SMILES_TO_GRAPH[s] = mol_graph
+            #     #     mol_graphs.append(mol_graph)
+            #     mol_graphss.append(mol_graphs)
 
-            self._batch_graph = [BatchMolGraph([g[i] for g in mol_graphs]) for i in range(len(mol_graphs[0]))]
+            self._batch_graph = [
+                BatchMolGraph([g[i] for g in mol_graphss])
+                for i in range(len(mol_graphss[0]))
+            ]
 
         return self._batch_graph
 
@@ -308,7 +317,10 @@ class MoleculeDataset(Dataset):
         return len(self._data[0].atom_features[0]) \
             if len(self._data) > 0 and self._data[0].atom_features is not None else None
 
-    def normalize_features(self, scaler: StandardScaler = None, replace_nan_token: int = 0) -> StandardScaler:
+    def normalize_features(
+            self, scaler: StandardScaler = None,
+            replace_nan_token: int = 0
+        ) -> StandardScaler:
         """
         Normalizes the features of the dataset using a :class:`~chemprop.data.StandardScaler`.
 
@@ -374,6 +386,7 @@ class MoleculeDataset(Dataset):
                         same length as the underlying dataset.
         """
         assert len(self._data) == len(targets)
+
         for i in range(len(self._data)):
             self._data[i].set_targets(targets[i])
 
@@ -390,15 +403,17 @@ class MoleculeDataset(Dataset):
         """
         return len(self._data)
 
-    def __getitem__(self, item) -> Union[MoleculeDatapoint, List[MoleculeDatapoint]]:
+    def __getitem__(
+            self, idx: Union[int, slice]
+        ) -> Union[MoleculeDatapoint, List[MoleculeDatapoint]]:
         r"""
         Gets one or more :class:`MoleculeDatapoint`\ s via an index or slice.
 
-        :param item: An index (int) or a slice object.
+        :param item: an index or a slice of indices to get
         :return: A :class:`MoleculeDatapoint` if an int is provided or a list of :class:`MoleculeDatapoint`\ s
                  if a slice is provided.
         """
-        return self._data[item]
+        return self._data[idx]
 
 
 class MoleculeSampler(Sampler):
@@ -410,9 +425,9 @@ class MoleculeSampler(Sampler):
                  shuffle: bool = False,
                  seed: int = 0):
         """
-        :param class_balance: Whether to perform class balancing (i.e., use an equal number of positive
-                              and negative molecules). Set shuffle to True in order to get a random
-                              subset of the larger class.
+        :param class_balance: Whether to perform class balancing (i.e., use an 
+        equal number of positive and negative molecules). Set shuffle to True 
+        in order to get a random subset of the larger class.
         :param shuffle: Whether to shuffle the data.
         :param seed: Random seed. Only needed if :code:`shuffle` is True.
         """
@@ -426,12 +441,17 @@ class MoleculeSampler(Sampler):
 
         if self.class_balance:
             indices = np.arange(len(dataset))
-            has_active = np.array([any(target == 1 for target in datapoint.targets) for datapoint in dataset])
+            has_active = np.array([
+                any(target == 1 for target in datapoint.targets)
+                for datapoint in dataset
+            ])
 
             self.positive_indices = indices[has_active].tolist()
             self.negative_indices = indices[~has_active].tolist()
 
-            self.length = 2 * min(len(self.positive_indices), len(self.negative_indices))
+            self.length = 2 * min(
+                len(self.positive_indices), len(self.negative_indices)
+            )
         else:
             self.positive_indices = self.negative_indices = None
 
@@ -444,14 +464,17 @@ class MoleculeSampler(Sampler):
                 self._random.shuffle(self.positive_indices)
                 self._random.shuffle(self.negative_indices)
 
-            indices = [index for pair in zip(self.positive_indices, self.negative_indices) for index in pair]
+            idxs = [
+                idx
+                for pair in zip(self.positive_indices, self.negative_indices) for idx in pair
+            ]
         else:
-            indices = list(range(len(self.dataset)))
+            idxs = list(range(len(self.dataset)))
 
             if self.shuffle:
-                self._random.shuffle(indices)
+                self._random.shuffle(idxs)
 
-        return iter(indices)
+        return iter(idxs)
 
     def __len__(self) -> int:
         """Returns the number of indices that will be sampled."""
@@ -459,19 +482,22 @@ class MoleculeSampler(Sampler):
 
 
 def construct_molecule_batch(data: List[MoleculeDatapoint]) -> MoleculeDataset:
-    r"""
-    Constructs a :class:`MoleculeDataset` from a list of :class:`MoleculeDatapoint`\ s.
+    r"""Constructs a :class:`MoleculeDataset` from a list of
+    :class:`MoleculeDatapoint`\ s.
 
-    Additionally, precomputes the :class:`~chemprop.features.BatchMolGraph` for the constructed
-    :class:`MoleculeDataset`.
+    Additionally, precomputes the :class:`~chemprop.features.BatchMolGraph`
+    for the constructed :class:`MoleculeDataset`.
 
     :param data: A list of :class:`MoleculeDatapoint`\ s.
-    :return: A :class:`MoleculeDataset` containing all the :class:`MoleculeDatapoint`\ s.
+    :return: A :class:`MoleculeDataset` containing all the 
+        :class:`MoleculeDatapoint`\ s.
     """
     data = MoleculeDataset(data)
-    data.batch_graph()  # Forces computation and caching of the BatchMolGraph for the molecules
+    data.batch_graph()
 
-    return data
+    # print(data.batch_graph())
+    componentss = [bmg.get_components() for bmg in data.batch_graph()]
+    return componentss, data.targets()
 
 
 class MoleculeDataLoader(DataLoader):
@@ -486,13 +512,14 @@ class MoleculeDataLoader(DataLoader):
                  seed: int = 0,
                  pin_memory: bool = False):
         """
-        :param dataset: The :class:`MoleculeDataset` containing the molecules to load.
+        :param dataset: The :class:`MoleculeDataset` containing the molecules 
+            to load.
         :param batch_size: Batch size.
         :param num_workers: Number of workers used to build batches.
-        :param class_balance: Whether to perform class balancing (i.e., use an equal number of positive
-                              and negative molecules). Class balance is only available for single task
-                              classification datasets. Set shuffle to True in order to get a random
-                              subset of the larger class.
+        :param class_balance: Whether to perform class balancing (i.e., use an 
+            equal number of positive and negative molecules). Class balance is 
+            only available for single task classification datasets. Set shuffle 
+            to True in order to get a random subset of the larger class.
         :param shuffle: Whether to shuffle the data.
         :param seed: Random seed. Only needed if shuffle is True.
         """
@@ -529,8 +556,7 @@ class MoleculeDataLoader(DataLoader):
 
     @property
     def targets(self) -> List[List[Optional[float]]]:
-        """
-        Returns the targets associated with each molecule.
+        """Returns the targets associated with each molecule.
 
         :return: A list of lists of floats (or None) containing the targets.
         """
@@ -541,9 +567,10 @@ class MoleculeDataLoader(DataLoader):
 
     @property
     def iter_size(self) -> int:
-        """Returns the number of data points included in each full iteration through the :class:`MoleculeDataLoader`."""
+        """Returns the number of data points included in each full iteration 
+        through the :class:`MoleculeDataLoader`."""
         return len(self._sampler)
 
-    def __iter__(self) -> Iterator[MoleculeDataset]:
-        r"""Creates an iterator which returns :class:`MoleculeDataset`\ s"""
-        return super(MoleculeDataLoader, self).__iter__()
+    # def __iter__(self) -> Iterator[MoleculeDataset]:
+    #     r"""Creates an iterator which returns :class:`MoleculeDataset`\ s"""
+    #     return super(MoleculeDataLoader, self).__iter__()

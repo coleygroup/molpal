@@ -79,8 +79,13 @@ class MPNNOperator(TrainingOperator):
     def train_batch(self, batch: MoleculeDataset, batch_info: Dict) -> Dict:
         mol_batch = batch.batch_graph()
         
-        preds = self.model(mol_batch)
+        model = self.model
+        optimizer = self.optimizer
+        criterion = self.criterion
+
+        preds = model(mol_batch)
         targets = batch.targets()
+        
         mask = torch.tensor(
             [list(map(bool, ys)) for ys in targets], device=self.device
         )

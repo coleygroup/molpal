@@ -131,12 +131,14 @@ class MPNN:
         train_dataloader = MoleculeDataLoader(
             dataset=train_data,
             batch_size=self.batch_size,
-            num_workers=self.ncpu
+            num_workers=self.ncpu,
+            pin_memory=self.use_gpu
         )
         val_dataloader = MoleculeDataLoader(
             dataset=val_data,
             batch_size=self.batch_size,
-            num_workers=self.ncpu
+            num_workers=self.ncpu,
+            pin_memory=self.use_gpu
         )
 
         config = {

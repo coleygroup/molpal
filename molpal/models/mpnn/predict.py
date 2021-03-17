@@ -1,3 +1,4 @@
+from re import X
 from typing import Iterable, Optional
 
 import numpy as np
@@ -41,26 +42,38 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
         an NxM array where N is the number of inputs for which to produce 
         predictions and M is the number of prediction tasks
     """
-    if use_gpu:
-        model = model.to(0)
+    device = 'cuda' if use_gpu else 'cpu'
+    model.to(device)
 
-    test_data = MoleculeDataset(
-        [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-    )
+    dataset = MoleculeDataset([MoleculeDatapoint([smi]) for smi in smis])
     data_loader = MoleculeDataLoader(
-        dataset=test_data, batch_size=batch_size,
+        dataset=dataset, batch_size=batch_size,
         num_workers=ncpu, pin_memory=use_gpu
     )
     model.eval()
 
     pred_batches = []
     with torch.no_grad():
+        # pred_batches = [
+        #     model(batch_graph)
+        #     for batch_graph, _ in tqdm(
+        #         data_loader, desc='Inference', unit='batch', leave=False, disable=disable
+        #     )
+        # ]
         for batch in tqdm(data_loader, desc='Inference', unit='batch',
                           leave=False, disable=disable):
-            batch_graph = batch.batch_graph()
-            pred_batch = model(batch_graph)
-            pred_batches.append(pred_batch.data.cpu().numpy())
-    preds = np.concatenate(pred_batches)
+            componentss, _ = batch#.batch_graph()
+            componentss = [
+                [X.to(device)#, non_blocking=True)
+                 if isinstance(X, torch.Tensor) else X for X in components]
+                for components in componentss
+            ]
+            pred_batch = model(componentss)
+            pred_batches.append(pred_batch)#.data.cpu().numpy())
+
+        preds = torch.cat(pred_batches)
+    # preds = np.concatenate(pred_batches)
+    preds = preds.cpu().numpy()
 
     if uncertainty:
         means = preds[:, 0::2]
@@ -72,7 +85,6 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
 
         return means, variances
 
-    # Inverse scale if regression
     if scaler:
         preds = scaler.inverse_transform(preds)
 

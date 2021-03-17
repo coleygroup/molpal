@@ -1,6 +1,4 @@
-from argparse import Namespace
-from logging import Logger
-from typing import Any, Callable, Optional
+from typing import Callable
 
 import torch
 from torch import nn
@@ -48,18 +46,20 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
     for batch in tqdm(data_loader, desc='Training', unit='step',
                       leave=False, disable=disable,):
         # Prepare batch
-        mol_batch = batch.batch_graph()
-        features_batch = batch.features()
+        mol_batch, targets = batch#.batch_graph()
+        # features_batch = batch.features()
 
         # Run model
         model.zero_grad()
-        preds = model(mol_batch, features_batch)        
+        preds = model(mol_batch)#, features_batch)        
 
-        targets = batch.targets()   # targets might have None's
-        mask = torch.Tensor(
-            [list(map(bool, ys)) for ys in targets]).to(preds.device)
-        targets = torch.Tensor(
-            [[y or 0 for y in ys] for ys in targets]).to(preds.device)
+        # targets = batch.targets()   # targets might have None's
+        mask = torch.tensor(
+            [list(map(bool, ys)) for ys in targets]
+        ).to(preds.device)
+        targets = torch.tensor(
+            [[y or 0 for y in ys] for ys in targets]
+        ).to(preds.device)
         class_weights = torch.ones(targets.shape).to(preds.device)
         
         # if args.dataset_type == 'multiclass':
