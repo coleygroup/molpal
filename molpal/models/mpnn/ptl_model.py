@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.optim import Adam
+from torch.nn import functional as F
 
 from molpal.models import mpnn
 from ..chemprop.data import MoleculeDataset
@@ -25,29 +26,28 @@ class LitMPNN(pl.LightningModule):
         super().__init__()
 
         model = config['model']
-        uncertainty_method = config['uncertainty_method']
         dataset_type = config['dataset_type']
-        warmup_epochs = config['warmup_epochs']
-        init_lr = config['init_lr']
-        max_lr = config['max_lr']
-        final_lr = config['final_lr']
-        metric = config['metric']
+        uncertainty_method = config.get('uncertainty_method', 'none')
 
         self.mpnn = model
         self.uncertainty = uncertainty_method in {'mve'}
 
-        self.warmup_epochs = warmup_epochs
+        self.warmup_epochs = config.get('warmup_epochs', 2.)
         self.steps_per_epoch = config['steps_per_epoch']
         self.max_epochs = config['max_epochs']
         self.num_lrs = 1
-        self.init_lr = init_lr
-        self.max_lr = max_lr
-        self.final_lr = final_lr
+        self.init_lr = config.get('init_lr', 1e-4)
+        self.max_lr = config.get('max_lr', 1e-3)
+        self.final_lr = config.get('final_lr', 1e-4)
 
         self.criterion = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method
         )
-        self.metric_func = chemprop.utils.get_metric_func(metric)
+        # self.metric_func = chemprop.utils.get_metric_func(metric)
+        self.metric = {
+            'mse': lambda X, Y: F.mse_loss(X, Y, reduction='none'),
+            'rmse': lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction='none'))
+        }[config.get('metric', 'rmse')]
 
     def training_step(self, batch: Tuple, batch_idx) -> torch.Tensor:
         componentss, targets = batch
@@ -79,27 +79,24 @@ class LitMPNN(pl.LightningModule):
             loss = self.criterion(preds, targets) * class_weights * mask
 
         loss = loss.sum() / mask.sum()
+        print(loss.item())
         return loss
     
     def validation_step(self, batch: Tuple, batch_idx) -> List[float]:
-        componentss, targets = batch#.batch_graph()
-        # print(batch_graph)
-        preds = self.mpnn(componentss)
-        # preds = self.mpnn(batch.batch_graph())
+        componentss, targets = batch
 
+        preds = self.mpnn(componentss)
         if self.uncertainty:
             preds = preds[:, 0::2]
 
-        # preds_ = preds.cpu().numpy()
-        # targets = batch.targets()
         targets = torch.tensor(targets, device=self.device)
 
-        res = torch.sqrt(nn.MSELoss()(preds, targets))
-        return res
+        return self.metric(preds, targets)
 
     def validation_epoch_end(self, outputs):
-        avg_val_loss = torch.stack(outputs).cpu().numpy().mean()
-        self.log('avg_val_loss', avg_val_loss)
+        val_loss = torch.cat(outputs).mean()
+        # print(val_loss.item())
+        self.log('val_loss', val_loss, prog_bar=True)
 
     def configure_optimizers(self) -> List:
         opt = Adam([{
@@ -110,15 +107,18 @@ class LitMPNN(pl.LightningModule):
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],
-            # total_epochs=[self.max_epochs] * self.num_lrs,
             total_epochs=[self.trainer.max_epochs] * self.num_lrs,
-            # steps_per_epoch=self.steps_per_epoch,
             steps_per_epoch=self.num_training_steps,
             init_lr=[self.init_lr],
             max_lr=[self.max_lr],
             final_lr=[self.final_lr]
         )
-        return [opt], [sched]
+        scheduler = {
+            'scheduler': sched,
+            'interval': 'step' if isinstance(sched, NoamLR) else 'batch'
+        }
+        
+        return [opt], [scheduler]
 
     @property
     def num_training_steps(self) -> int:
