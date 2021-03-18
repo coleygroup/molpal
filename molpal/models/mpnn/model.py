@@ -25,8 +25,6 @@ class MoleculeModel(nn.Module):
         (e.g. Mean-Variance estimation)
     classification : bool
         whether this model is a classification model
-    device : str {'cpu', 'cuda'}
-        the device on which to run matrix operations
     output_size : int
         the size of the output layer for the feed-forward network
     encoder : MPN
@@ -66,29 +64,18 @@ class MoleculeModel(nn.Module):
         )
 
         initialize_weights(self)
-
-    # @property
-    # def device(self):
-    #     return self.__device
-
-    # @device.setter
-    # def device(self, device):
-    #     self.__device = device
-    #     self.encoder.device = device
-    #     self.encoder.encoder.device = device
-    #     self.to(device)
     
     def build_encoder(self, atom_messages: bool = False, bias: bool = False,
                       hidden_size: int = 300, depth: int = 3,
                       dropout: float = 0.0, undirected: bool = False,
                       aggregation: str = 'mean', aggregation_norm: int = 100,
-                      activation: str = 'ReLU', device: str = 'cpu'):
+                      activation: str = 'ReLU'):
          return MPN(Namespace(
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             features_only=False, use_input_features=False,
             aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation, device=device, number_of_molecules=1,
+            activation=activation, number_of_molecules=1,
             atom_descriptors=None, mpn_shared=False
         ))
 

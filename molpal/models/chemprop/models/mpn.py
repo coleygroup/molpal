@@ -97,8 +97,6 @@ class MPNEncoder(nn.Module):
         :return: A PyTorch tensor of shape :code:`(num_molecules, hidden_size)` 
             containing the encoding of each molecule.
         """
-        device = next(self.W_i.parameters()).device
-
         # if atom_descriptors_batch is not None:
         #     # padding the first with 0 to match the atom_hiddens
         #     atom_descriptors_batch = [
@@ -112,10 +110,7 @@ class MPNEncoder(nn.Module):
         # print(components)
         f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope, b2b, a2a = \
             components
-        # f_atoms, f_bonds, a2b, b2a, b2revb = (
-        #     f_atoms.to(device), f_bonds.to(device),
-        #     a2b.to(device), b2a.to(device), b2revb.to(device)
-        # )
+
         if self.atom_messages and a2a is None:
             raise ValueError(
                 'a2a is "None" but atom_messages is True! Reminder: a2a '
@@ -125,7 +120,6 @@ class MPNEncoder(nn.Module):
             )
         if self.atom_messages:
             f_bonds = f_bonds[:, :get_bond_fdim(self.atom_messages)]
-            # a2a = a2a.to(self.device)
             input = self.W_i(f_atoms)  # num_atoms x hidden_size
         else:
             f_bonds = f_bonds
@@ -220,11 +214,12 @@ class MPN(nn.Module):
         """
         super().__init__()
         self.atom_fdim = atom_fdim or get_atom_fdim()
-        self.bond_fdim = bond_fdim or get_bond_fdim(atom_messages=args.atom_messages)
+        self.bond_fdim = bond_fdim or get_bond_fdim(
+            atom_messages=args.atom_messages
+        )
 
         self.features_only = args.features_only
         self.use_input_features = args.use_input_features
-        self.device = 'cpu' #args.device
         self.atom_descriptors = args.atom_descriptors
 
         if self.features_only:
@@ -296,10 +291,6 @@ class MPN(nn.Module):
         #         #zip(self.encoder, batch)
         #     ]
         # else:
-        # print(len(batches))
-        # print(batches)
-        # print(len(batches[0]))
-        # print(batches[0])
         encodings = [
             self.encoder(b) for b in batches
             # self.encoder(b, atom_descriptors_batch) for b in batch
