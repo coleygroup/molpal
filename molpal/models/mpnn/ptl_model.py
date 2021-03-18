@@ -79,7 +79,6 @@ class LitMPNN(pl.LightningModule):
             loss = self.criterion(preds, targets) * class_weights * mask
 
         loss = loss.sum() / mask.sum()
-        print(loss.item())
         return loss
     
     def validation_step(self, batch: Tuple, batch_idx) -> List[float]:

@@ -160,7 +160,7 @@ class MPNN:
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
-                num_workers=1,
+                num_workers=num_workers,
                 config=config,
                 use_gpu=self.use_gpu,
                 # use_tqdm=True,
