@@ -61,10 +61,7 @@ class MPNN:
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
                  final_lr: float = 1e-4, ncpu: int = 1, ddp: bool = False):
-        if torch.cuda.is_available():
-            device = 'cuda' 
-        else:
-            device = 'cpu'
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.ncpu = ncpu
         self.ddp = ddp
@@ -83,7 +80,6 @@ class MPNN:
         self.uncertainty = uncertainty_method in {'mve'}
         self.dataset_type = dataset_type
         self.num_tasks = num_tasks
-        self.device = device
 
         self.epochs = epochs
         self.batch_size = batch_size
@@ -94,11 +90,11 @@ class MPNN:
         self.final_lr = final_lr
         self.metric = metric
 
-        self.scheduler_args = dict(
-            warmup_epochs=warmup_epochs, epochs=epochs, num_lrs=1,
-            batch_size=batch_size,
-            init_lr=init_lr, max_lr=max_lr, final_lr=final_lr,
-        )
+        # self.scheduler_args = dict(
+        #     warmup_epochs=warmup_epochs, epochs=epochs, num_lrs=1,
+        #     batch_size=batch_size,
+        #     init_lr=init_lr, max_lr=max_lr, final_lr=final_lr,
+        # )
 
         self.loss_func = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method)
@@ -120,8 +116,8 @@ class MPNN:
     @device.setter
     def device(self, device):
         self.__device = device
-        self.model.to(device)
-        self.model.device = device
+        # self.model.to(device)
+        # self.model.device = device
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
@@ -152,40 +148,42 @@ class MPNN:
             'max_lr': self.max_lr,
             'final_lr': self.final_lr,
             'metric': self.metric,
+            'train_loader': train_dataloader,
+            'val_loader': val_dataloader
         }
-        # if self.ddp:
-        #     ngpu = int(ray.cluster_resources().get('GPU', 0))
-        #     if ngpu > 0:
-        #         num_workers = ngpu
-        #     else:
-        #         num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+        if self.ddp:
+            ngpu = int(ray.cluster_resources().get('GPU', 0))
+            if ngpu > 0:
+                num_workers = ngpu
+            else:
+                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
 
-        #     operator = TrainingOperator.from_ptl(
-        #         mpnn.LitMPNN, train_dataloader, val_dataloader
-        #     )
-        #     trainer = TorchTrainer(
-        #         training_operator_cls=operator,
-        #         num_workers=num_workers,
-        #         config=config,
-        #         use_gpu=ngpu>0,
-        #         use_tqdm=True,
-        #     )
+            trainer = TorchTrainer(
+                training_operator_cls=mpnn.MPNNOperator,
+                num_workers=1,
+                config=config,
+                use_gpu=self.use_gpu,
+                # use_tqdm=True,
+                scheduler_step_freq='manual'
+            )
             
-        #     for _ in trange(self.epochs, desc='Training', unit='epoch'):
-        #         trainer.train()
-        #         trainer.validate()
+            pbar = trange(self.epochs, desc='Training', unit='epoch')
+            for _ in pbar:
+                train_loss = trainer.train()['train_loss']
+                val_res = trainer.validate()
+                # total_val_loss = val_res['val_loss']
+                # print(total_val_loss)
+                val_loss = val_res['val_loss'] #/ val_res['num_samples']
+                pbar.set_postfix_str(
+                    f'loss={train_loss:0.3f}, val_loss={val_loss:0.3f}'
+                )
+            self.model = trainer.get_model()
+            return True
 
-        #     self.model = trainer.get_model()
-        #     return True
-
-        model = mpnn.LitMPNN(config
-            # self.model, self.uncertainty_method,
-            # self.dataset_type, self.warmup_epochs,
-            # self.init_lr, self.max_lr, self.final_lr, self.metric
-        )
+        model = mpnn.LitMPNN(config)
 
         early_stop_callback = EarlyStopping(
-            monitor='avg_val_loss',
+            monitor='val_loss',
             patience=5,
             verbose=True,
             mode='min'
