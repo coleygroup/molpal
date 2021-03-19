@@ -1,10 +1,8 @@
 """This module contains the Model abstract base class. All custom models must
 implement this interface in order to interact properly with an Explorer"""
-
 from abc import ABC, abstractmethod
-import gc
-from typing import (Callable, Iterable, List,
-                    Optional, Sequence, Set, Tuple, TypeVar)
+from typing import (Callable, Iterable, List, Optional,
+                    Sequence, Set, Tuple, TypeVar)
 
 from numpy import ndarray
 from tqdm import tqdm
