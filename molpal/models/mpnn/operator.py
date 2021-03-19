@@ -84,16 +84,7 @@ class MPNNOperator(TrainingOperator):
         self.register_data(
             train_loader=train_loader, validation_loader=val_loader
         )
-    
-    # def train_epoch(self, train_loader, info):
-    #     #train_loader = [x for x in train_loader]
-    #     #print(train_loader)
-    #     self.n_iter += mpnn.train(
-    #         self.model, train_loader, self.criterion,
-    #         self.optimizer, self.scheduler, self.uncertainty, self.n_iter, True
-    #     )
-    #     return {}
-    
+        
     def train_batch(self, batch: MoleculeDataset, batch_info: Dict) -> Dict:
         componentss, targets = batch
 
@@ -146,20 +137,6 @@ class MPNNOperator(TrainingOperator):
             scheduler.step()
 
         return {'train_loss': loss.item(), 'num_samples': len(targets)}
-    
-    # def validate(self, val_loader, info):
-    #     val_loader = [item for item in val_loader]
-    #     #print(val_loader)
-    #     val_scores = mpnn.evaluate(
-    #         self.model, val_loader, 1, self.uncertainty,
-    #         self.metric_func, 'regession', self.scaler)
-    #     val_score = np.nanmean(val_scores)
-
-    #     if val_score > self.best_val_score:
-    #         self.best_val_score = val_score
-    #         self.best_state_dict = self.model.state_dict()
-
-    #     return {}
     
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
