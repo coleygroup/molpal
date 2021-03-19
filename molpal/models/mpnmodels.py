@@ -150,7 +150,7 @@ class MPNN:
             
             train_data, val_data = self.make_datasets(smis, targets)
             config['steps_per_epoch'] = (
-                len(train_data) // (self.batch_size * 1)#num_workers)
+                len(train_data) // (self.batch_size * num_workers)
             )
             config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data,
