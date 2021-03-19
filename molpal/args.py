@@ -234,7 +234,9 @@ def add_model_args(parser: ArgumentParser) -> None:
                         help='Confidence estimation method for NN/MPNN models')
 
     parser.add_argument('--ddp', action='store_true', default=False,
-                        help='Whether to perform distributed MPN training over a multi-gpu setup  via PyTorch DDP. Currently only works with CUDA >= 11.0')
+                        help='Whether to perform distributed MPN training over a multi-GPU setup via PyTorch DDP. Currently only works with CUDA >= 11.0')
+    parser.add_argument('--precision', type=int, default=32, choices=(16, 32),
+                        help='the precision to use when training PyTorch models in number of bits. Native precision is 32, but 16-bit precision can lead to lower memory footprint during training and faster training times on Volta GPUs. DO NOT use 16-bit precision on non-Volta GPUs. Currently only supported for single-GPU training (i.e., ddp=False)')
                         
 ##################################
 #       STOPPING ARGUMENTS       #
