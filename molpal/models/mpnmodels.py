@@ -149,8 +149,9 @@ class MPNN:
                 num_workers = ray.cluster_resources()['CPU'] // self.ncpu
             
             train_data, val_data = self.make_datasets(smis, targets)
-            steps_per_epoch = len(train_data) // self.batch_size
-
+            config['steps_per_epoch'] = (
+                len(train_data) // (self.batch_size * num_workers)
+            )
             config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data,
                 batch_size=self.batch_size * num_workers,
@@ -163,7 +164,6 @@ class MPNN:
                 num_workers=self.ncpu,
                 pin_memory=self.use_gpu
             )
-            config['steps_per_epoch'] = steps_per_epoch
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,

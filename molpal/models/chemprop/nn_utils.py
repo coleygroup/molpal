@@ -210,8 +210,8 @@ class NoamLR(_LRScheduler):
         """
         Updates the learning rate by taking a step.
 
-        :param current_step: Optionally specify what step to set the learning rate to.
-                             If None, :code:`current_step = self.current_step + 1`.
+        :param current_step: Optionally specify what step to set the learning   
+            rate to. If None, :code:`current_step = self.current_step + 1`.
         """
         if current_step is not None:
             self.current_step = current_step
