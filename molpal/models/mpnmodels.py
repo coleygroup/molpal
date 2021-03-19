@@ -175,13 +175,18 @@ class MPNN:
             )
             
             pbar = trange(self.epochs, desc='Training', unit='epoch')
-            for _ in pbar:
+            for i in pbar:
                 train_loss = trainer.train()['train_loss']
                 val_res = trainer.validate()
                 val_loss = val_res['val_loss']
+                lr = val_res['lr']
                 pbar.set_postfix_str(
-                    f'loss={train_loss:0.3f}, val_loss={val_loss:0.3f}'
+                    f'loss={train_loss:0.3f}, '
+                    f'val_loss={val_loss:0.3f} '
+                    f'lr={lr}'
                 )
+                print(f'Epoch {i}: lr={lr}')
+
             self.model = trainer.get_model()
             return True
 

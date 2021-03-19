@@ -168,7 +168,8 @@ class MPNNOperator(TrainingOperator):
 
         return {
             'val_loss': val_loss, #/ num_samples,
-            'num_samples': num_samples
+            'num_samples': num_samples,
+            'lr': next(self.optimizer.param_groups)['lr']
         }
 
     def validate_batch(self, batch: MoleculeDataset, batch_idx) -> List[float]:
