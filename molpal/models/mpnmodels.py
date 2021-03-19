@@ -184,7 +184,7 @@ class MPNN:
                     f'val_loss={val_loss:0.3f} '
                     f'lr={lr}'
                 )
-                print(f'Epoch {i}: lr={lr}')
+                print(f'Epoch {i}: lr={lr}', flush=True)
 
             self.model = trainer.get_model()
             return True
