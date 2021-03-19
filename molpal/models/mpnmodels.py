@@ -1,17 +1,16 @@
 """This module contains Model implementations that utilize the MPNN model as 
 their underlying model"""
 from functools import partial
+import os
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 from numpy import ndarray
 import ray
 from ray.util.sgd import TorchTrainer
-from ray.util.sgd.torch import TrainingOperator
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from tqdm import tqdm, trange
-import torch.cuda
 
 from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
                                  MoleculeDataLoader)
@@ -49,6 +48,12 @@ class MPNN:
         the number of epochs over which to train
     ncpu : int
         the number of cores over which to parallelize input batch preparation
+    ddp : bool
+        whether to train the model over a distributed setup. Only works with
+        CUDA >= 11.0
+    precision : int
+        the precision with which to train the model represented in the number 
+        of bits
     """
     def __init__(self, batch_size: int = 50,
                  uncertainty_method: Optional[str] = None,
@@ -60,11 +65,15 @@ class MPNN:
                  ffn_num_layers: int = 2, metric: str = 'rmse',
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
-                 final_lr: float = 1e-4, ncpu: int = 1, ddp: bool = False):
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+                 final_lr: float = 1e-4, ncpu: int = 1,
+                 ddp: bool = False, precision: int = 32):
         self.ncpu = ncpu
         self.ddp = ddp
+        if precision not in (16, 32):
+            raise ValueError(
+                f'arg: "precision" can only be (16, 32). got: {precision}'
+            )
+        self.precision = precision
 
         self.model = mpnn.MoleculeModel(
             uncertainty_method=uncertainty_method,
@@ -74,7 +83,6 @@ class MPNN:
             activation=activation, ffn_hidden_size=ffn_hidden_size, 
             ffn_num_layers=ffn_num_layers
         )
-        self.device = device
 
         self.uncertainty_method = uncertainty_method
         self.uncertainty = uncertainty_method in {'mve'}
@@ -122,7 +130,60 @@ class MPNN:
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
-        steps_per_epoch = len(train_data) // self.batch_size
+        config = {
+            'model': self.model,
+            'dataset_type': self.dataset_type,
+            'uncertainty_method': self.uncertainty_method,
+            'warmup_epochs': self.warmup_epochs,
+            'max_epochs': self.epochs,
+            'init_lr': self.init_lr,
+            'max_lr': self.max_lr,
+            'final_lr': self.final_lr,
+            'metric': self.metric,
+        }
+        if self.ddp:
+            ngpu = int(ray.cluster_resources().get('GPU', 0))
+            if ngpu > 0:
+                num_workers = ngpu
+            else:
+                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+            
+            batch_size = self.batch_size * num_workers
+            train_data, val_data = self.make_datasets(smis, targets)
+            steps_per_epoch = len(train_data) // batch_size
+
+            config['train_loader'] = MoleculeDataLoader(
+                dataset=train_data,
+                batch_size=batch_size,
+                num_workers=self.ncpu,
+                pin_memory=self.use_gpu
+            )
+            config['val_loader'] = MoleculeDataLoader(
+                dataset=val_data,
+                batch_size=batch_size,
+                num_workers=self.ncpu,
+                pin_memory=self.use_gpu
+            )
+            config['steps_per_epoch'] = steps_per_epoch
+
+            trainer = TorchTrainer(
+                training_operator_cls=mpnn.MPNNOperator,
+                num_workers=num_workers,
+                config=config,
+                use_gpu=self.use_gpu,
+                scheduler_step_freq='manual'
+            )
+            
+            pbar = trange(self.epochs, desc='Training', unit='epoch')
+            for _ in pbar:
+                train_loss = trainer.train()['train_loss']
+                val_res = trainer.validate()
+                val_loss = val_res['val_loss']
+                pbar.set_postfix_str(
+                    f'loss={train_loss:0.3f}, val_loss={val_loss:0.3f}'
+                )
+            self.model = trainer.get_model()
+            return True
 
         train_dataloader = MoleculeDataLoader(
             dataset=train_data,
@@ -136,98 +197,21 @@ class MPNN:
             num_workers=self.ncpu,
             pin_memory=self.use_gpu
         )
-
-        config = {
-            'model': self.model,
-            'dataset_type': self.dataset_type,
-            'uncertainty_method': self.uncertainty_method,
-            'warmup_epochs': self.warmup_epochs,
-            'max_epochs': self.epochs,
-            'steps_per_epoch': steps_per_epoch,
-            'init_lr': self.init_lr,
-            'max_lr': self.max_lr,
-            'final_lr': self.final_lr,
-            'metric': self.metric,
-            'train_loader': train_dataloader,
-            'val_loader': val_dataloader
-        }
-        if self.ddp:
-            ngpu = int(ray.cluster_resources().get('GPU', 0))
-            if ngpu > 0:
-                num_workers = ngpu
-            else:
-                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
-
-            trainer = TorchTrainer(
-                training_operator_cls=mpnn.MPNNOperator,
-                num_workers=num_workers,
-                config=config,
-                use_gpu=self.use_gpu,
-                # use_tqdm=True,
-                scheduler_step_freq='manual'
-            )
-            
-            pbar = trange(self.epochs, desc='Training', unit='epoch')
-            for _ in pbar:
-                train_loss = trainer.train()['train_loss']
-                val_res = trainer.validate()
-                # total_val_loss = val_res['val_loss']
-                # print(total_val_loss)
-                val_loss = val_res['val_loss'] #/ val_res['num_samples']
-                pbar.set_postfix_str(
-                    f'loss={train_loss:0.3f}, val_loss={val_loss:0.3f}'
-                )
-            self.model = trainer.get_model()
-            return True
-
         model = mpnn.LitMPNN(config)
-
         early_stop_callback = EarlyStopping(
             monitor='val_loss',
             patience=5,
             verbose=True,
             mode='min'
         )
-
-        # ngpu = int(ray.cluster_resources().get('GPU', 0))
-        # num_nodes = len(ray.nodes())
         trainer = pl.Trainer(
             max_epochs=self.epochs,
             callbacks=[early_stop_callback],
-            gpus=1 if self.use_gpu else 0
+            gpus=1 if self.use_gpu else 0,
+            precision=self.precision
         )
         trainer.fit(model, train_dataloader, val_dataloader)
-
-        self.model = model.mpnn
-        return True
-
-        # optimizer = chemprop.utils.build_optimizer(self.model, self.init_lr)
-        # scheduler = chemprop.utils.build_lr_scheduler(
-        #     optimizer, train_data_size=train_data_size, **self.scheduler_args)
-
-        # n_iter = 0
-        # best_val_score = float('-inf')
-        # best_state_dict = self.model.state_dict()
-
-        # for _ in trange(self.epochs, desc='Training', unit='epoch'):
-        #     n_iter = mpnn.train(
-        #         self.model, train_dataloader, self.loss_func,
-        #         optimizer, scheduler, self.uncertainty, n_iter
-        #     )
-        #     # if isinstance(scheduler, exponentialLR)
-        #     #   scheduler.step()
-        #     # this will need to be changed if we allow classification
-        #     val_scores = mpnn.evaluate(
-        #         self.model, val_dataloader, self.num_tasks, self.uncertainty,
-        #         self.metric_func, 'regession', self.scaler)
-        #     val_score = np.nanmean(val_scores)
-
-        #     if val_score > best_val_score:
-        #         best_val_score = val_score
-        #         best_state_dict = self.model.state_dict()
-
-        # self.model.load_state_dict(best_state_dict)
-
+        
         return True
 
     def make_datasets(
@@ -278,10 +262,13 @@ class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
-                 ncpu: int = 1, ddp: bool = False, **kwargs):
+                 ncpu: int = 1, ddp: bool = False, precision: int = 32, 
+                 **kwargs):
         test_batch_size = test_batch_size or 1000000
 
-        self.build_model = partial(MPNN, ncpu=ncpu, ddp=ddp)
+        self.build_model = partial(
+            MPNN, ncpu=ncpu, ddp=ddp, precision=precision
+        )
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
@@ -313,12 +300,13 @@ class MPNDropoutModel(Model):
     stochastic dropout during model inference"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  dropout: float = 0.2, dropout_size: int = 10,
-                 ncpu: int = 1, ddp: bool = False, **kwargs):
+                 ncpu: int = 1, ddp: bool = False, precision: int = 32,
+                 **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
             MPNN, uncertainty_method='dropout', dropout=dropout, 
-            ncpu=ncpu, ddp=ddp
+            ncpu=ncpu, ddp=ddp, precision=precision
         )
         self.model = self.build_model()
 
@@ -360,11 +348,13 @@ class MPNTwoOutputModel(Model):
     """Message-passing network model that predicts means and variances
     through mean-variance estimation"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
-                 ncpu: int = 1, ddp: bool = False, **kwargs):
+                 ncpu: int = 1, ddp: bool = False, precision: int = 32,
+                 **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, uncertainty_method='mve', ncpu=ncpu, ddp=ddp
+            MPNN, uncertainty_method='mve', ncpu=ncpu,
+            ddp=ddp, precision=precision
         )
         self.model = self.build_model()
 
