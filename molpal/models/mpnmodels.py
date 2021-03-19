@@ -148,19 +148,18 @@ class MPNN:
             else:
                 num_workers = ray.cluster_resources()['CPU'] // self.ncpu
             
-            batch_size = self.batch_size * num_workers
             train_data, val_data = self.make_datasets(smis, targets)
-            steps_per_epoch = len(train_data) // batch_size
+            steps_per_epoch = len(train_data) // self.batch_size
 
             config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data,
-                batch_size=batch_size,
+                batch_size=self.batch_size * num_workers,
                 num_workers=self.ncpu,
                 pin_memory=self.use_gpu
             )
             config['val_loader'] = MoleculeDataLoader(
                 dataset=val_data,
-                batch_size=batch_size,
+                batch_size=self.batch_size * num_workers,
                 num_workers=self.ncpu,
                 pin_memory=self.use_gpu
             )
