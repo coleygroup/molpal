@@ -170,7 +170,7 @@ class MPNN:
                 num_workers=num_workers,
                 config=config,
                 use_gpu=self.use_gpu,
-                scheduler_step_freq='manual'
+                scheduler_step_freq='batch'
             )
             
             pbar = trange(self.epochs, desc='Training', unit='epoch')

@@ -17,27 +17,6 @@ T_feat = TypeVar('T_feat')
 
 class MPNNOperator(TrainingOperator):
     def setup(self, config):
-        # smis = config['smis']
-        # targets = config['targets']
-
-        # self.scaler = None
-        # train_data, val_data = self.make_datasets(smis, targets)
-        # train_data_size = len(train_data) + len(val_data)
-
-        # scheduler_args = config['scheduler_args']
-        # self.scheduler_args = scheduler_args
-        
-        # train_loader = MoleculeDataLoader(
-        #     dataset=train_data,
-        #     batch_size=config['batch_size'],
-        #     num_workers=config.get('ncpu', 1)
-        # )
-        # val_loader = MoleculeDataLoader(
-        #     dataset=val_data,
-        #     batch_size=config['batch_size'],
-        #     num_workers=config.get('ncpu', 1)
-        # )
-
         warmup_epochs = config.get('warmup_epochs', 2.)
         steps_per_epoch = config['steps_per_epoch']
         max_epochs = config['max_epochs']
@@ -133,8 +112,8 @@ class MPNNOperator(TrainingOperator):
 
         loss.backward()
         optimizer.step()
-        if isinstance(scheduler, NoamLR):
-            scheduler.step()
+        # if isinstance(scheduler, NoamLR):
+        #     scheduler.step()
 
         return {'train_loss': loss.item(), 'num_samples': len(targets)}
     
