@@ -187,7 +187,8 @@ class Explorer:
 
     @property
     def k(self) -> int:
-        """the number of top-scoring inputs from which to calculate an average."""
+        """the number of top-scoring inputs from which to calculate an average.
+        """
         k = self.__k
         if isinstance(k, float):
             k = int(k * len(self.pool))
@@ -490,8 +491,7 @@ class Explorer:
         m = min(m, len(self))
 
         p_data = Path(f'{self.root}/{self.name}/data')
-        if not p_data.is_dir():
-            p_data.mkdir(parents=True)
+        p_data.mkdir(parents=True, exist_ok=True)
 
         if final:
             m = len(self)
@@ -543,8 +543,7 @@ class Explorer:
 
     def save(self) -> str:
         p_states = Path(f'{self.root}/{self.name}/states')
-        if not p_states.is_dir():
-            p_states.mkdir(parents=True)
+        p_states.mkdir(parents=True, exist_ok=True)
         
         p_state = p_states / f'epoch_{self.epoch}.pkl'
         with open(p_state, 'wb') as fid:
@@ -580,8 +579,7 @@ class Explorer:
 
     def write_preds(self) -> str:
         path = Path(f'{self.root}/{self.name}/preds')
-        if not path.is_dir():
-            path.mkdir(parents=True)
+        path.mkdir(parents=True, exist_ok=True)
 
         if self.y_vars:
             Y_pred = np.column_stack((self.y_preds, self.y_vars))

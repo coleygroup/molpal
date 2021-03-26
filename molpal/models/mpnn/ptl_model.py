@@ -93,7 +93,6 @@ class LitMPNN(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         val_loss = torch.cat(outputs).mean()
-        # print(val_loss.item())
         self.log('val_loss', val_loss, prog_bar=True)
 
     def configure_optimizers(self) -> List:

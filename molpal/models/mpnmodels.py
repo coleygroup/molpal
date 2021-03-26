@@ -204,7 +204,7 @@ class MPNN:
         model = mpnn.LitMPNN(config)
         early_stop_callback = EarlyStopping(
             monitor='val_loss',
-            patience=5,
+            patience=10,
             verbose=True,
             mode='min'
         )
