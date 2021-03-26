@@ -1,20 +1,24 @@
 import csv
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import gzip
-from itertools import repeat
+from itertools import islice, repeat
 from pathlib import Path
-from typing import Iterator, List, Optional, Sequence, Tuple, Type, Union
+from typing import (
+    Iterable, Iterator, List, Optional, Sequence, Tuple, Type, Union
+)
 
 import h5py
 import numpy as np
-from rdkit import Chem
+import ray
+from rdkit import Chem, RDLogger
 from tqdm import tqdm
 
-from molpal.encoder import Encoder
+from molpal.encoder import Featurizer
 from molpal.pools.cluster import cluster_fps_h5
 from molpal.pools import fingerprints
+
+RDLogger.DisableLog('rdApp.*')
 
 # a Mol is a SMILES string, a fingerprint, and an optional cluster ID
 Mol = Tuple[str, np.ndarray, Optional[int]]
@@ -73,14 +77,11 @@ class MoleculePool(Sequence[Mol]):
         If specified, a user assumes the following:
         1. the ordering of the fingerprints matches the ordering in the
             library file
-        2. the encoder used to generate the fingerprints is the same
+        2. the featurizer used to generate the fingerprints is the same
             as the one passed to the model
         If None, the MoleculePool will generate this file automatically 
-    encoder : Encoder (Default = Encoder())
-        the encoder to use when calculating fingerprints
-    ncpu : int (Default = 1)
-        the number of cores to parallelize fingerprint calculation over.
-        A value of -1 uses all available cores.
+    featurizer : Featurizer, default=Featurizer()
+        the featurizer to use when calculating fingerprints
     cache : bool (Default = False)
         whether to cache the SMILES strings in memory
     validated : bool (Default = False)
@@ -101,7 +102,7 @@ class MoleculePool(Sequence[Mol]):
     def __init__(self, library: str, title_line: bool = True,
                  delimiter: str = ',', smiles_col: int = 0,
                  fps: Optional[str] = None,
-                 encoder: Encoder = Encoder(), ncpu: int = 1,
+                 featurizer: Featurizer = Featurizer(),
                  cache: bool = False, validated: bool = False,
                  cluster: bool = False, ncluster: int = 100,
                  path: str = '.', verbose: int = 0, **kwargs):
@@ -118,13 +119,12 @@ class MoleculePool(Sequence[Mol]):
 
         self.fps_ = fps
         self.invalid_lines = None
-        self.ncpu = ncpu
 
         self.smis_ = None
         self.cluster_ids_ = None
         self.cluster_sizes = None
         
-        self.chunk_size = self._encode_mols(encoder, ncpu, path)
+        self.chunk_size = self._encode_mols(featurizer, path)
         self.size = self._validate_and_cache_smis(cache, validated)
 
         if cluster:
@@ -383,16 +383,14 @@ class MoleculePool(Sequence[Mol]):
 
         return None
 
-    def _encode_mols(self, encoder: Type[Encoder], 
-                     ncpu: int, path: str) -> int:
+    def _encode_mols(self, featurizer: Featurizer, 
+                     path: str) -> int:
         """Precalculate the fingerprints of the library members, if necessary.
 
         Parameters
         ----------
-        encoder : Type[Encoder]
-            the encoder to use for generating the fingerprints
-        ncpu : int
-            the number of cores to parallelize fingerprint calculation over
+        featurizer : Featurizer
+            the featurizer to use for generating the fingerprints
         path : str
             the path to which the fingerprints file should be written
         
@@ -416,8 +414,8 @@ class MoleculePool(Sequence[Mol]):
 
             total_size = sum(1 for _ in self.smis())
             self.fps_, self.invalid_lines = fingerprints.feature_matrix_hdf5(
-                self.smis(), total_size, ncpu=self.ncpu,
-                encoder=encoder, name=Path(self.library).stem, path=path
+                self.smis(), total_size, featurizer=featurizer,
+                name=Path(self.library).stem, path=path
             )
             if self.verbose > 0:
                 print('Done!')
@@ -462,7 +460,6 @@ class MoleculePool(Sequence[Mol]):
             if cache is False and was not previously set by _encode_mols()
         """
         if self.invalid_lines is not None and not cache:
-            # the pool has already been validated if invalid_lines is set
             return len(self)
 
         if self.verbose > 0:
@@ -471,25 +468,28 @@ class MoleculePool(Sequence[Mol]):
         self.invalid_lines = set()
         smis = self.smis()
 
-        if validated:
-            if cache:
-                self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
+        if validated and cache:
+            self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
         else:
-            with ProcessPoolExecutor(max_workers=self.ncpu) as pool:
-                valid_smis = pool.map(validate_smi, smis, chunksize=256)
-                if cache:
-                    self.smis_ = []
-                    for i, smi in tqdm(enumerate(valid_smis), unit='smi',
-                                            desc='Validating', smoothing=0.):
-                        if smi is None:
-                            self.invalid_lines.add(i)
-                        else:
-                            self.smis_.append(smi)
-                else:
-                    for i, smi in tqdm(enumerate(valid_smis), unit='smi',
-                                            desc='Validating', smoothing=0.):
-                        if smi is None:
-                            self.invalid_lines.add(i)
+            valid_smis = validate_smis(smis)
+            if cache:
+                smis = [
+                    smi for smi in tqdm(
+                        valid_smis, desc='Validating', 
+                        unit='smi', smoothing=0.
+                    )
+                ]
+                self.smis_ = [smi for smi in smis if smi is not None]
+                self.invalid_lines = {
+                    i for i, smi in enumerate(smis) if smi is None
+                }
+            else:
+                self.invalid_lines = {
+                    i for i, smi in tqdm(
+                        enumerate(valid_smis), desc='Validating',
+                        unit='smi', smoothing=0.
+                    ) if smi is None
+                }
 
         if self.verbose > 0:
             print('Done!', flush=True)
@@ -516,8 +516,29 @@ class MoleculePool(Sequence[Mol]):
         self.cluster_ids_ = cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
 
+def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
+    """Batch an iterable into batches of size chunk_size, with the final
+    batch potentially being smaller"""
+    it = iter(it)
+    return iter(lambda: list(islice(it, chunk_size)), [])
+
 def validate_smi(smi):
     return smi if Chem.MolFromSmiles(smi) else None
+
+@ray.remote
+def _validate_smis(smis):
+    RDLogger.DisableLog('rdApp.*')
+    return [smi if Chem.MolFromSmiles(smi) else None for smi in smis]
+
+def validate_smis(smis) -> Iterator[Optional[str]]:
+    refs = [
+        _validate_smis.remote(smis_batch)
+        for smis_batch in batches(smis, 4096)
+    ]
+    for ref in refs:
+        batch = ray.get(ref)
+        for smi in batch:
+            yield smi
 
 class EagerMoleculePool(MoleculePool):
     """Alias for a MoleculePool"""

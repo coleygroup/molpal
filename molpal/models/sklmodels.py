@@ -13,8 +13,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 from tqdm import tqdm
 
+from molpal.encoder import feature_matrix
 from molpal.models.base import Model
-from molpal.models.utils import batches, feature_matrix
 
 T = TypeVar('T')
 
@@ -34,24 +34,19 @@ class RFModel(Model):
     ----------
     test_batch_size : Optional[int] (Default = 10000)
         the size into which testing data should be batched
-    ncpu : int (Default = 1)
-        the number of cores training/inference should be distributed over
     """
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
                  min_samples_leaf: int = 1,
                  test_batch_size: Optional[int] = 65536,
-                 num_workers: int = 1, ncpu: int = 1,
                  **kwargs):
         test_batch_size = test_batch_size or 65536
-
-        self.ncpu = ncpu
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators, max_depth=max_depth,
             min_samples_leaf=min_samples_leaf, n_jobs=-1,
         )
 
-        super().__init__(test_batch_size, num_workers=num_workers, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def provides(self):
@@ -62,10 +57,9 @@ class RFModel(Model):
         return 'rf'
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
-              featurize: Callable[[T], ndarray], retrain: bool = True):
+              featurizer: Callable[[T], ndarray], retrain: bool = True):
         # retrain means nothing for this model- internally it always retrains
-        X = feature_matrix(xs, featurize,
-                           self.num_workers, self.ncpu, self.distributed)
+        X = feature_matrix(xs, featurizer)
         Y = np.array(ys)
 
         with joblib.parallel_backend('ray'):
@@ -108,24 +102,19 @@ class GPModel(Model):
     Parameters
     ----------
     gp_kernel : str (Default = 'dotproduct')
-    ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
     """
     def __init__(self, gp_kernel: str = 'dotproduct',
                  test_batch_size: Optional[int] = 1024,
-                 num_workers: int = 1, ncpu: int = 1,
-                 distributed: bool = False, **kwargs):
+                 **kwargs):
         test_batch_size = test_batch_size or 1024
-
-        self.ncpu = ncpu
 
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
 
-        super().__init__(test_batch_size, num_workers=num_workers,
-                         distributed=distributed, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
         
     @property
     def provides(self):
@@ -136,9 +125,8 @@ class GPModel(Model):
         return 'gp'
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
-              featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
-        X = feature_matrix(xs, featurize,
-                           self.num_workers, self.ncpu, self.distributed)
+              featurizer, retrain: bool = False) -> bool:
+        X = feature_matrix(xs, featurizer)
         Y = np.array(ys)
 
         self.model = GaussianProcessRegressor(kernel=self.kernel)

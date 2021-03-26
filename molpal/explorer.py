@@ -1,6 +1,5 @@
 """This module contains the Explorer class, which is an abstraction
 for batched, Bayesian optimization."""
-
 from collections import deque
 import csv
 import heapq
@@ -128,20 +127,24 @@ class Explorer:
                  save_preds: bool = False, retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
                  scores_csvs: Union[str, List[str], None] = None,
-                 verbose: int = 0, **kwargs):
+                 verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
+                 **kwargs):
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
-        self.tmp = tempfile.gettempdir()
+        self.tmp = tmp_dir
 
-        self.encoder = encoder.Encoder(**kwargs)
-        self.pool = pools.pool(encoder=self.encoder, 
-                               path=tempfile.gettempdir(), **kwargs)
+        self.featurizer = encoder.Featurizer(
+            fingerprint=kwargs['fingerprint'],
+            radius=kwargs['radius'], length=kwargs['length']
+        )
+        self.pool = pools.pool(featurizer=self.featurizer, 
+                               path=self.tmp, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
-        self.model = models.model(input_size=len(self.encoder), **kwargs)
+        self.model = models.model(input_size=len(self.featurizer), **kwargs)
         self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
 
         self.objective = objectives.objective(**kwargs)
@@ -184,8 +187,7 @@ class Explorer:
 
     @property
     def k(self) -> int:
-        """int : The number of top-scoring inputs from which to determine
-        the average."""
+        """the number of top-scoring inputs from which to calculate an average."""
         k = self.__k
         if isinstance(k, float):
             k = int(k * len(self.pool))
@@ -205,7 +207,7 @@ class Explorer:
 
     @property
     def max_explore(self) -> int:
-        """int : The maximum number of inputs to explore"""
+        """the maximum number of inputs to explore"""
         max_explore = self.__max_explore
         if isinstance(max_explore, float):
             max_explore = int(max_explore * len(self.pool))
@@ -227,7 +229,7 @@ class Explorer:
 
     @property
     def completed(self) -> bool:
-        """Has the explorer fulfilled one of its stopping conditions?
+        """whether the explorer fulfilled one of its stopping conditions
 
         Stopping Conditions
         -------------------
@@ -263,7 +265,6 @@ class Explorer:
 
     def run(self):
         """Explore the MoleculePool until the stopping condition is met"""
-        
         if self.epoch == 0:
             print('Starting Exploration ...')
             self.explore_initial()
@@ -326,7 +327,7 @@ class Explorer:
         self.epoch += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
-        return sum(valid_scores)/len(valid_scores)
+        return sum(valid_scores) / len(valid_scores)
 
     def explore_batch(self) -> float:
         """Perform a round of exploration
@@ -343,7 +344,8 @@ class Explorer:
         """
         if self.epoch == 0:
             raise InvalidExplorationError(
-                'Cannot explore a batch before initialization!')
+                'Cannot explore a batch before initialization!'
+            )
 
         if len(self.scores) >= len(self.pool):
             # this needs to be reconsidered for transfer learning type approach
@@ -640,8 +642,11 @@ class Explorer:
         else:
             xs, ys = zip(*self.new_scores.items())
 
-        self.model.train(xs, ys, retrain=self.retrain_from_scratch,
-                         featurize=self.encoder.encode_and_uncompress)
+        self.model.train(
+            xs, ys, retrain=self.retrain_from_scratch,
+            featurizer=self.featurizer,
+            # featurize=self.encoder.encode_and_uncompress
+        )
         self.new_scores = {}
         self.updated_model = True
 

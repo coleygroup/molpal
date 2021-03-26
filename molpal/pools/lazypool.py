@@ -4,7 +4,7 @@ from typing import Iterator, Sequence, Type
 
 import numpy as np
 
-from molpal.encoder import Encoder
+from molpal.encoder import Featurizer
 from molpal.pools.base import MoleculePool, Mol
 
 class LazyMoleculePool(MoleculePool):
@@ -24,6 +24,9 @@ class LazyMoleculePool(MoleculePool):
         no clustering can be performed for a LazyMoleculePool
     """
     def __init__(self, *args, **kwargs):
+        raise NotImplementedError(
+            'This class is currently broken- use an EagerPool instead!'
+        )
         super().__init__(*args, **kwargs)
 
         self.chunk_size = 100 * self.ncpu
@@ -70,7 +73,7 @@ class LazyMoleculePool(MoleculePool):
                                      smis_chunk, chunksize=job_chunk_size)
                 yield fps_chunk
 
-    def _encode_mols(self, encoder: Type[Encoder], ncpu: int, **kwargs) -> None:
+    def _encode_mols(self, featurizer: Featurizer, ncpu: int, **kwargs) -> None:
         """
         Side effects
         ------------
@@ -79,7 +82,7 @@ class LazyMoleculePool(MoleculePool):
         (sets) self.ncpu : int
             the number of jobs to parallelize fingerprint buffering over
         """
-        self.encoder = encoder
+        self.featurizer = featurizer
         self.ncpu = ncpu
 
     def _cluster_mols(self, *args, **kwargs) -> None:

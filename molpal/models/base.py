@@ -45,11 +45,8 @@ class Model(ABC):
     test_batch_size : int
     ncpu : int (Default = 1)
     """
-    def __init__(self, test_batch_size: int, num_workers: int = 1, 
-                 distributed: bool = False, **kwargs):
+    def __init__(self, test_batch_size: int, **kwargs):
         self.test_batch_size = test_batch_size
-        self.num_workers = num_workers
-        self.distributed = distributed
 
     def __call__(self, *args, **kwargs) -> Tuple[List[float], List[float]]:
         return self.apply(*args, **kwargs)
@@ -66,7 +63,7 @@ class Model(ABC):
 
     @abstractmethod
     def train(self, xs: Iterable[T], ys: Sequence[float], *,
-              featurize: Callable[[T], T_feat], retrain: bool = False) -> bool:
+              featurizer: Callable[[T], T_feat], retrain: bool = False) -> bool:
         """Train the model on the input data
         
         Parameters

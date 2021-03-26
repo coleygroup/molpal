@@ -1,12 +1,14 @@
 from concurrent.futures import ProcessPoolExecutor as Pool
 from itertools import islice
 from pathlib import Path
-from typing import Iterable, Iterator, List, Set, Tuple, Type, TypeVar
+from typing import Iterable, Iterator, List, Optional, Set, Tuple, TypeVar
 
 import h5py
+import numpy as np
+import ray
 from tqdm import tqdm
 
-from molpal.encoder import Encoder
+from molpal.encoder import Featurizer, featurize, feature_matrix
 
 T = TypeVar('T')
 
@@ -15,11 +17,52 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
-def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
-                        encoder: Type[Encoder] = Encoder(),
+# @ray.remote
+# def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
+#                  radius: int = 2,
+#                  length: int = 2048) -> List[Optional[np.ndarray]]:
+#     fps = [featurize(smi, fingerprint, radius, length) for smi in smis]
+#     return fps
+
+# def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
+#                 radius: int = 2,
+#                 length: int = 2048) -> List[Optional[np.ndarray]]:
+#     """
+#     Caculate the Morgan fingerprint of each molecule in smis
+
+#     Parameters
+#     ----------
+#     smis : Iterable[str]
+#         the SMILES strings of the molecules
+#     radius : int, default=2
+#         the radius of the fingerprint
+#     length : int, default=2048
+#         the number of bits in the fingerprint
+
+#     Returns
+#     -------
+#     List
+#         a list of the corresponding morgan fingerprints in bit vector form
+#     """
+#     chunksize = int(ray.cluster_resources()['CPU'] * 64)
+#     refs = [
+#         _smis_to_fps.remote(smis_chunk, fingerprint, radius, length)
+#         for smis_chunk in batches(smis, chunksize)
+#     ]
+#     fps_chunks = [
+#         ray.get(r)
+#         for r in tqdm(refs, desc='Calculating fingerprints',
+#                       unit='chunk', leave=False)
+#     ]
+#     fps = list(chain(*fps_chunks))
+
+#     return fps
+
+def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
+                        featurizer: Featurizer = Featurizer(),
                         name: str = 'fps',
                         path: str = '.') -> Tuple[str, Set[int]]:
-    """Precalculate the fature matrix of xs with the given encoder and store
+    """Precalculate the fature matrix of xs with the given featurizer and store
     the matrix in an HDF5 file
     
     Parameters
@@ -30,7 +73,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
         the length of the iterable
     ncpu : int (Default = 0)
         the number of cores to parallelize feature matrix generation over
-    encoder : Type[Encoder] (Default = Encoder('pair'))
+    featurizer : Featurizer, default=Featurizer()
         an object that encodes inputs from an identifier representation to
         a feature representation
     name : str (Default = 'fps')
@@ -49,30 +92,35 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
     """
     fps_h5 = str(Path(path)/f'{name}.h5')
 
-    with Pool(max_workers=ncpu) as pool, h5py.File(fps_h5, 'w') as h5f:
+    # fingerprint = featurizer.fingerprint
+    # radius = featurizer.radius
+    # length = featurizer.length
+
+    ncpu = int(ray.cluster_resources()['CPU'])
+    with h5py.File(fps_h5, 'w') as h5f:
         CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
-            'fps', (size, len(encoder)),
-            chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
+            'fps', (size, len(featurizer)),
+            chunks=(CHUNKSIZE, len(featurizer)), dtype='int8'
         )
         
-        batch_size = CHUNKSIZE*ncpu
+        batch_size = CHUNKSIZE * 2 * ncpu
         n_batches = size//batch_size + 1
 
         invalid_idxs = set()
         i = 0
         offset = 0
 
-        for xs_batch in tqdm(batches(xs, batch_size), total=n_batches,
+        for smis_batch in tqdm(batches(smis, batch_size), total=n_batches,
                              desc='Precalculating fps', unit='batch'):
-            fps = pool.map(encoder.encode_and_uncompress, xs_batch,
-                           chunksize=2*ncpu)
+            fps = feature_matrix(smis_batch, featurizer)
             for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
-                while fp is None:
+                if fp is None:
                     invalid_idxs.add(i+offset)
                     offset += 1
-                    fp = next(fps)
+                    continue
+                    # fp = next(fps)
 
                 fps_dset[i] = fp
                 i += 1
