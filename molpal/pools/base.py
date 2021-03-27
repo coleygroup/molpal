@@ -468,8 +468,9 @@ class MoleculePool(Sequence[Mol]):
         self.invalid_lines = set()
         smis = self.smis()
 
-        if validated and cache:
-            self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
+        if validated:
+            if cache:
+                self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
         else:
             valid_smis = validate_smis(smis)
             if cache:
