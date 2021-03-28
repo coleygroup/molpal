@@ -88,10 +88,6 @@ def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
                  length: int = 2048) -> List[Optional[np.ndarray]]:
     fps = [smi_to_fp(smi, fingerprint, radius, length) for smi in smis]
     return fps
-    # X = np.empty((len(fps), len(fps[0])))
-    # for i, fp in enumerate(fps):
-    #     DataStructs.ConvertToNumpyArray(fp, X[i])
-    # return X
 
 def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
                 radius: int = 2,
@@ -155,13 +151,14 @@ def fps_hdf5(smis: Iterable[str], size: int,
             # fps = pool.map(encoder.encode_and_uncompress, xs_batch,
             #                chunksize=2*ncpu)
             for fp in tqdm(fps, total=batchsize, smoothing=0., leave=False):
-                while fp is None:
+                if fp is None:
                     invalid_idxs.add(i+offset)
                     offset += 1
-                    fp = next(fps)
+                    continue #fp = next(fps)
 
                 fps_dset[i] = fp
                 i += 1
+
         # original dataset size included potentially invalid xs
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
@@ -169,16 +166,12 @@ def fps_hdf5(smis: Iterable[str], size: int,
 
     return fps_h5, invalid_idxs
 
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', default='.',
                         help='the path under which to write the fingerprints file')
     parser.add_argument('--name',
                         help='what to name the fingerprints file. If no suffix is provided, will add ".h5". If no name is provided, output file will be name <library>.h5')
-    # parser.add_argument('-nc', '--ncpu', default=1, type=int, metavar='N_CPU',
-    #                     help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
     parser.add_argument('--fingerprint', default='pair',
                         choices={'morgan', 'rdkit', 'pair', 'maccs', 'map4'},
                         help='the type of encoder to use')
@@ -192,7 +185,7 @@ def main():
     parser.add_argument('--no-title-line', action='store_true', default=False,
                         help='whether there is no title line in the library file')
     parser.add_argument('--total-size', type=int,
-                        help='whether there is no title line in the library file')
+                        help='the total number of molecules in the library file')
     parser.add_argument('--delimiter', default=',',
                         help='the column separator in the library file')
     parser.add_argument('--smiles-col', default=0, type=int,

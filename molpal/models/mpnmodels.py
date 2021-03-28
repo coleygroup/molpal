@@ -212,7 +212,8 @@ class MPNN:
             max_epochs=self.epochs,
             callbacks=[early_stop_callback],
             gpus=1 if self.use_gpu else 0,
-            precision=self.precision
+            precision=self.precision,
+            progress_bar_refresh_rate=100
         )
         trainer.fit(model, train_dataloader, val_dataloader)
         
