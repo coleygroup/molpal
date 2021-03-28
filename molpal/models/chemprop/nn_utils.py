@@ -218,8 +218,6 @@ class NoamLR(_LRScheduler):
         else:
             self.current_step += 1
 
-        print(self.current_step, flush=True)
-
         for i in range(self.num_lrs):
             if self.current_step <= self.warmup_steps[i]:
                 self.lr[i] = (
