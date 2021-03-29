@@ -13,7 +13,7 @@ from .. import chemprop
 
 class LitMPNN(pl.LightningModule):
     """A message-passing neural network base class"""
-    def __init__(self, config: Dict,
+    def __init__(self, config: Optional[Dict] = None,
                 #  model: nn.Module,
                 #  uncertainty_method: Optional[str] = None,
                 #  dataset_type: str = 'regression',
@@ -24,9 +24,10 @@ class LitMPNN(pl.LightningModule):
                 #  metric: str = 'rmse'
                 ):
         super().__init__()
-
-        model = config['model']
-        dataset_type = config['dataset_type']
+        config = config or dict()
+        
+        model = config.get('model', mpnn.MoleculeModel())
+        dataset_type = config.get('dataset_type', 'regression')
         uncertainty_method = config.get('uncertainty_method', 'none')
 
         self.mpnn = model
