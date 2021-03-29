@@ -34,7 +34,7 @@ class LitMPNN(pl.LightningModule):
         self.uncertainty = uncertainty_method in {'mve'}
 
         self.warmup_epochs = config.get('warmup_epochs', 2.)
-        self.max_epochs = config['max_epochs']
+        self.max_epochs = config.get('max_epochs', 50)
         self.num_lrs = 1
         self.init_lr = config.get('init_lr', 1e-4)
         self.max_lr = config.get('max_lr', 1e-3)
