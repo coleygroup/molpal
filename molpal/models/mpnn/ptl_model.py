@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pytorch_lightning as pl
 import torch
@@ -25,7 +25,7 @@ class LitMPNN(pl.LightningModule):
                 ):
         super().__init__()
         config = config or dict()
-        
+
         model = config.get('model', mpnn.MoleculeModel())
         dataset_type = config.get('dataset_type', 'regression')
         uncertainty_method = config.get('uncertainty_method', 'none')
