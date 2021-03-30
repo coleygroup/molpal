@@ -56,6 +56,11 @@ def parse_csv(score_csv: str, title_line: bool = True,
     
     return data
 
+def smi_to_fp(smi, radius, length):
+    return rdMolDescriptors.GetMorganFingerprintAsBitVect(
+        Chem.MolFromSmiles(smi), radius, length, useChirality=True
+    )
+    
 @ray.remote
 def smis_to_fps_(smis: List[str], radius: int = 2, length: int = 2048) -> List:
     return [

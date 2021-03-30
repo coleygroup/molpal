@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List, Sequence, Set, Tuple
 from matplotlib import pyplot as plt
 from matplotlib import ticker
 import numpy as np
+from rdkit import Chem, DataStructs
 import seaborn as sns
 from tqdm import tqdm
 
@@ -560,15 +561,16 @@ def partition_data_by_iter(data_by_iter) -> List[Dict]:
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument('--true-pkl',)
+    parser.add_argument('--true-pkl')
     parser.add_argument('--parent-dir', required=True)
+    parser.add_argument('--library')
     parser.add_argument('--smiles-col', type=int, default=0)
     parser.add_argument('--score-col', type=int, default=1)
-    parser.add_argument('-k', type=int,)
-    parser.add_argument('-N', type=int,)
+    parser.add_argument('-k', type=int)
+    parser.add_argument('-N', type=int)
     parser.add_argument('--split', type=float, required=True)
     parser.add_argument('--mode', required=True,
-                        choices=('topk', 'errors', 'diversity',
+                        choices=('topk', 'errors', 'diversity', 'hists',
                                  'intersection', 'union'))
     parser.add_argument('--name', default='.')
     parser.add_argument('--format', '--fmt', default='png',
@@ -625,10 +627,10 @@ if __name__ == "__main__":
         for i, data in enumerate(new_data_by_iter):
             smis, _ = zip(*data.items())
             fps = utils.smis_to_fps(smis)
-            hist = sar.distance_hist(fps, args.bins, args.k, args.log)
+            H, logH = sar.distance_hist(fps, None, args.bins, None, args.k)
             # hist = distance_hist(data, args.bins, True)
             
-            ax.bar(bins, hist, align='edge', width=width,
+            ax.bar(bins, H, align='edge', width=width,
                    label=i, alpha=0.7)
 
         plt.legend(title='Iteration')
@@ -653,9 +655,83 @@ if __name__ == "__main__":
         # fig.savefig(f'{fig_dir}/top{args.k}_{neighbors}_{hist_type}.png')
         fig.savefig(f'{p_div}/{model}_{metric}_{k}_hist.{args.format}')
 
+    elif args.mode == 'hists':
+        results_dir = Path(f'{args.name}') / str(args.split) / 'hists'
+        results_dir.mkdir(parents=True, exist_ok=True)
+        path = Path(args.parent_dir)
+        preds_paths = sorted(
+            [p for p in path.iterdir()],
+            key=lambda p: str(p).split('_')[-1]
+        )
+
+        with open(args.library, 'r') as fid:
+            reader = csv.reader(fid)
+            next(reader)
+            smis = [row[args.smiles_col] for row in tqdm(reader)]
+        fps = utils.smis_to_fps(smis)
+
+        N = len(preds_paths)
+        fig, axss = plt.subplots(N, 2, figsize=(10, 5*N))
+        for i, (path, axs) in enumerate(zip(preds_paths, axss)):
+
+            preds = np.load(path)
+            try:
+                preds = preds[:, 0]
+            except:
+                preds = preds
+
+            range_ = [(0., 1.), (0., preds.max() - preds.min())]
+            H, logH = sar.distance_hist(
+                fps, preds, args.bins, range_, args.k, True
+            )
+            xedges = np.linspace(0., 1., args.bins)
+            yedges = np.linspace(0., range_[1][1], args.bins)
+            X, Y = np.meshgrid(xedges, yedges)
+
+            pcm1 = axs[0].pcolormesh(X, Y, H, shading='auto')
+            fig.colorbar(pcm1, ax=axs[0], label='Count')
+            pcm2 = axs[1].pcolormesh(X, Y, logH, shading='auto')
+            fig.colorbar(pcm2, ax=axs[1], label='log(Count)')
+            axs[0].set_ylabel('Predicted Score Distance')
+
+        for ax in axs:    
+            ax.set_xlabel('Tanimoto Distance')
+
+        fig.suptitle(f'{args.name} Pairwise Distance Hisograms')
+        ax.set_ylabel('Predicted Score Distance')
+        
+        fig.savefig(f'{results_dir}/preds_hists.{args.format}')
+
+    elif args.mode == 'clusters':
+        path = Path(args.parent_dir)
+        p_iters = sorted(
+            [p for p in path.iterdir()],
+            key=lambda p: str(p).split('_')[-1]
+        )
+
+        true_smis, _ = zip(*true_data)
+        fps = utils.smis_to_fps(true_smis, args.radius, args.length)
+        idxs, centroids = sar.compute_centroids(fps, args.threshold)
+
+        for p_iter in tqdm(p_iters):
+            found = read_data(p_iter, args.N)
+            found_smis, _ = zip(*found)
+            found_fps = utils.smis_to_fps(found_smis, args.radius, args.length)
+
+            cids = []
+            for fp in fps:
+                T_cs = DataStructs.BulkTanimotoSimilarity(fp, centroids)
+                T_cs = np.array(T_cs)
+
+                i = np.argmin(T_cs)
+                cids.append(idxs[i])
+            
+
     elif args.mode == 'intersection':
         top_N_intersections(args.parent_dir, args.N)
+
     elif args.mode == 'union':
         unions(args.parent_dir)
+
     else:
         exit()
