@@ -3,6 +3,7 @@ for batched, Bayesian optimization."""
 from collections import deque
 import csv
 import heapq
+import json
 from operator import itemgetter
 from pathlib import Path
 import pickle
@@ -548,6 +549,29 @@ class Explorer:
         p_state = p_states / f'epoch_{self.epoch}.pkl'
         with open(p_state, 'wb') as fid:
             pickle.dump(self.scores_csvs, fid)
+
+        return str(p_state)
+
+    def save_checkpoint(self) -> str:
+        p_chkpt = Path(
+            f'{self.root}/{self.name}/checkpoints/epoch_{self.epoch}'
+        )
+        p_chkpt.mkdir(parents=True, exist_ok=True)
+        
+        state = {
+            'epoch': self.epoch,
+            'scores': self.scores,
+            'failures': self.failures,
+            'new_scores': self.new_scores,
+            'updated_model': self.updated_model,
+            'recent_avgs': self.recent_avgs,
+            'top_k_avg': self.top_k_avg,
+            'y_preds': self.write_preds(),
+            'model': self.model.save(p_chkpt / 'model')
+        }
+
+        p_state = p_chkpt / 'state.json'
+        json.dump(state, open(p_state))
 
         return str(p_state)
 
