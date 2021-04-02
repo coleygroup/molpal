@@ -1,6 +1,7 @@
 """This module contains Model implementations that utilize the MPNN model as 
 their underlying model"""
 from functools import partial
+import json
 import os
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
@@ -10,6 +11,7 @@ import ray
 from ray.util.sgd import TorchTrainer
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+import torch
 from tqdm import tqdm, trange
 
 from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
@@ -98,12 +100,6 @@ class MPNN:
         self.final_lr = final_lr
         self.metric = metric
 
-        # self.scheduler_args = dict(
-        #     warmup_epochs=warmup_epochs, epochs=epochs, num_lrs=1,
-        #     batch_size=batch_size,
-        #     init_lr=init_lr, max_lr=max_lr, final_lr=final_lr,
-        # )
-
         self.loss_func = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method)
         self.metric_func = chemprop.utils.get_metric_func(metric)
@@ -124,8 +120,6 @@ class MPNN:
     @device.setter
     def device(self, device):
         self.__device = device
-        # self.model.to(device)
-        # self.model.device = device
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
@@ -153,24 +147,18 @@ class MPNN:
                 len(train_data) // (self.batch_size * num_workers)
             )
             config['train_loader'] = MoleculeDataLoader(
-                dataset=train_data,
-                batch_size=self.batch_size * num_workers,
-                num_workers=self.ncpu,
-                pin_memory=self.use_gpu
+                dataset=train_data, batch_size=self.batch_size * num_workers,
+                num_workers=self.ncpu, pin_memory=self.use_gpu
             )
             config['val_loader'] = MoleculeDataLoader(
-                dataset=val_data,
-                batch_size=self.batch_size * num_workers,
-                num_workers=self.ncpu,
-                pin_memory=self.use_gpu
+                dataset=val_data, batch_size=self.batch_size * num_workers,
+                num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
-                num_workers=num_workers,
-                config=config,
-                use_gpu=self.use_gpu,
-                scheduler_step_freq='batch'
+                num_workers=num_workers, config=config,
+                use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
             pbar = trange(self.epochs, desc='Training', unit='epoch')
@@ -190,29 +178,20 @@ class MPNN:
             return True
 
         train_dataloader = MoleculeDataLoader(
-            dataset=train_data,
-            batch_size=self.batch_size,
-            num_workers=self.ncpu,
-            pin_memory=self.use_gpu
+            dataset=train_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=self.use_gpu
         )
         val_dataloader = MoleculeDataLoader(
-            dataset=val_data,
-            batch_size=self.batch_size,
-            num_workers=self.ncpu,
-            pin_memory=self.use_gpu
+            dataset=val_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=self.use_gpu
         )
         model = mpnn.LitMPNN(config)
         early_stop_callback = EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            verbose=True,
-            mode='min'
+            monitor='val_loss', patience=10, verbose=True, mode='min'
         )
         trainer = pl.Trainer(
-            max_epochs=self.epochs,
-            callbacks=[early_stop_callback],
-            gpus=1 if self.use_gpu else 0,
-            precision=self.precision,
+            max_epochs=self.epochs, callbacks=[early_stop_callback],
+            gpus=1 if self.use_gpu else 0, precision=self.precision,
             progress_bar_refresh_rate=100
         )
         trainer.fit(model, train_dataloader, val_dataloader)
@@ -263,6 +242,23 @@ class MPNN:
 
         # return mpnn.predict(self.model, data_loader, scaler=self.scaler)
 
+    def save(self, path) -> str:
+        model_path = f'{path}/model.pt'
+        torch.save(self.model.state_dict(), model_path)
+
+        state_path = f'{path}/state.json'
+        state = {
+            'stds': self.scaler.stds.tolist(),
+            'means': self.scaler.means.tolist(),
+            'model_path': model_path
+        }
+        json.dump(state, open(state_path, 'w'))
+
+        return state_path
+    
+    def load(self, path):
+        self.model.load(path)
+
 class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
@@ -299,6 +295,12 @@ class MPNModel(Model):
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
         raise TypeError('MPNModel cannot predict variance!')
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
 
 class MPNDropoutModel(Model):
     """Message-passing network model that predicts means and variances through
@@ -349,6 +351,12 @@ class MPNDropoutModel(Model):
             predss[:, j] = self.model.predict(xs)
         return predss
 
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
+
 class MPNTwoOutputModel(Model):
     """Message-passing network model that predicts means and variances
     through mean-variance estimation"""
@@ -393,6 +401,11 @@ class MPNTwoOutputModel(Model):
         means, variances = self.model.predict(xs)
         return means, variances
 
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
 # def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):
 
