@@ -5,7 +5,6 @@ import gzip
 from itertools import chain, islice
 import os
 from pathlib import Path
-import sys
 from typing import Iterable, Iterator, List, Optional, Set, Tuple
 
 import h5py
@@ -13,12 +12,7 @@ import numpy as np
 import ray
 from rdkit import Chem, DataStructs
 from rdkit.Chem import rdMolDescriptors as rdmd
-from rdkit.DataStructs import cDataStructs
 from tqdm import tqdm
-
-# sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-# from molpal import encoder
-# from molpal.pools import fingerprints
 
 try:
     if 'redis_password' in os.environ:
@@ -77,7 +71,6 @@ def smi_to_fp(smi: str, fingerprint: str,
             raise NotImplementedError(
                 f'Unrecognized fingerprint: "{fingerprint}"')
 
-        # return fp
         x = np.empty(len(fp))
         DataStructs.ConvertToNumpyArray(fp, x)
         return x
@@ -125,11 +118,34 @@ def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
 
 def fps_hdf5(smis: Iterable[str], size: int,
              fingerprint: str = 'pair', radius: int = 2, length: int = 2048,
-             name: str = 'fps',
-             path: str = '.') -> Tuple[str, Set[int]]:
-                        
-    fps_h5 = str(Path(path)/f'{name}.h5')
-    with h5py.File(fps_h5, 'w') as h5f:
+             filepath: str = 'fps.h5') -> Tuple[str, Set[int]]:
+    """Prepare an HDF5 file containing the feature matrix of the input SMILES
+    strings
+
+    Parameters
+    ----------
+    smis : Iterable[str]
+        the SMILES strings from which to build the feature matrix
+    size : int
+        the total number of smiles strings
+    fingerprint : str, default='pair'
+        the type of fingerprint to calculate
+    radius : int, default=2
+        the "radius" of the fingerprint to calculate. For path-based
+        fingerprints, this corresponds to the path length
+    length : int, default=2048
+        the length/number of bits in the fingerprint
+    filepath : str, default='fps.h5'
+        the filepath of the output HDF5 file
+
+    Returns
+    -------
+    str
+        the filepath of the output HDF5 file
+    invalid_idxs : Set[int]
+        the set of invalid indices in the input SMILES strings
+    """
+    with h5py.File(filepath, 'w') as h5f:
         CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
@@ -137,7 +153,6 @@ def fps_hdf5(smis: Iterable[str], size: int,
             chunks=(CHUNKSIZE, length), dtype='int8'
         )
         
-        # batchsize = CHUNKSIZE*int(ray.cluster_resources()['CPU'])
         batchsize = 262144
         n_batches = size//batchsize + 1
 
@@ -146,25 +161,22 @@ def fps_hdf5(smis: Iterable[str], size: int,
         offset = 0
 
         for smis_batch in tqdm(batches(smis, batchsize), total=n_batches,
-                             desc='Precalculating fps', unit='batch'):
+                               desc='Precalculating fps', unit='batch'):
             fps = smis_to_fps(smis_batch, fingerprint, radius, length)
-            # fps = pool.map(encoder.encode_and_uncompress, xs_batch,
-            #                chunksize=2*ncpu)
-            for fp in tqdm(fps, total=batchsize, smoothing=0., leave=False):
+            for fp in tqdm(fps, total=batchsize, leave=False, desc='Writing'):
                 if fp is None:
-                    invalid_idxs.add(i+offset)
+                    invalid_idxs.add(i + offset)
                     offset += 1
-                    continue #fp = next(fps)
+                    continue
 
                 fps_dset[i] = fp
                 i += 1
 
-        # original dataset size included potentially invalid xs
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
             fps_dset.resize(valid_size, axis=0)
 
-    return fps_h5, invalid_idxs
+    return filepath, invalid_idxs
 
 def main():
     parser = argparse.ArgumentParser()
@@ -193,13 +205,15 @@ def main():
     args = parser.parse_args()
     args.title_line = not args.no_title_line
     
-    if args.name:
-        name = Path(args.name)
-    else:
-        name = Path(args.library).with_suffix('')
+    if args.name is None:
+        args.name = Path(args.library).stem
 
-    # encoder_ = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
-    #                           length=args.length)
+    filepath = Path(args.path) / args.name
+    if Path(filepath).suffix == '.h5':
+        pass
+    else:
+        filepath += '.h5'
+
     if Path(args.library).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
     else:
@@ -219,8 +233,8 @@ def main():
 
         smis = (row[args.smiles_col] for row in reader)
         fps, invalid_lines = fps_hdf5(
-            smis, total_size, args.fingerprint, args.radius, args.length,
-            name, args.path
+            smis, total_size, args.fingerprint,
+            args.radius, args.length, filepath
         )
 
     print('Done!')
