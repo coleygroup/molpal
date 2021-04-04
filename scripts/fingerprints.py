@@ -33,47 +33,47 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
 
 def smi_to_fp(smi: str, fingerprint: str,
               radius: int = 2, length: int = 2048) -> Optional[np.ndarray]:
-        """fingerprint functions must be wrapped in a static function
-        so that they may be pickled for parallel processing
-        
-        Parameters
-        ----------
-        smi : str
-            the SMILES string of the molecule to encode
-        fingerprint : str
-            the the type of fingerprint to generate
-        radius : int
-            the radius of the fingerprint
-        length : int
-            the length of the fingerprint
-        
-        Returns
-        -------
-        T_comp
-            the compressed feature representation of the molecule
-        """
-        mol = Chem.MolFromSmiles(smi)
-        if mol is None:
-            return None
+    """fingerprint functions must be wrapped in a static function
+    so that they may be pickled for parallel processing
+    
+    Parameters
+    ----------
+    smi : str
+        the SMILES string of the molecule to encode
+    fingerprint : str
+        the the type of fingerprint to generate
+    radius : int
+        the radius of the fingerprint
+    length : int
+        the length of the fingerprint
+    
+    Returns
+    -------
+    T_comp
+        the compressed feature representation of the molecule
+    """
+    mol = Chem.MolFromSmiles(smi)
+    if mol is None:
+        return None
 
-        if fingerprint == 'morgan':
-            fp = rdmd.GetMorganFingerprintAsBitVect(
-                mol, radius=radius, nBits=length, useChirality=True)
-        elif fingerprint == 'pair':
-            fp = rdmd.GetHashedAtomPairFingerprintAsBitVect(
-                mol, minLength=1, maxLength=1+radius, nBits=length)
-        elif fingerprint == 'rdkit':
-            fp = rdmd.RDKFingerprint(
-                mol, minPath=1, maxPath=1+radius, fpSize=length)
-        elif fingerprint == 'maccs':
-            fp = rdmd.GetMACCSKeysFingerprint(mol)
-        else:
-            raise NotImplementedError(
-                f'Unrecognized fingerprint: "{fingerprint}"')
+    if fingerprint == 'morgan':
+        fp = rdmd.GetMorganFingerprintAsBitVect(
+            mol, radius=radius, nBits=length, useChirality=True)
+    elif fingerprint == 'pair':
+        fp = rdmd.GetHashedAtomPairFingerprintAsBitVect(
+            mol, minLength=1, maxLength=1+radius, nBits=length)
+    elif fingerprint == 'rdkit':
+        fp = rdmd.RDKFingerprint(
+            mol, minPath=1, maxPath=1+radius, fpSize=length)
+    elif fingerprint == 'maccs':
+        fp = rdmd.GetMACCSKeysFingerprint(mol)
+    else:
+        raise NotImplementedError(
+            f'Unrecognized fingerprint: "{fingerprint}"')
 
-        x = np.empty(len(fp))
-        DataStructs.ConvertToNumpyArray(fp, x)
-        return x
+    x = np.empty(len(fp))
+    DataStructs.ConvertToNumpyArray(fp, x)
+    return x
 
 @ray.remote
 def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
@@ -204,6 +204,8 @@ def main():
                         help='the column containing the SMILES string in the library file')
     args = parser.parse_args()
     args.title_line = not args.no_title_line
+    
+    print(args)
     
     if args.name is None:
         args.name = Path(args.library).stem
