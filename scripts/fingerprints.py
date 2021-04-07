@@ -85,8 +85,7 @@ def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
 def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
                 radius: int = 2,
                 length: int = 2048) -> List[Optional[np.ndarray]]:
-    """
-    Caculate the Morgan fingerprint of each molecule in smis
+    """Caculate the Morgan fingerprint of each molecule in smis
 
     Parameters
     ----------
@@ -206,7 +205,7 @@ def main():
     args.title_line = not args.no_title_line
     
     print(args)
-    
+
     if args.name is None:
         args.name = Path(args.library).stem
 
