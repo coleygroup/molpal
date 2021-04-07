@@ -183,12 +183,14 @@ For the remaining figures (e.g., UMAP and histogram figures,) use the correspond
 
 ### Timings
 the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI GPUs
-action | resources | approximate time
-calculating 2M fingerprints | 8 CPU | XXX
-calculating 100M fingerprints | 12 CPU | 4h
-mpn training on 2k molecules | 8 CPU / 1 GPU | 2s / epoch
-mpn prediction on 2M molecules | 8 CPU / 1 GPU | 15m
-mpn training on 100k molecules | 12 CPU / 1 GPU * | 30s / epoch
-mpn prediction on 100M molecules | 4 x (12 CPU / 1 GPU) * | 2h
+
+| action | resources | approximate time |
+| --- | --- | --- |
+| calculating 2M fingerprints | 8 CPU | XXX |
+| calculating 100M fingerprints | 12 CPU | 4h |
+| MPN training on 2k molecules | 8 CPU / 1 GPU | 2s / epoch |
+| MPN prediction on 2M molecules | 8 CPU / 1 GPU | 15m | 
+| MPN training on 100k molecules | 12 CPU / 1 GPU * | 30s / epoch |
+| MPN prediction on 100M molecules | 4 x (12 CPU / 1 GPU) * | 2h|
 
 \* used Intel Xeon 6130 CPUs and Nvidia V100 GPUs
