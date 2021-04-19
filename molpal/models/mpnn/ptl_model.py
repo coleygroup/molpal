@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pytorch_lightning as pl
 import torch
@@ -13,7 +13,7 @@ from .. import chemprop
 
 class LitMPNN(pl.LightningModule):
     """A message-passing neural network base class"""
-    def __init__(self, config: Dict,
+    def __init__(self, config: Optional[Dict] = None,
                 #  model: nn.Module,
                 #  uncertainty_method: Optional[str] = None,
                 #  dataset_type: str = 'regression',
@@ -24,16 +24,17 @@ class LitMPNN(pl.LightningModule):
                 #  metric: str = 'rmse'
                 ):
         super().__init__()
+        config = config or dict()
 
-        model = config['model']
-        dataset_type = config['dataset_type']
+        model = config.get('model', mpnn.MoleculeModel())
+        dataset_type = config.get('dataset_type', 'regression')
         uncertainty_method = config.get('uncertainty_method', 'none')
 
         self.mpnn = model
         self.uncertainty = uncertainty_method in {'mve'}
 
         self.warmup_epochs = config.get('warmup_epochs', 2.)
-        self.max_epochs = config['max_epochs']
+        self.max_epochs = config.get('max_epochs', 50)
         self.num_lrs = 1
         self.init_lr = config.get('init_lr', 1e-4)
         self.max_lr = config.get('max_lr', 1e-3)

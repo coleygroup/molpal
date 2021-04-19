@@ -86,6 +86,15 @@ class RFModel(Model):
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
+    def save(self, path) -> str:
+        model_path = f'{path}/model.pkl'
+        pickle.dump(self.model, open(model_path, 'wb'))
+
+        return model_path
+    
+    def load(self, path):
+        self.model = pickle.load(open(path, 'rb'))
+
 # def predict(xs, model):
 #     X = np.vstack(xs)
 #     return model.predict(X)
@@ -148,4 +157,13 @@ class GPModel(Model):
         Y_mean, Y_sd = self.model.predict(X, return_std=True)
 
         return Y_mean, np.power(Y_sd, 2)
+    
+    def save(self, path) -> str:
+        model_path = f'{path}/model.pkl'
+        pickle.dump(self.model, open(model_path, 'wb'))
+
+        return model_path
+    
+    def load(self, path):
+        self.model = pickle.load(open(path, 'rb'))
         

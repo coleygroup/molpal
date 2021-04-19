@@ -146,3 +146,11 @@ class Model(ABC):
                 variances.extend(batch_vars)
 
         return means, variances
+    
+    @abstractmethod
+    def save(self, path) -> str:
+        """Save the model under path"""
+    
+    @abstractmethod
+    def load(self, path):
+        """load the model from path"""

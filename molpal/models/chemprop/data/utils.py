@@ -304,7 +304,7 @@ def get_data_from_smiles(smiles: List[List[str]],
 def split_data(data: MoleculeDataset,
                split_type: str = 'random',
                sizes: Tuple[float, float, float] = (0.8, 0.1, 0.1),
-               seed: int = 0,
+               seed: Optional[int] = None,  # was previously 0 <- investigate
                num_folds: int = 1,
                args: Namespace = None,
                logger: Logger = None) -> Tuple[MoleculeDataset,

@@ -3,6 +3,7 @@ underlying model"""
 
 from functools import partial
 import logging
+import json
 import os
 from typing import (Callable, Iterable, List, NoReturn,
                     Optional, Sequence, Tuple, TypeVar)
@@ -24,6 +25,16 @@ from molpal.models.base import Model
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 Dataset = tf.data.Dataset
+
+def mve_loss(y_true, y_pred):
+    mu = y_pred[:, 0]
+    var = tf.math.softplus(y_pred[:, 1])
+
+    return tf.reduce_mean(
+        tf.math.log(2*3.141592)/2
+        + tf.math.log(var)/2
+        + tf.math.square(mu-y_true)/(2*var)
+    )
 
 class NN:
     """A feed-forward neural network model
@@ -114,15 +125,7 @@ class NN:
         elif self.output_size == 2:
             # second output means we're using MVE approach
             optimizer = keras.optimizers.Adam(lr=0.05)
-            def loss(y_true, y_pred):
-                mu = y_pred[:, 0]
-                var = tf.math.softplus(y_pred[:, 1])
-
-                return tf.reduce_mean(
-                    tf.math.log(2*3.141592)/2
-                    + tf.math.log(var)/2
-                    + tf.math.square(mu-y_true)/(2*var)
-                )
+            loss = mve_loss
         else:
             raise ValueError(
                 f'NN output size ({self.output_size}) must be 1 or 2')
@@ -178,11 +181,34 @@ class NN:
 
         return Y_pred
     
-    def save(self, path) -> None:
-        self.model.save(path)
-    
-    def load(self, path) -> None:
-        self.model = keras.models.load_model(path)
+    def save(self, path, name: Optional[str] = None) -> str:
+        name = name or 'model'
+        # path = f'{path}/{name}'
+
+        model_path = f'{path}/{name}'
+        self.model.save(model_path, include_optimizer=True)
+
+        state_path = f'{path}/state.json'
+        state = {'std': self.std, 'mean': self.mean, 'model_path': model_path}
+        json.dump(state, open(state_path, 'w'))
+
+        return state_path
+
+    def load(self, path):
+        state = json.load(open(path, 'r'))
+        
+        model_path = state['model_path']
+        self.std = state['std']
+        self.mean = state['mean']
+
+        if self.output_size == 2:
+            custom_objects = {'mve_loss': mve_loss}
+        else:
+            custom_objects = {}
+
+        self.model = keras.models.load_model(
+            model_path, custom_objects=custom_objects
+        )
     
     def _normalize(self, ys: Sequence[float]) -> ndarray:
         Y = np.stack(list(ys))
@@ -245,6 +271,12 @@ class NNModel(Model):
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
         raise TypeError('NNModel can\'t predict variances!')
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
 
 class NNEnsembleModel(Model):
     """A feed-forward neural network ensemble model for estimating mean
@@ -316,6 +348,16 @@ class NNEnsembleModel(Model):
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
+    def save(self, path) -> str:
+        for i, model in enumerate(self.models):
+            model.save(path, f'model_{i}')
+
+        return path
+    
+    def load(self, path):
+        for model, model_path in zip(self.models, path.iterdir()):
+            model.load(model_path)
+
 class NNTwoOutputModel(Model):
     """Feed forward neural network with two outputs so it learns to predict
     its own uncertainty at the same time
@@ -367,6 +409,12 @@ class NNTwoOutputModel(Model):
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
         preds = self.model.predict(xs)
         return preds[:, 0], self._safe_softplus(preds[:, 1])
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
 
     @classmethod
     def _safe_softplus(cls, xs):
@@ -438,3 +486,9 @@ class NNDropoutModel(Model):
             predss[:, j] = self.model.predict(xs)[:, 0]
 
         return predss
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
