@@ -16,10 +16,6 @@ from rdkit.Chem import rdMolDescriptors as rdmd
 from rdkit.DataStructs import cDataStructs
 from tqdm import tqdm
 
-# sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-# from molpal import encoder
-# from molpal.pools import fingerprints
-
 try:
     if 'redis_password' in os.environ:
         ray.init(
@@ -39,48 +35,48 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
 
 def smi_to_fp(smi: str, fingerprint: str,
               radius: int = 2, length: int = 2048) -> Optional[np.ndarray]:
-        """fingerprint functions must be wrapped in a static function
-        so that they may be pickled for parallel processing
+    """fingerprint functions must be wrapped in a static function
+    so that they may be pickled for parallel processing
         
-        Parameters
-        ----------
-        smi : str
-            the SMILES string of the molecule to encode
-        fingerprint : str
-            the the type of fingerprint to generate
-        radius : int
-            the radius of the fingerprint
-        length : int
-            the length of the fingerprint
-        
-        Returns
-        -------
-        T_comp
-            the compressed feature representation of the molecule
-        """
-        mol = Chem.MolFromSmiles(smi)
-        if mol is None:
-            return None
+    Parameters
+    ----------
+    smi : str
+        the SMILES string of the molecule to encode
+    fingerprint : str
+        the the type of fingerprint to generate
+    radius : int
+        the radius of the fingerprint
+    length : int
+        the length of the fingerprint
+    
+    Returns
+    -------
+    T_comp
+        the compressed feature representation of the molecule
+    """
+    mol = Chem.MolFromSmiles(smi)
+    if mol is None:
+        return None
 
-        if fingerprint == 'morgan':
-            fp = rdmd.GetMorganFingerprintAsBitVect(
-                mol, radius=radius, nBits=length, useChirality=True)
-        elif fingerprint == 'pair':
-            fp = rdmd.GetHashedAtomPairFingerprintAsBitVect(
-                mol, minLength=1, maxLength=1+radius, nBits=length)
-        elif fingerprint == 'rdkit':
-            fp = rdmd.RDKFingerprint(
-                mol, minPath=1, maxPath=1+radius, fpSize=length)
-        elif fingerprint == 'maccs':
-            fp = rdmd.GetMACCSKeysFingerprint(mol)
-        else:
-            raise NotImplementedError(
-                f'Unrecognized fingerprint: "{fingerprint}"')
+    if fingerprint == 'morgan':
+        fp = rdmd.GetMorganFingerprintAsBitVect(
+            mol, radius=radius, nBits=length, useChirality=True)
+    elif fingerprint == 'pair':
+        fp = rdmd.GetHashedAtomPairFingerprintAsBitVect(
+            mol, minLength=1, maxLength=1+radius, nBits=length)
+    elif fingerprint == 'rdkit':
+        fp = rdmd.RDKFingerprint(
+            mol, minPath=1, maxPath=1+radius, fpSize=length)
+    elif fingerprint == 'maccs':
+        fp = rdmd.GetMACCSKeysFingerprint(mol)
+    else:
+        raise NotImplementedError(
+            f'Unrecognized fingerprint: "{fingerprint}"')
 
-        # return fp
-        x = np.empty(len(fp))
-        DataStructs.ConvertToNumpyArray(fp, x)
-        return x
+    # return fp
+    x = np.empty(len(fp))
+    DataStructs.ConvertToNumpyArray(fp, x)
+    return x
 
 @ray.remote
 def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
@@ -92,8 +88,7 @@ def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
 def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
                 radius: int = 2,
                 length: int = 2048) -> List[Optional[np.ndarray]]:
-    """
-    Caculate the Morgan fingerprint of each molecule in smis
+    """Calculate the Morgan fingerprint of each molecule in smis
 
     Parameters
     ----------
@@ -125,11 +120,34 @@ def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
 
 def fps_hdf5(smis: Iterable[str], size: int,
              fingerprint: str = 'pair', radius: int = 2, length: int = 2048,
-             name: str = 'fps',
-             path: str = '.') -> Tuple[str, Set[int]]:
-                        
-    fps_h5 = str(Path(path)/f'{name}.h5')
-    with h5py.File(fps_h5, 'w') as h5f:
+             filepath: str = 'fps.h5') -> Tuple[str, Set[int]]:
+    """Prepare an HDF5 file containing the feature matrix of the input SMILES
+    strings
+
+    Parameters
+    ----------
+    smis : Iterable[str]
+        the SMILES strings from which to build the feature matrix
+    size : int
+        the total number of smiles strings
+    fingerprint : str, default='pair'
+        the type of fingerprint to calculate
+    radius : int, default=2
+        the "radius" of the fingerprint to calculate. For path-based
+        fingerprints, this corresponds to the path length
+    length : int, default=2048
+        the length/number of bits in the fingerprint
+    filepath : str, default='fps.h5'
+        the filepath of the output HDF5 file
+
+    Returns
+    -------
+    str
+        the filepath of the output HDF5 file
+    invalid_idxs : Set[int]
+        the set of invalid indices in the input SMILES strings
+    """
+    with h5py.File(filepath, 'w') as h5f:
         CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
@@ -148,23 +166,20 @@ def fps_hdf5(smis: Iterable[str], size: int,
         for smis_batch in tqdm(batches(smis, batchsize), total=n_batches,
                              desc='Precalculating fps', unit='batch'):
             fps = smis_to_fps(smis_batch, fingerprint, radius, length)
-            # fps = pool.map(encoder.encode_and_uncompress, xs_batch,
-            #                chunksize=2*ncpu)
             for fp in tqdm(fps, total=batchsize, smoothing=0., leave=False):
                 if fp is None:
                     invalid_idxs.add(i+offset)
                     offset += 1
-                    continue #fp = next(fps)
+                    continue
 
                 fps_dset[i] = fp
                 i += 1
 
-        # original dataset size included potentially invalid xs
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
             fps_dset.resize(valid_size, axis=0)
 
-    return fps_h5, invalid_idxs
+    return filepath, invalid_idxs
 
 def main():
     parser = argparse.ArgumentParser()
@@ -192,14 +207,18 @@ def main():
                         help='the column containing the SMILES string in the library file')
     args = parser.parse_args()
     args.title_line = not args.no_title_line
-    
-    if args.name:
-        name = Path(args.name)
-    else:
-        name = Path(args.library).with_suffix('')
 
-    # encoder_ = encoder.Encoder(fingerprint=args.fingerprint, radius=args.radius,
-    #                           length=args.length)
+    print(args)
+    
+    if args.name is None:
+        args.name = Path(args.library).stem
+    
+    filepath = Path(args.path) / args.name
+    if Path(filepath).suffix == '.h5':
+        pass
+    else:
+        filepath.with_suffix('.h5')
+        
     if Path(args.library).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
     else:
@@ -219,8 +238,8 @@ def main():
 
         smis = (row[args.smiles_col] for row in reader)
         fps, invalid_lines = fps_hdf5(
-            smis, total_size, args.fingerprint, args.radius, args.length,
-            name, args.path
+            smis, total_size, args.fingerprint,
+            args.radius, args.length, filepath
         )
 
     print('Done!')
