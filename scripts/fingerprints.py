@@ -35,11 +35,7 @@ def smi_to_fp(smi: str, fingerprint: str,
               radius: int = 2, length: int = 2048) -> Optional[np.ndarray]:
     """fingerprint functions must be wrapped in a static function
     so that they may be pickled for parallel processing
-<<<<<<< HEAD
         
-=======
-    
->>>>>>> d7a86c65b4975ff314c495afd8dd206aa63b7ff7
     Parameters
     ----------
     smi : str
@@ -75,10 +71,6 @@ def smi_to_fp(smi: str, fingerprint: str,
         raise NotImplementedError(
             f'Unrecognized fingerprint: "{fingerprint}"')
 
-<<<<<<< HEAD
-    # return fp
-=======
->>>>>>> d7a86c65b4975ff314c495afd8dd206aa63b7ff7
     x = np.empty(len(fp))
     DataStructs.ConvertToNumpyArray(fp, x)
     return x
@@ -93,11 +85,7 @@ def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
 def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
                 radius: int = 2,
                 length: int = 2048) -> List[Optional[np.ndarray]]:
-<<<<<<< HEAD
     """Calculate the Morgan fingerprint of each molecule in smis
-=======
-    """Caculate the Morgan fingerprint of each molecule in smis
->>>>>>> d7a86c65b4975ff314c495afd8dd206aa63b7ff7
 
     Parameters
     ----------
@@ -174,11 +162,7 @@ def fps_hdf5(smis: Iterable[str], size: int,
         for smis_batch in tqdm(batches(smis, batchsize), total=n_batches,
                                desc='Precalculating fps', unit='batch'):
             fps = smis_to_fps(smis_batch, fingerprint, radius, length)
-<<<<<<< HEAD
-            for fp in tqdm(fps, total=batchsize, smoothing=0., leave=False):
-=======
             for fp in tqdm(fps, total=batchsize, leave=False, desc='Writing'):
->>>>>>> d7a86c65b4975ff314c495afd8dd206aa63b7ff7
                 if fp is None:
                     invalid_idxs.add(i + offset)
                     offset += 1
@@ -222,28 +206,15 @@ def main():
 
     print(args)
     
-<<<<<<< HEAD
     if args.name is None:
         args.name = Path(args.library).stem
     
-=======
-    print(args)
-
-    if args.name is None:
-        args.name = Path(args.library).stem
-
->>>>>>> d7a86c65b4975ff314c495afd8dd206aa63b7ff7
     filepath = Path(args.path) / args.name
     if Path(filepath).suffix == '.h5':
         pass
     else:
-<<<<<<< HEAD
         filepath.with_suffix('.h5')
         
-=======
-        filepath += '.h5'
-
->>>>>>> d7a86c65b4975ff314c495afd8dd206aa63b7ff7
     if Path(args.library).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
     else:
