@@ -1,7 +1,6 @@
-from concurrent.futures import ProcessPoolExecutor as Pool
 from itertools import chain, islice
 from pathlib import Path
-from typing import Iterable, Iterator, List, Set, Sequence, Tuple, Type, TypeVar
+from typing import Iterable, Iterator, List, Set, Tuple, TypeVar
 
 import h5py
 import numpy as np
@@ -11,7 +10,7 @@ from rdkit.Chem import rdMolDescriptors
 from rdkit.DataStructs import cDataStructs
 from tqdm import tqdm
 
-from molpal.encoder import Encoder
+from molpal.encoder import Featurizer, feature_matrix
 
 T = TypeVar('T')
 
@@ -141,11 +140,11 @@ def neighbors(smis: Iterable[str], threshold: float) -> List[np.ndarray]:
     
     return list(chain(*neighbor_idxs_chunks))
 
-def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
-                        encoder: Type[Encoder] = Encoder(),
+def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
+                        featurizer: Featurizer = Featurizer(),
                         name: str = 'fps',
                         path: str = '.') -> Tuple[str, Set[int]]:
-    """Precalculate the fature matrix of xs with the given encoder and store
+    """Precalculate the fature matrix of xs with the given featurizer and store
     the matrix in an HDF5 file
     
     Parameters
@@ -156,7 +155,7 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
         the length of the iterable
     ncpu : int (Default = 0)
         the number of cores to parallelize feature matrix generation over
-    encoder : Type[Encoder] (Default = Encoder('pair'))
+    featurizer : Featurizer, default=Featurizer()
         an object that encodes inputs from an identifier representation to
         a feature representation
     name : str (Default = 'fps')
@@ -175,30 +174,34 @@ def feature_matrix_hdf5(xs: Iterable[T], size: int, *, ncpu: int = 0,
     """
     fps_h5 = str(Path(path)/f'{name}.h5')
 
-    with Pool(max_workers=ncpu) as pool, h5py.File(fps_h5, 'w') as h5f:
+    # fingerprint = featurizer.fingerprint
+    # radius = featurizer.radius
+    # length = featurizer.length
+
+    ncpu = int(ray.cluster_resources()['CPU'])
+    with h5py.File(fps_h5, 'w') as h5f:
         CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
-            'fps', (size, len(encoder)),
-            chunks=(CHUNKSIZE, len(encoder)), dtype='int8'
+            'fps', (size, len(featurizer)),
+            chunks=(CHUNKSIZE, len(featurizer)), dtype='int8'
         )
         
-        batch_size = CHUNKSIZE*ncpu
+        batch_size = CHUNKSIZE * 2 * ncpu
         n_batches = size//batch_size + 1
 
         invalid_idxs = set()
         i = 0
         offset = 0
 
-        for xs_batch in tqdm(batches(xs, batch_size), total=n_batches,
+        for smis_batch in tqdm(batches(smis, batch_size), total=n_batches,
                              desc='Precalculating fps', unit='batch'):
-            fps = pool.map(encoder.encode_and_uncompress, xs_batch,
-                           chunksize=2*ncpu)
+            fps = feature_matrix(smis_batch, featurizer)
             for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
-                while fp is None:
+                if fp is None:
                     invalid_idxs.add(i+offset)
                     offset += 1
-                    fp = next(fps)
+                    continue
 
                 fps_dset[i] = fp
                 i += 1

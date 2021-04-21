@@ -1,11 +1,9 @@
 """This module contains the Explorer class, which is an abstraction
 for batched, Bayesian optimization."""
-
 from collections import deque
 import csv
 import heapq
-from itertools import zip_longest
-import os
+import json
 from operator import itemgetter
 from pathlib import Path
 import pickle
@@ -84,9 +82,6 @@ class Explorer:
         intermediate state to initialize another explorer
     save_preds : bool
         whether the predictions should be written after each exploration batch
-    save_errors : bool
-        whether the errors of each prediction should be written after each 
-        exploration batch
     verbose : int
         the level of output the Explorer prints
 
@@ -131,26 +126,29 @@ class Explorer:
                  delta: float = 0.01, max_epochs: int = 50, 
                  max_explore: Union[int, float] = 1., root: str = '.',
                  write_final: bool = True, write_intermediate: bool = False,
-                 save_preds: bool = False, save_errors: bool = False,
-                 retrain_from_scratch: bool = False,
+                 save_preds: bool = False, retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
                  scores_csvs: Union[str, List[str], None] = None,
-                 verbose: int = 0, **kwargs):
+                 verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
+                 **kwargs):
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
-        self.tmp = tempfile.gettempdir()
+        self.tmp = tmp_dir
 
-        self.encoder = encoder.Encoder(**kwargs)
-        self.pool = pools.pool(encoder=self.encoder, 
-                               path=tempfile.gettempdir(),
+        self.featurizer = encoder.Featurizer(
+            fingerprint=kwargs['fingerprint'],
+            radius=kwargs['radius'], length=kwargs['length']
+        )
+        self.pool = pools.pool(featurizer=self.featurizer, 
+                               path=self.tmp,
                                nn_threshold=nn_threshold, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
         self.nn_uncertainty = nn_threshold is not None
 
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
-        self.model = models.model(input_size=len(self.encoder), **kwargs)
+        self.model = models.model(input_size=len(self.featurizer), **kwargs)
         self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
 
         self.objective = objectives.objective(**kwargs)
@@ -167,7 +165,6 @@ class Explorer:
         self.write_final = write_final
         self.write_intermediate = write_intermediate
         self.save_preds = save_preds
-        self.save_errors = save_errors
 
         # stateful attributes (not including model)
         self.epoch = 0
@@ -194,8 +191,8 @@ class Explorer:
 
     @property
     def k(self) -> int:
-        """int : The number of top-scoring inputs from which to determine
-        the average."""
+        """the number of top-scoring inputs from which to calculate an average.
+        """
         k = self.__k
         if isinstance(k, float):
             k = int(k * len(self.pool))
@@ -215,7 +212,7 @@ class Explorer:
 
     @property
     def max_explore(self) -> int:
-        """int : The maximum number of inputs to explore"""
+        """the maximum number of inputs to explore"""
         max_explore = self.__max_explore
         if isinstance(max_explore, float):
             max_explore = int(max_explore * len(self.pool))
@@ -237,7 +234,7 @@ class Explorer:
 
     @property
     def completed(self) -> bool:
-        """Has the explorer fulfilled one of its stopping conditions?
+        """whether the explorer fulfilled one of its stopping conditions
 
         Stopping Conditions
         -------------------
@@ -273,7 +270,6 @@ class Explorer:
 
     def run(self):
         """Explore the MoleculePool until the stopping condition is met"""
-        
         if self.epoch == 0:
             print('Starting Exploration ...')
             self.explore_initial()
@@ -318,16 +314,8 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
-
-        new_scores = self.objective.calc(
-            inputs,
-            in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
-            out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
-        )
+        new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
-
-        if self.save_errors:
-            self.init_scores = self.scores.copy()
 
         self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
@@ -339,7 +327,7 @@ class Explorer:
         self.epoch += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
-        return sum(valid_scores)/len(valid_scores)
+        return sum(valid_scores) / len(valid_scores)
 
     def explore_batch(self) -> float:
         """Perform a round of exploration
@@ -356,18 +344,16 @@ class Explorer:
         """
         if self.epoch == 0:
             raise InvalidExplorationError(
-                'Cannot explore a batch before initialization!')
+                'Cannot explore a batch before initialization!'
+            )
 
         if len(self.scores) >= len(self.pool):
-            # this needs to be reconsidered for transfer learning type approach
+            # this needs to be reconsidered for warm-start type approach
             self.epoch += 1
             return self.top_k_avg
 
         self._update_model()
         self._update_predictions()
-
-        if self.nn_uncertainty:
-            self._calc_nn_uncertainty()
 
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
@@ -375,27 +361,16 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, epoch=self.epoch,
         )
-
-        new_scores = self.objective.calc(
-            inputs,
-            in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
-            out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
-        )
-        
-        # if self.save_errors:
-        #     self.compute_errors(write=True)
-
+        new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
-        
+
         self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.top_k_avg)
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
-        if self.save_errors:
-            self.compute_errors(write=True)
-
+        
         self.epoch += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
@@ -510,8 +485,7 @@ class Explorer:
         m = min(m, len(self))
 
         p_data = Path(f'{self.root}/{self.name}/data')
-        if not p_data.is_dir():
-            p_data.mkdir(parents=True)
+        p_data.mkdir(parents=True, exist_ok=True)
 
         if final:
             m = len(self)
@@ -562,116 +536,78 @@ class Explorer:
             print('Done!')
 
     def save(self) -> str:
-        p_states = Path(f'{self.root}/{self.name}/states/epoch_{self.epoch}')
-        if not p_states.is_dir():
-            p_states.mkdir(parents=True)
+        p_states = Path(f'{self.root}/{self.name}/states')
+        p_states.mkdir(parents=True, exist_ok=True)
         
-        state_dict = {}
-        state_dict['epoch'] = self.epoch
-        state_dict['scores'] = self.scores
-        state_dict['failures'] = self.failures
-        state_dict['new_scores'] = self.new_scores
-        state_dict['model'] = self.model.save(p_states / 'model')
-        state_dict['updated_model'] = self.updated_model
-        state_dict['recent_avgs'] = self.recent_avgs
-        state_dict['top_k_avg'] = self.top_k_avg
-        state_dict['preds'] = self.write_preds()
-
         p_state = p_states / f'epoch_{self.epoch}.pkl'
         with open(p_state, 'wb') as fid:
-            pickle.dump(state_dict, fid)
+            pickle.dump(self.scores_csvs, fid)
 
         return str(p_state)
 
-    def load(self, state_pkl: str) -> None:
+    def save_checkpoint(self) -> str:
+        p_chkpt = Path(
+            f'{self.root}/{self.name}/checkpoints/epoch_{self.epoch}'
+        )
+        p_chkpt.mkdir(parents=True, exist_ok=True)
+        
+        state = {
+            'epoch': self.epoch,
+            'scores': self.scores,
+            'failures': self.failures,
+            'new_scores': self.new_scores,
+            'updated_model': self.updated_model,
+            'recent_avgs': self.recent_avgs,
+            'top_k_avg': self.top_k_avg,
+            'y_preds': self.write_preds(),
+            'model': self.model.save(p_chkpt / 'model')
+        }
+
+        p_state = p_chkpt / 'state.json'
+        json.dump(state, open(p_state))
+
+        return str(p_state)
+
+    def load(self) -> None:
         """Mimic the intermediate state of a previous explorer run by loading
         the data from the list of output files"""
 
         if self.verbose > 0:
             print(f'Loading in previous state ... ', end='')
 
-        state_dict = pickle.load(open(state_pkl, 'rb'))
-        self.epoch = state_dict['epoch']
-        self.scores = state_dict['scores']
-        self.failures = state_dict['failures']
-        self.new_scores = state_dict['new_scores']
-        self.model.load(state_dict['model'])
-        self.updated_model = state_dict['updated_model']
-        self.recent_avgs = state_dict['recent_avgs']
-        self.top_k_avg = state_dict['top_k_avg']
-        self.load_preds(state_dict['preds'])
+        for scores_csv in self.scores_csvs:
+            scores, self.failures = self._read_scores(scores_csv)
 
-        # for scores_csv in self.scores_csvs:
-        #     scores, self.failures = self._read_scores(scores_csv)
+            self.new_scores = {smi: score for smi, score in scores.items()
+                               if smi not in self.scores}
 
-        #     self.new_scores = {smi: score for smi, score in scores.items()
-        #                        if smi not in self.scores}
+            if not self.retrain_from_scratch:
+                self._update_model()
 
-        #     if not self.retrain_from_scratch:
-        #         self._update_model()
+            self.scores = scores
+            self.epoch += 1
 
-        #     self.scores = scores
-        #     self.epoch += 1
-
-        #     self.top_k_avg = self.avg()
-        #     if len(self.scores) >= self.k:
-        #         self.recent_avgs.append(self.top_k_avg)
+            self.top_k_avg = self.avg()
+            if len(self.scores) >= self.k:
+                self.recent_avgs.append(self.top_k_avg)
 
         if self.verbose > 0:
             print('Done!')
 
     def write_preds(self) -> str:
         path = Path(f'{self.root}/{self.name}/preds')
-        if not path.is_dir():
-            path.mkdir(parents=True)
+        path.mkdir(parents=True, exist_ok=True)
 
         if self.y_vars:
-            Y_pred = np.column_stack(self.y_preds, self.y_vars)
+            Y_pred = np.column_stack((self.y_preds, self.y_vars))
         else:
             Y_pred = np.array(self.y_preds)
         
         preds_file = f'{path}/preds_iter_{self.epoch}.npy'
         np.save(preds_file, Y_pred)
-        return preds_file
-        # with open(f'{preds_path}/preds_iter_{self.epoch}.bin', 'w') as fid:
-        #     writer = csv.writer(fid)
-        #     writer.writerow(
-        #         ['smiles', 'predicted_score', '[predicted_variance]']
-        #     )
-        #     writer.writerows(
-        #         zip_longest(self.pool.smis(), self.y_preds, self.y_vars)
-        #     )
-    
-    def load_preds(self, preds_file):
-        Y_pred = np.load(preds_file)
-        if Y_pred.ndim == 1:
-            self.y_preds = Y_pred[:]
-            self.y_vars = []
-        else:
-            self.y_preds = Y_pred[:, 0]
-            self.y_vars = Y_pred[:, 1]
-        
-    def compute_errors(self,
-                       write: bool = False) -> Dict[str, Optional[float]]:
-        d_smi_error = {}
-        for smi, y_pred in zip(self.pool.smis(), self.y_preds):
-            if smi in self.init_scores:# and d_smi_score[smi] is not None:
-                d_smi_error[smi] = self.init_scores[smi] - y_pred
-                
-        if not write:
-            return d_smi_error
-        
-        errors_path = Path(f'{self.root}/{self.name}/errors')
-        if not errors_path.is_dir():
-            errors_path.mkdir(parents=True)
-        
-        with open(f'{errors_path}/errors_iter_{self.epoch}.csv', 'w') as fid:
-            writer = csv.writer(fid)
-            writer.writerow(['smiles', 'error'])
-            writer.writerows(d_smi_error.items())
-        
-        return d_smi_error
 
+        return preds_file
+    
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
         new_scores, scores, and failed accordingly
@@ -721,8 +657,11 @@ class Explorer:
         else:
             xs, ys = zip(*self.new_scores.items())
 
-        self.model.train(xs, ys, retrain=self.retrain_from_scratch,
-                         featurize=self.encoder.encode_and_uncompress)
+        self.model.train(
+            xs, ys, retrain=self.retrain_from_scratch,
+            featurizer=self.featurizer,
+            # featurize=self.encoder.encode_and_uncompress
+        )
         self.new_scores = {}
         self.updated_model = True
 
@@ -757,6 +696,15 @@ class Explorer:
         if self.save_preds:
             self.write_preds()
 
+    def _validate_acquirer(self):
+        """Ensure that the model provides values the Acquirer needs"""
+        if self.acquirer.needs > self.model.provides:
+            raise IncompatibilityError(
+                f'{self.acquirer.metric} metric needs: '
+                + f'{self.acquirer.needs} '
+                + f'but {self.model.type_} only provides: '
+                + f'{self.model.provides}')
+
     def _calc_nn_uncertainty(self):
         """Calculate uncertainty estimates for the molecules based on the 
         variance in the mean predicted values of each molecules' nearest 
@@ -767,18 +715,7 @@ class Explorer:
                 self.y_preds[idx] for idx in neighbors_idxs
             ])
             self.y_vars[i] = np.var(neighbor_y_preds)
-
-    def _validate_acquirer(self):
-        """Ensure that the Acquirer has the values it needs"""
-        values = {'means', 'vars'} if self.nn_uncertainty else {'means'}
-        values |= self.model.provides
-        if self.acquirer.needs > values:
-            raise IncompatibilityError(
-                f'{self.acquirer.metric} metric needs: '
-                + f'{self.acquirer.needs} '
-                + f'but {self.model.type_} only provides: '
-                + f'{self.model.provides}')
-
+        
     def _read_scores(self, scores_csv: str) -> Dict:
         """read the scores contained in the file located at scores_csv"""
         scores = {}

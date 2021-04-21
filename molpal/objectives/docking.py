@@ -2,8 +2,6 @@ import csv
 from functools import partial
 import gzip
 from itertools import chain, product
-import multiprocessing as mp
-import os
 from pathlib import Path
 import shelve
 import tempfile
@@ -12,8 +10,8 @@ from typing import Dict, List, Optional, Tuple, TypeVar
 from molpal.objectives.base import Objective
 from molpal.objectives import utils
 
-from .pyscreener import args as pyscreener_args
-from .pyscreener import docking
+from pyscreener import args as pyscreener_args
+from pyscreener import docking
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -120,8 +118,6 @@ class DockingObjective(Objective):
         super().__init__(minimize=True)
 
     def calc(self, smis: List[str],
-             in_path: Optional[str] = None,
-             out_path: Optional[str] = None,
              **kwargs) -> Dict[str, Optional[float]]:
         """Calculate the docking scores for a list of SMILES strings
 
@@ -150,12 +146,6 @@ class DockingObjective(Objective):
 
         # if extra_smis:
         #     ligands.extend(docking.prepare_ligand(extra_smis, path=in_path))
-
-        if in_path:
-            self.docking_screener.in_path = in_path
-        if out_path:
-            self.docking_screener.out_path = out_path
-
         scores = self.docking_screener(smis)
 
         return {
@@ -196,24 +186,3 @@ class DockingObjective(Objective):
                 d_smi_inputs[smi] = ligands
 
         return input_map
-        
-def distribute_and_flatten(
-        xs_yss: List[Tuple[T, List[U]]]) -> List[Tuple[T, U]]:
-    """Distribute x over a list ys for each item in a list of 2-tuples and
-    flatten the resulting lists.
-
-    For each item in a list of Tuple[T, List[U]], distribute T over the List[U]
-    to generate a List[Tuple[T, U]] and flatten the resulting list of lists.
-
-    Example
-    -------
-    >>> xs_yys = [(1, ['a','b','c']), (2, ['d']), (3, ['e', 'f'])]
-    >>> distribute_and_flatten(xs_yss)
-    [(1, 'a'), (1, 'b'), (1, 'c'), (2, 'd'), (3, 'e'), (3, 'f')]
-
-    Returns
-    -------
-    List[Tuple[T, U]]
-        the distributed and flattened list
-    """
-    return list(chain(*[product([x], ys) for x, ys in xs_yss]))

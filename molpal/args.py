@@ -61,8 +61,6 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--save-preds', action='store_true', default=False,
                         help='whether to write the full prediction data to a file each time the predictions are updated')
-    parser.add_argument('--save-errors', action='store_true', default=False,
-                        help='whether to write a file after each iteration containing the explored SMILES strings and their associated predictive errors (= true_score - predicted_score).')
     parser.add_argument('--save-state', action='store_true', default=False,
                         help='whether to save the state of the explorer before each batch')
 
@@ -111,15 +109,13 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         help='whether to store the full MoleculePool in memory')
     parser.add_argument('--validated', action='store_true', default=False,
                         help='whether the pool has been manually validated and invalid SMILES strings have been removed.')
-    parser.add_argument('--nn-threshold', type=float, default=None,
-                        help='the distance threshold below which to consider molecules neighbors.')
 
 #####################################
 #       ACQUISITION ARGUMENTS       #
 #####################################
 def add_acquisition_args(parser: ArgumentParser) -> None:
     parser.add_argument('--metric', '--alpha', default='random',
-                        choices={'random', 'greedy', 'threshold',
+                        choices={'random', 'greedy', 'threshold', 'ts',
                                  'ucb', 'ei', 'pi', 'thompson'},
                         help='the acquisition metric to use')
 
@@ -129,6 +125,8 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
     parser.add_argument('--batch-size',
                         type=restricted_float_or_int, default=0.01,
                         help='the number of ligands or fraction of total library for each batch of exploration')
+    parser.add_argument('--epsilon', type=float, default=0.,
+                        help='the fraction of each batch that should be acquired randomly')
 
     parser.add_argument('-b', type=float, default=2.,
                         help='the number of batches to take for the initial candidate set')
@@ -138,8 +136,6 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
     parser.add_argument('--prune-threshold', type=float, default=0.35,
                         help='the threshold to use for leader pruning')
 
-    parser.add_argument('--epsilon', type=float, default=0.,
-                        help='the fraction of each batch that should be acquired randomly')
     parser.add_argument('--temp-i', type=float,
                         help='the initial temperature for tempeture scaling when calculating the decay factor for cluster scaling')
     parser.add_argument('--temp-f', type=float, default=1.,
@@ -245,6 +241,11 @@ def add_model_args(parser: ArgumentParser) -> None:
                                  'mve', 'dropout', 'none'},
                         help='Confidence estimation method for NN/MPNN models')
 
+    parser.add_argument('--ddp', action='store_true', default=False,
+                        help='Whether to perform distributed MPN training over a multi-GPU setup via PyTorch DDP. Currently only works with CUDA >= 11.0')
+    parser.add_argument('--precision', type=int, default=32, choices=(16, 32),
+                        help='the precision to use when training PyTorch models in number of bits. Native precision is 32, but 16-bit precision can lead to lower memory footprint during training and faster training times on Volta GPUs. DO NOT use 16-bit precision on non-Volta GPUs. Currently only supported for single-GPU training (i.e., ddp=False)')
+                        
 ##################################
 #       STOPPING ARGUMENTS       #
 ##################################
