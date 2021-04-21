@@ -2,13 +2,11 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-import shelve
 from typing import Collection, Dict, Optional
 
 from tqdm import tqdm
 
 from molpal.objectives.base import Objective
-from molpal.objectives import utils
 
 class LookupObjective(Objective):
     """A LookupObjective calculates the objective function by looking the
