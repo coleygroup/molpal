@@ -4,16 +4,21 @@ from pathlib import Path
 import pickle
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple, TypeVar
 
+import joblib
 import numpy as np
 from numpy import ndarray
+import ray
+from ray.util.joblib import register_ray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 from tqdm import tqdm
 
+from molpal.encoder import feature_matrix
 from molpal.models.base import Model
-from molpal.models.utils import batches, feature_matrix
 
 T = TypeVar('T')
+
+register_ray()
 
 class RFModel(Model):
     """A Random Forest model ensemble for estimating mean and variance
@@ -29,37 +34,19 @@ class RFModel(Model):
     ----------
     test_batch_size : Optional[int] (Default = 10000)
         the size into which testing data should be batched
-    ncpu : int (Default = 1)
-        the number of cores training/inference should be distributed over
     """
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
                  min_samples_leaf: int = 1,
-                 test_batch_size: Optional[int] = 4096,
-                 num_workers: int = 1, ncpu: int = 1,
-                 distributed: bool = False, **kwargs):
-        test_batch_size = test_batch_size or 4096
-
-        if distributed:
-            from mpi4py import MPI
-            num_workers = MPI.COMM_WORLD.Get_size()
-            n_jobs = ncpu
-
-            # if num_workers > 2:
-            #     test_batch_size *= num_workers
-        else:
-            n_jobs = ncpu * num_workers
-
-        self.ncpu = ncpu
+                 test_batch_size: Optional[int] = 65536,
+                 **kwargs):
+        test_batch_size = test_batch_size or 65536
 
         self.model = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
-            n_jobs=n_jobs,
+            n_estimators=n_estimators, max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf, n_jobs=-1,
         )
 
-        super().__init__(test_batch_size, num_workers=num_workers,
-                         distributed=distributed, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def provides(self):
@@ -70,44 +57,43 @@ class RFModel(Model):
         return 'rf'
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
-              featurize: Callable[[T], ndarray], retrain: bool = True):
+              featurizer: Callable[[T], ndarray], retrain: bool = True):
         # retrain means nothing for this model- internally it always retrains
-        X = feature_matrix(xs, featurize,
-                           self.num_workers, self.ncpu, self.distributed)
+        X = feature_matrix(xs, featurizer)
         Y = np.array(ys)
 
-        self.model.fit(X, Y)
-        Y_pred = self.model.predict(X)
+        with joblib.parallel_backend('ray'):
+            self.model.fit(X, Y)
+            Y_pred = self.model.predict(X)
+
         errors = Y_pred - Y
         logging.info(f'  training MAE: {np.mean(np.abs(errors)):.2f},'
                      f'MSE: {np.mean(np.power(errors, 2)):.2f}')
         return True
 
     def get_means(self, xs: Sequence) -> ndarray:
-        # this is only marginally faster
-        # if self.distributed and self.num_workers > 2:
-        #     predict_ = partial(predict, model=self.model)
-        #     with self.MPIPool(max_workers=self.num_workers) as pool:
-        #         xs_batches = batches(xs, self.test_batch_size//self.num_workers)
-        #         Y = list(pool.map(predict_, xs_batches))
-        #         return np.hstack(Y)
-
         X = np.vstack(xs)
-        return self.model.predict(X)
+        with joblib.parallel_backend('ray'):
+            return self.model.predict(X)
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
         X = np.vstack(xs)
         preds = np.zeros((len(X), len(self.model.estimators_)))
-        for j, submodel in enumerate(self.model.estimators_):
-            preds[:, j] = submodel.predict(xs)
+
+        with joblib.parallel_backend('ray'):
+            for j, submodel in enumerate(self.model.estimators_):
+                preds[:, j] = submodel.predict(xs)
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
-    def save(self, filepath):
-        pickle.dump(self.model, open(filepath, 'wb'))
+    def save(self, path) -> str:
+        model_path = f'{path}/model.pkl'
+        pickle.dump(self.model, open(model_path, 'wb'))
+
+        return model_path
     
-    def load(self, filepath):
-        self.model = pickle.load(open(filepath, 'rb'))
+    def load(self, path):
+        self.model = pickle.load(open(path, 'rb'))
 
 # def predict(xs, model):
 #     X = np.vstack(xs)
@@ -125,24 +111,19 @@ class GPModel(Model):
     Parameters
     ----------
     gp_kernel : str (Default = 'dotproduct')
-    ncpu : int (Default = 0)
     test_batch_size : Optional[int] (Default = 1000)
     """
     def __init__(self, gp_kernel: str = 'dotproduct',
                  test_batch_size: Optional[int] = 1024,
-                 num_workers: int = 1, ncpu: int = 1,
-                 distributed: bool = False, **kwargs):
+                 **kwargs):
         test_batch_size = test_batch_size or 1024
-
-        self.ncpu = ncpu
 
         self.model = None
         self.kernel = {
             'dotproduct': kernels.DotProduct
         }[gp_kernel]()
 
-        super().__init__(test_batch_size, num_workers=num_workers,
-                         distributed=distributed, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
         
     @property
     def provides(self):
@@ -153,9 +134,8 @@ class GPModel(Model):
         return 'gp'
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
-              featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
-        X = feature_matrix(xs, featurize,
-                           self.num_workers, self.ncpu, self.distributed)
+              featurizer, retrain: bool = False) -> bool:
+        X = feature_matrix(xs, featurizer)
         Y = np.array(ys)
 
         self.model = GaussianProcessRegressor(kernel=self.kernel)
@@ -178,8 +158,12 @@ class GPModel(Model):
 
         return Y_mean, np.power(Y_sd, 2)
     
-    def save(self, filepath):
-        pickle.dump(self.model, open(filepath, 'wb'))
+    def save(self, path) -> str:
+        model_path = f'{path}/model.pkl'
+        pickle.dump(self.model, open(model_path, 'wb'))
+
+        return model_path
     
-    def load(self, filepath):
-        self.model = pickle.load(open(filepath, 'rb'))
+    def load(self, path):
+        self.model = pickle.load(open(path, 'rb'))
+        

@@ -7,7 +7,7 @@ import math
 import os
 import pickle
 from time import time
-from typing import Any, Callable, List, Tuple, Union
+from typing import Any, Callable, List, Tuple, Type, Union
 
 from sklearn.metrics import (auc, mean_absolute_error, mean_squared_error, 
                              precision_recall_curve, r2_score,
@@ -154,7 +154,7 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]],
 
     raise ValueError(f'Metric "{metric}" not supported.')
 
-def build_optimizer(model: nn.Module, args: Namespace) -> Optimizer:
+def build_optimizer(model: nn.Module, init_lr: float) -> Optimizer:
     """
     Builds a PyTorch Optimizer.
 
@@ -162,29 +162,49 @@ def build_optimizer(model: nn.Module, args: Namespace) -> Optimizer:
     :param args: A :class:`~chemprop.args.TrainArgs` object containing optimizer arguments.
     :return: An initialized Optimizer.
     """
-    params = [{'params': model.parameters(), 'lr': args.init_lr, 'weight_decay': 0}]
+    return Adam([
+        {'params': model.parameters(), 'lr': init_lr, 'weight_decay': 0}
+    ])
 
-    return Adam(params)
-
-def build_lr_scheduler(optimizer: Optimizer, args: Namespace,
-                       total_epochs: List[int] = None) -> _LRScheduler:
+def build_lr_scheduler(
+        optimizer: Optimizer, warmup_epochs: Union[float, int],
+        epochs: int, num_lrs: int, train_data_size: int, batch_size: int,
+        init_lr: float, max_lr: float, final_lr: float
+    ) -> Type[_LRScheduler]:
     """
     Builds a PyTorch learning rate scheduler.
 
-    :param optimizer: The Optimizer whose learning rate will be scheduled.
-    :param args: A :class:`~chemprop.args.TrainArgs` object containing learning rate arguments.
-    :param total_epochs: The total number of epochs for which the model will be run.
-    :return: An initialized learning rate scheduler.
+    Parameters
+    ----------
+    optimizer : Optimizer
+        The optimizer whose learning rate will be scheduled.
+    warmup_epochs : Union[float, int]
+        The number of epochs during which to linearly increase the learning rate.
+    epochs : int
+        The total number of epochs
+    num_lrs : int
+    train_data_size : int
+    batch_size : int
+    init_lr : float
+        The initial learning rate.
+    max_lr : float
+        The maximum learning rate (achieved after :code:`warmup_epochs`).
+    final_lr : float
+        The final learning rate (achieved after :code:`total_epochs`)
+
+    Returns
+    --------
+    Type[_LRScheduelr]
+        An initialized learning rate scheduler.
     """
-    # Learning rate scheduler
     return NoamLR(
         optimizer=optimizer,
-        warmup_epochs=[args.warmup_epochs],
-        total_epochs=total_epochs or [args.epochs] * args.num_lrs,
-        steps_per_epoch=args.train_data_size // args.batch_size,
-        init_lr=[args.init_lr],
-        max_lr=[args.max_lr],
-        final_lr=[args.final_lr]
+        warmup_epochs=[warmup_epochs],
+        total_epochs=[epochs] * num_lrs,
+        steps_per_epoch=train_data_size // batch_size,
+        init_lr=[init_lr],
+        max_lr=[max_lr],
+        final_lr=[final_lr]
     )
 
 def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> logging.Logger:

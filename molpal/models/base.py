@@ -1,10 +1,8 @@
 """This module contains the Model abstract base class. All custom models must
 implement this interface in order to interact properly with an Explorer"""
-
 from abc import ABC, abstractmethod
-import gc
-from typing import (Callable, Iterable, List,
-                    Optional, Sequence, Set, Tuple, TypeVar)
+from typing import (Callable, Iterable, List, Optional,
+                    Sequence, Set, Tuple, TypeVar)
 
 from numpy import ndarray
 from tqdm import tqdm
@@ -47,11 +45,8 @@ class Model(ABC):
     test_batch_size : int
     ncpu : int (Default = 1)
     """
-    def __init__(self, test_batch_size: int, num_workers: int = 1, 
-                 distributed: bool = False, **kwargs):
+    def __init__(self, test_batch_size: int, **kwargs):
         self.test_batch_size = test_batch_size
-        self.num_workers = num_workers
-        self.distributed = distributed
 
     def __call__(self, *args, **kwargs) -> Tuple[List[float], List[float]]:
         return self.apply(*args, **kwargs)
@@ -68,7 +63,7 @@ class Model(ABC):
 
     @abstractmethod
     def train(self, xs: Iterable[T], ys: Sequence[float], *,
-              featurize: Callable[[T], T_feat], retrain: bool = False) -> bool:
+              featurizer: Callable[[T], T_feat], retrain: bool = False) -> bool:
         """Train the model on the input data
         
         Parameters
@@ -151,11 +146,11 @@ class Model(ABC):
                 variances.extend(batch_vars)
 
         return means, variances
-
-    @abstractmethod
-    def save(self, filepath):
-        """Get the mean predicted values for a sequence of inputs"""
     
     @abstractmethod
-    def load(self, model_state: str):
-        """Get the mean predicted values for a sequence of inputs"""
+    def save(self, path) -> str:
+        """Save the model under path"""
+    
+    @abstractmethod
+    def load(self, path):
+        """load the model from path"""

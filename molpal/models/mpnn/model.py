@@ -25,8 +25,6 @@ class MoleculeModel(nn.Module):
         (e.g. Mean-Variance estimation)
     classification : bool
         whether this model is a classification model
-    device : str {'cpu', 'cuda'}
-        the device on which to run matrix operations
     output_size : int
         the size of the output layer for the feed-forward network
     encoder : MPN
@@ -42,7 +40,7 @@ class MoleculeModel(nn.Module):
                  aggregation: str = 'mean', aggregation_norm: int = 100,
                  activation: str = 'ReLU', hidden_size: int = 300, 
                  ffn_hidden_size: Optional[int] = None,
-                 ffn_num_layers: int = 2, device: str = 'cpu'):
+                 ffn_num_layers: int = 2):
         super().__init__()
 
         self.uncertainty_method = uncertainty_method
@@ -52,13 +50,12 @@ class MoleculeModel(nn.Module):
             self.sigmoid = nn.Sigmoid()
 
         self.output_size = num_tasks
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.encoder = self.build_encoder(
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation, device=self.device,
+            activation=activation
         )
         self.ffn = self.build_ffn(
             output_size=num_tasks, hidden_size=hidden_size, dropout=dropout, 
@@ -67,18 +64,18 @@ class MoleculeModel(nn.Module):
         )
 
         initialize_weights(self)
-
+    
     def build_encoder(self, atom_messages: bool = False, bias: bool = False,
                       hidden_size: int = 300, depth: int = 3,
                       dropout: float = 0.0, undirected: bool = False,
                       aggregation: str = 'mean', aggregation_norm: int = 100,
-                      activation: str = 'ReLU', device: str = 'cpu'):
+                      activation: str = 'ReLU'):
          return MPN(Namespace(
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
             features_only=False, use_input_features=False,
             aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation, device=device, number_of_molecules=1,
+            activation=activation, number_of_molecules=1,
             atom_descriptors=None, mpn_shared=False
         ))
 
@@ -124,25 +121,20 @@ class MoleculeModel(nn.Module):
 
     def forward(self, *inputs):
         """Runs the MoleculeModel on the input."""
-        output = self.ffn(self.encoder(*inputs))
+        z = self.ffn(self.encoder(*inputs))
 
         if self.uncertainty:
-            mean_idxs = torch.tensor(range(0, list(output.size())[1], 2))
-            mean_idxs = mean_idxs.to(self.device)
-            pred_means = torch.index_select(output, 1, mean_idxs)
-
-            var_idxs = torch.tensor(range(1, list(output.size())[1], 2))
-            var_idxs = var_idxs.to(self.device)
-            pred_vars = torch.index_select(output, 1, var_idxs)
+            pred_means = z[:, 0::2]
+            pred_vars = z[:, 1::2]
             capped_vars = nn.functional.softplus(pred_vars)
 
-            output = torch.stack(
-                (pred_means, capped_vars), dim=2
-            ).view(output.size())
+            z = torch.clone(z)
+            z[:, 1::2] = capped_vars
+            # z = torch.stack((pred_means, capped_vars), dim=2).view(z.size())
 
         # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
         if self.classification and not self.training:
-            output = self.sigmoid(output)
+            z = self.sigmoid(z)
 
         # if self.multiclass:
         #     # batch size x num targets x num classes per target
@@ -152,4 +144,4 @@ class MoleculeModel(nn.Module):
         #         # training as we're using CrossEntropyLoss
         #         output = self.multiclass_softmax(output)
 
-        return output
+        return z

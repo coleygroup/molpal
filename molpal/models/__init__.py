@@ -5,7 +5,6 @@ training data."""
 from typing import Optional, Type
 
 from molpal.models.base import Model
-from molpal.models.utils import get_model_types
 
 def model(model: str, **kwargs) -> Type[Model]:
     """Model factory function"""
@@ -22,16 +21,18 @@ def model(model: str, **kwargs) -> Type[Model]:
 
     if model == 'mpn':
         return mpn(**kwargs)
+    
+    if model == 'random':
+        from molpal.models.random import RandomModel
+        return RandomModel(**kwargs)
 
     raise NotImplementedError(f'Unrecognized model: "{model}"')
 
 def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     """NN-type Model factory function"""
     from molpal.models.nnmodels import (
-        NNModel, NNDropoutModel, NNEnsembleModel, NNTwoOutputModel)
-
-    if conf_method is None:
-        return NNModel(**kwargs)
+        NNModel, NNDropoutModel, NNEnsembleModel, NNTwoOutputModel
+    )
 
     try:
         return {
@@ -40,7 +41,7 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
             'twooutput': NNTwoOutputModel,
             'mve': NNTwoOutputModel,
             'none': NNModel
-        }[conf_method](conf_method=conf_method, **kwargs)
+        }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
     except KeyError:
         raise NotImplementedError(
             f'Unrecognized NN confidence method: "{conf_method}"')
@@ -48,18 +49,16 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
 def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     """MPN-type Model factory function"""
     from molpal.models.mpnmodels import (
-        MPNModel, MPNDropoutModel, MPNTwoOutputModel)
-        
-    if conf_method is None:
-        return MPNModel(**kwargs)
-        
+        MPNModel, MPNDropoutModel, MPNTwoOutputModel
+    )
+            
     try:
         return {
             'dropout': MPNDropoutModel,
             'twooutput': MPNTwoOutputModel,
             'mve': MPNTwoOutputModel,
             'none': MPNModel
-        }[conf_method](conf_method=conf_method, **kwargs)
+        }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
     except KeyError:
         raise NotImplementedError(
             f'Unrecognized MPN confidence method: "{conf_method}"')

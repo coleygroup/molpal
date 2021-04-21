@@ -143,15 +143,17 @@ def compute_molecule_vectors(model: nn.Module,
 
 
 class NoamLR(_LRScheduler):
-    """
-    Noam learning rate scheduler with piecewise linear increase and exponential decay.
+    """Noam learning rate scheduler with piecewise linear increase and 
+    exponential decay.
 
-    The learning rate increases linearly from init_lr to max_lr over the course of
-    the first warmup_steps (where :code:`warmup_steps = warmup_epochs * steps_per_epoch`).
-    Then the learning rate decreases exponentially from :code:`max_lr` to :code:`final_lr` over the
-    course of the remaining :code:`total_steps - warmup_steps` (where :code:`total_steps =
+    The learning rate increases linearly from init_lr to max_lr over the
+    course of the first warmup_steps (where :code:`warmup_steps =
+    warmup_epochs * steps_per_epoch`). Then the learning rate decreases 
+    exponentially from :code:`max_lr` to :code:`final_lr` over the course of 
+    the remaining :code:`total_steps - warmup_steps` (where :code:`total_steps =
     total_epochs * steps_per_epoch`). This is roughly based on the learning rate
-    schedule from `Attention is All You Need <https://arxiv.org/abs/1706.03762>`_, section 5.3.
+    schedule from `Attention is All You Need <https://arxiv.org/abs/1706.
+    03762>`_, section 5.3.
     """
     def __init__(self,
                  optimizer: Optimizer,
@@ -170,8 +172,9 @@ class NoamLR(_LRScheduler):
         :param max_lr: The maximum learning rate (achieved after :code:`warmup_epochs`).
         :param final_lr: The final learning rate (achieved after :code:`total_epochs`).
         """
-        assert len(optimizer.param_groups) == len(warmup_epochs) == len(total_epochs) == len(init_lr) == \
-               len(max_lr) == len(final_lr)
+        assert len(optimizer.param_groups) == len(warmup_epochs) \
+                == len(total_epochs) == len(init_lr) \
+                == len(max_lr) == len(final_lr)
 
         self.num_lrs = len(optimizer.param_groups)
 
@@ -185,7 +188,9 @@ class NoamLR(_LRScheduler):
 
         self.current_step = 0
         self.lr = init_lr
-        self.warmup_steps = (self.warmup_epochs * self.steps_per_epoch).astype(int)
+        self.warmup_steps = (
+            self.warmup_epochs * self.steps_per_epoch
+        ).astype(int)
         self.total_steps = self.total_epochs * self.steps_per_epoch
         self.linear_increment = (self.max_lr - self.init_lr) / self.warmup_steps
 
@@ -205,8 +210,8 @@ class NoamLR(_LRScheduler):
         """
         Updates the learning rate by taking a step.
 
-        :param current_step: Optionally specify what step to set the learning rate to.
-                             If None, :code:`current_step = self.current_step + 1`.
+        :param current_step: Optionally specify what step to set the learning   
+            rate to. If None, :code:`current_step = self.current_step + 1`.
         """
         if current_step is not None:
             self.current_step = current_step
@@ -215,10 +220,19 @@ class NoamLR(_LRScheduler):
 
         for i in range(self.num_lrs):
             if self.current_step <= self.warmup_steps[i]:
-                self.lr[i] = self.init_lr[i] + self.current_step * self.linear_increment[i]
+                self.lr[i] = (
+                    self.init_lr[i]
+                    + self.current_step * self.linear_increment[i]
+                )
             elif self.current_step <= self.total_steps[i]:
-                self.lr[i] = self.max_lr[i] * (self.exponential_gamma[i] ** (self.current_step - self.warmup_steps[i]))
-            else:  # theoretically this case should never be reached since training should stop at total_steps
+                self.lr[i] = (
+                    self.max_lr[i]
+                    * (self.exponential_gamma[i]
+                       ** (self.current_step - self.warmup_steps[i]))
+                )
+            else:
+                # theoretically this case should never be reached since 
+                # training should stop at total_steps
                 self.lr[i] = self.final_lr[i]
 
             self.optimizer.param_groups[i]['lr'] = self.lr[i]

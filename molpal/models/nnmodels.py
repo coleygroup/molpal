@@ -1,7 +1,9 @@
 """This module contains Model implementations that utilize an NN model as their 
 underlying model"""
+
 from functools import partial
 import logging
+import json
 import os
 from typing import (Callable, Iterable, List, NoReturn,
                     Optional, Sequence, Tuple, TypeVar)
@@ -16,8 +18,9 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from tensorflow import keras
 
+from molpal.encoder import feature_matrix
 from molpal.models.base import Model
-from molpal.models.utils import feature_matrix
+# from molpal.models.utils import feature_matrix
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -59,8 +62,6 @@ class NN:
         the mean of the unnormalized data
     std : float
         the standard deviation of the unnormalized data
-    ncpu : int
-        the number of cores to parallelize feature matrix calculation over
 
     Parameters
     ----------
@@ -74,35 +75,24 @@ class NN:
     dropout_at_predict : bool (Default = False)
     activation : Optional[str] (Default = 'relu')
         the name of the activation function to use
-    ncpu : int (Default = 1)
-        the number of cores to parallelize feature matrix calculation over
     """
     def __init__(self, input_size: int, output_size: int,
                  batch_size: int = 4096,
                  layer_sizes: Optional[Sequence[int]] = None,
                  dropout: Optional[float] = None,
                  dropout_at_predict: bool = False,
-                 activation: Optional[str] = 'relu',
-                 num_workers: int = 1, ncpu: int = 1,
-                 distributed: bool = False,):
+                 activation: Optional[str] = 'relu'):
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
 
         layer_sizes = layer_sizes or [100, 100]
-        self.model, optimizer, self.loss = self.build(
+        self.model, self.optimizer, self.loss = self.build(
             layer_sizes, dropout, dropout_at_predict, activation
         )
-        self.model.compile(optimizer=optimizer, loss=self.loss)
-
-        # self.compiled = False
 
         self.mean = 0
         self.std = 0
-
-        self.num_workers = num_workers
-        self.ncpu = ncpu
-        self.distributed = distributed
 
     def build(self, layer_sizes, dropout, dropout_at_predict, activation):
         """Build the model, optimizer, and loss function"""
@@ -133,17 +123,17 @@ class NN:
             optimizer = keras.optimizers.Adam(lr=0.01)
             loss = keras.losses.mse
         elif self.output_size == 2:
+            # second output means we're using MVE approach
             optimizer = keras.optimizers.Adam(lr=0.05)
             loss = mve_loss
         else:
             raise ValueError(
-                f'Arg: "output_size" must be 1 or 2. Got: {self.output_size}'
-            )
+                f'NN output size ({self.output_size}) must be 1 or 2')
 
         return model, optimizer, loss
 
     def train(self, xs: Iterable[T], ys: Iterable[float],
-              featurize: Callable[[T], ndarray]) -> bool:
+              featurizer: Callable[[T], ndarray]) -> bool:
         """Train the model on xs and ys with the given featurizer
 
         Parameters
@@ -160,10 +150,9 @@ class NN:
         -------
         True
         """
-        # there used to be a self.model.compile call here in molpal v1
+        self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        X = feature_matrix(xs, featurize,
-                           self.num_workers, self.ncpu, self.distributed)
+        X = feature_matrix(xs, featurizer)
         Y = self._normalize(ys)
 
         self.model.fit(
@@ -192,17 +181,33 @@ class NN:
 
         return Y_pred
     
-    def save(self, path):
-        self.model.save(path, include_optimizer=True)
-    
+    def save(self, path, name: Optional[str] = None) -> str:
+        name = name or 'model'
+        # path = f'{path}/{name}'
+
+        model_path = f'{path}/{name}'
+        self.model.save(model_path, include_optimizer=True)
+
+        state_path = f'{path}/state.json'
+        state = {'std': self.std, 'mean': self.mean, 'model_path': model_path}
+        json.dump(state, open(state_path, 'w'))
+
+        return state_path
+
     def load(self, path):
+        state = json.load(open(path, 'r'))
+        
+        model_path = state['model_path']
+        self.std = state['std']
+        self.mean = state['mean']
+
         if self.output_size == 2:
             custom_objects = {'mve_loss': mve_loss}
         else:
             custom_objects = {}
 
         self.model = keras.models.load_model(
-            path, custom_objects=custom_objects
+            model_path, custom_objects=custom_objects
         )
     
     def _normalize(self, ys: Sequence[float]) -> ndarray:
@@ -229,8 +234,6 @@ class NNModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    ncpu : int (Default = 1)
-        the number of cores to parallelize feature matrix calculation over
     
     See also
     --------
@@ -239,18 +242,14 @@ class NNModel(Model):
     NNTwoOutputModel
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, ncpu: int = 1,
-                 num_workers: int = 1, distributed: bool = False, **kwargs):
+                 dropout: Optional[float] = 0.0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   ncpu=ncpu, num_workers=num_workers,
-                                   distributed=distributed)
+                                   batch_size=test_batch_size, dropout=dropout)
         self.model = self.build_model()
 
-        super().__init__(test_batch_size, num_workers=num_workers,
-                         distributed=distributed, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def provides(self):
@@ -273,11 +272,11 @@ class NNModel(Model):
     def get_means_and_vars(self, xs: List) -> NoReturn:
         raise TypeError('NNModel can\'t predict variances!')
 
-    def save(self, filepath):
-        self.model.save(filepath)
+    def save(self, path) -> str:
+        return self.model.save(path)
     
-    def load(self, filepath):
-        self.model.load(filepath)
+    def load(self, path):
+        self.model.load(path)
 
 class NNEnsembleModel(Model):
     """A feed-forward neural network ensemble model for estimating mean
@@ -299,19 +298,15 @@ class NNEnsembleModel(Model):
         the dropout probability during training
     ensemble_size : int (Default = 5)
         the number of separate models to train
-    ncpu : int (Default = 1)
-        the number of cores to parallelize feature matrix calculation over
     bootstrap_ensemble : bool
         NOTE: UNUSED
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, ensemble_size: int = 5,
-                 bootstrap_ensemble: Optional[bool] = False,
-                 ncpu: int = 1, **kwargs):
+                 bootstrap_ensemble: Optional[bool] = False, **kwargs):
         test_batch_size = test_batch_size or 4096
         self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   ncpu=ncpu)
+                                   batch_size=test_batch_size, dropout=dropout)
 
         self.ensemble_size = ensemble_size
         self.models = [self.build_model() for _ in range(self.ensemble_size)]
@@ -329,13 +324,13 @@ class NNEnsembleModel(Model):
         return {'means', 'vars'}
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurize: Callable[[T], ndarray], retrain: bool = False):
+              featurizer: Callable[[T], ndarray], retrain: bool = False):
         if retrain:
             self.models = [
                 self.build_model() for _ in range(self.ensemble_size)
             ]
 
-        return all([model.train(xs, ys, featurize) for model in self.models])
+        return all([model.train(xs, ys, featurizer) for model in self.models])
 
     def get_means(self, xs: Sequence) -> np.ndarray:
         preds = np.zeros((len(xs), len(self.models)))
@@ -352,6 +347,16 @@ class NNEnsembleModel(Model):
             preds[:, j] = model.predict(xs)[:, 0]
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
+
+    def save(self, path) -> str:
+        for i, model in enumerate(self.models):
+            model.save(path, f'model_{i}')
+
+        return path
+    
+    def load(self, path):
+        for model, model_path in zip(self.models, path.iterdir()):
+            model.load(model_path)
 
 class NNTwoOutputModel(Model):
     """Feed forward neural network with two outputs so it learns to predict
@@ -371,17 +376,13 @@ class NNTwoOutputModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    ncpu : int (Default = 0)
-        the number of workers over which to parallelize
-        feature matrix calculation
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, ncpu: int = 0, **kwargs):
+                 dropout: Optional[float] = 0.0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=2,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   ncpu=ncpu)
+                                   batch_size=test_batch_size, dropout=dropout)
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
@@ -395,11 +396,11 @@ class NNTwoOutputModel(Model):
         return {'means', 'vars'}
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
+              featurizer: Callable[[T], ndarray], retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
 
-        return self.model.train(xs, ys, featurize)
+        return self.model.train(xs, ys, featurizer)
 
     def get_means(self, xs: Sequence) -> np.ndarray:
         preds = self.model.predict(xs)
@@ -408,6 +409,12 @@ class NNTwoOutputModel(Model):
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
         preds = self.model.predict(xs)
         return preds[:, 0], self._safe_softplus(preds[:, 1])
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
 
     @classmethod
     def _safe_softplus(cls, xs):
@@ -432,19 +439,17 @@ class NNDropoutModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    ncpu : int (Default = 1)
-        the number of cores to parallelize feature matrix calculation over
     dropout_size : int (Default = 10)
         the number of passes to make through the network during inference
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.2, dropout_size: int = 10,
-                 ncpu: int = 1, **kwargs):
+                 **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   dropout_at_predict=True, ncpu=ncpu)
+                                   dropout_at_predict=True)
         self.model = self.build_model()
         self.dropout_size = dropout_size
 
@@ -459,11 +464,11 @@ class NNDropoutModel(Model):
         return {'means', 'vars', 'stochastic'}
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
+              featurizer: Callable[[T], ndarray], retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
         
-        return self.model.train(xs, ys, featurize)
+        return self.model.train(xs, ys, featurizer)
 
     def get_means(self, xs: Sequence) -> ndarray:
         predss = self._get_predss(xs)
@@ -481,3 +486,9 @@ class NNDropoutModel(Model):
             predss[:, j] = self.model.predict(xs)[:, 0]
 
         return predss
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
