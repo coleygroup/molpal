@@ -311,12 +311,7 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
-
-        new_scores = self.objective.calc(
-            inputs,
-            in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
-            out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
-        )
+        new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
 
         self.top_k_avg = self.avg()
@@ -350,7 +345,7 @@ class Explorer:
             )
 
         if len(self.scores) >= len(self.pool):
-            # this needs to be reconsidered for transfer learning type approach
+            # this needs to be reconsidered for warm-start type approach
             self.epoch += 1
             return self.top_k_avg
 
@@ -363,12 +358,7 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, epoch=self.epoch,
         )
-
-        new_scores = self.objective.calc(
-            inputs,
-            in_path=f'{self.tmp}/{self.name}/inputs/iter_{self.epoch}',
-            out_path=f'{self.tmp}/{self.name}/outputs/iter_{self.epoch}'
-        )
+        new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
 
         self.top_k_avg = self.avg()
