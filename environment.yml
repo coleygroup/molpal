@@ -19,6 +19,7 @@ dependencies:
   - pip
   - pip:
     - ray
+    - pytorch-lightning
     - tensorflow
     - tensorflow-addons
     - typing-extensions
