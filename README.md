@@ -193,6 +193,6 @@ the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI G
 | MPN training on 100k molecules | 12 CPU / 1 GPU <sup>2</sup> | 30s / epoch |
 | MPN prediction on 100M molecules | 4 x (12 CPU / 1 GPU) <sup>2</sup> | 2h |
 
-<sup>1</sup>: fingerprint code currently only support single process writing to limit total memory footprint. We have found it is I/O limited beyond 8 CPUs
+<sup>1</sup>fingerprint code currently only support single process writing to limit total memory footprint. We have found it is I/O limited beyond 8 CPUs
 
-<sup>2</sup>: used Intel Xeon 6130 CPUs and Nvidia V100 GPUs
+<sup>2</sup>used Intel Xeon 6130 CPUs and Nvidia V100 GPUs
