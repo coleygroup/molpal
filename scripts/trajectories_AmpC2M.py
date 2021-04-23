@@ -267,6 +267,13 @@ def plot_model_metrics_rewards(
         
     for i, (model, ax) in enumerate(zip(MODELS, axs)):
         for metric in results['retrain'][split][model]:
+            if metric == 'greedy':
+                metric_ = metric
+            elif metric == 'thompson':
+                metric_ = 'TS'
+            else:
+                metric_ = metric.upper()
+
             if not si_fig:
                 ys, y_sds = zip(
                     *results['retrain'][split][model][metric][reward]
@@ -275,7 +282,7 @@ def plot_model_metrics_rewards(
                 y_sds = [y*100 for y in y_sds]
                 ax.errorbar(
                     xs, ys, yerr=y_sds, color=METRIC_COLORS[metric], 
-                    label=metric, fmt=fmt, ms=ms, mec='black', capsize=capsize
+                    label=metric_, fmt=fmt, ms=ms, mec='black', capsize=capsize
                 )
             else:
                 ys, y_sds = zip(
@@ -294,7 +301,7 @@ def plot_model_metrics_rewards(
                 y_sds = [y*100 for y in y_sds]
                 ax.errorbar(
                     xs, ys, yerr=y_sds, color=METRIC_COLORS[metric],
-                    fmt=fmt, ms=ms, mec='black', capsize=capsize, label=metric
+                    fmt=fmt, ms=ms, mec='black', capsize=capsize, label=metric_
                 )
         
         add_random_trace(ax, results, split, reward, xs, fmt, ms, capsize)
@@ -302,7 +309,7 @@ def plot_model_metrics_rewards(
         ax.set_title(model.upper())
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-            ax.legend(loc=(0.06, 0.53), title='Metric')
+            ax.legend(loc='upper left', title='Metric')
         ax.set_ylim(bottom=0)
 
         ax.set_xlabel(f'Molecules explored')
@@ -351,7 +358,7 @@ def plot_split_models_rewards(
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-            ax.legend(loc=(0.05, 0.65), title='Model')
+            ax.legend(loc='upper left', title='Model')
         ax.set_ylim(bottom=0)
 
         ax.set_xlabel(f'Molecules explored')
@@ -379,6 +386,13 @@ def plot_split_metrics_rewards(
         xs = [int(size*split * i) for i in range(1, 7)]
 
         for metric in results['retrain'][split][model]:
+            if metric == 'greedy':
+                metric_ = metric
+            elif metric == 'thompson':
+                metric_ = 'TS'
+            else:
+                metric_ = metric.upper()
+
             ys, y_sds = zip(*results['retrain'][split][model][metric][reward])
             ys = [y*100 for y in ys]
             y_sds = [y*100 for y in y_sds]
@@ -387,7 +401,7 @@ def plot_split_metrics_rewards(
                 continue
 
             ax.errorbar(
-                xs, ys, yerr=y_sds, color=METRIC_COLORS[metric], label=metric,
+                xs, ys, yerr=y_sds, color=METRIC_COLORS[metric], label=metric_,
                 fmt=fmt, ms=ms, mec='black', capsize=capsize
             )
         
@@ -396,7 +410,7 @@ def plot_split_metrics_rewards(
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-            ax.legend(loc=(0.05, 0.7), title='Metric')
+            ax.legend(loc='upper left', title='Metric')
         ax.set_ylim(bottom=0)
 
         ax.set_xlabel(f'Molecules explored')
@@ -484,6 +498,7 @@ if __name__ == "__main__":
     parser.add_argument('--score-col', type=int, default=1)
     parser.add_argument('-N', type=int, help='the number of top scores')
     parser.add_argument('--split', type=float)
+    parser.add_argument('--model')
     parser.add_argument('--mode', required=True,
                         choices=('model-metrics', 'split-models', 
                                  'split-metrics', 'si', 'csv', 'errors', 
@@ -531,9 +546,8 @@ if __name__ == "__main__":
         fig.savefig(f'paper/figures/{name}.pdf')
     
     elif args.mode == 'split-metrics':
-        pprint.pprint(results)
         fig = plot_split_metrics_rewards(
-            results, size, args.N, 'mpn', 'scores'
+            results, size, args.N, args.model, 'scores'
         )
 
         name = input('Figure name: ')

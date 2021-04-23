@@ -260,7 +260,7 @@ def plot_model_metrics(
         ax.set_title(model.upper())
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-            ax.legend(loc=(0.06, 0.53), title='Metric')
+            ax.legend(loc='upper left', title='Metric')
         
         style_axis(ax)
     
@@ -302,7 +302,7 @@ def plot_split_models(
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-            ax.legend(loc=(0.05, 0.65), title='Model')
+            ax.legend(loc='upper left', title='Model')
 
         style_axis(ax)
 
@@ -351,7 +351,7 @@ def plot_split_metrics(
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
             ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-            ax.legend(loc=(0.05, 0.7), title='Metric')
+            ax.legend(loc='upper left', title='Metric')
 
         style_axis(ax)
         formatter = ticker.FuncFormatter(abbreviate_k_or_M)
@@ -431,7 +431,7 @@ def plot_single_batch(
         )
 
     ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-    ax.legend(loc=(0.05, 0.7), title='Model')
+    ax.legend(loc='upper left', title='Model')
 
     style_axis(ax)
 
@@ -464,7 +464,7 @@ def plot_convergence(
         )
     
     ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
-    ax.legend(loc=(0.05, 0.65), title='Model')
+    ax.legend(loc='upper left', title='Model')
     
     style_axis(ax)
     
@@ -536,8 +536,12 @@ if __name__ == "__main__":
     parser.add_argument('--score-col', type=int, default=1)
     parser.add_argument('-N', type=int,
                         help='the number of top scores from which to calculate perforamnce')
-    parser.add_argument('--split', type=float,
-                        help='the split size for which to generate the set of plots')
+    parser.add_argument('--split', type=float, default=0.004,
+                        help='the split size to plot when using model-metrics mode')
+    parser.add_argument('--model', default='mpn',
+                        help='the model class to plot when using split-metrics mode')
+    parser.add_argument('--metric', default='greedy',
+                        help='the metric to plot when use split-models mode')
     parser.add_argument('--mode', required=True,
                         choices=('model-metrics', 'split-models', 
                                  'split-metrics', 'si', 'single-batch', 'convergence', 'csv', 'errors', 
@@ -582,7 +586,7 @@ if __name__ == "__main__":
 
     elif args.mode == 'split-models':
         fig = plot_split_models(
-            results, size, args.N, 'greedy', 'scores'
+            results, size, args.N, args.metric, 'scores'
         )
 
         name = input('Figure name: ')
@@ -590,7 +594,7 @@ if __name__ == "__main__":
     
     elif args.mode == 'split-metrics':
         fig = plot_split_metrics(
-            results, size, args.N, 'mpn', 'scores'
+            results, size, args.N, args.model, 'scores'
         )
 
         name = input('Figure name: ')

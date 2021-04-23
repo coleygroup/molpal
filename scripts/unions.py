@@ -191,7 +191,7 @@ def plot_unions(results, size, metric: str = 'greedy'):
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
             ax.set_ylabel(f'Total Number of Unique SMILES')
-            ax.legend(loc=(0.077, 0.62), title='Model')
+            ax.legend(loc='upper left', title='Model')
 
         ax.set_xlabel(f'Molecules explored')
         ax.set_xlim(left=0)
@@ -238,7 +238,7 @@ def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
         ax.set_title(titles[i])
         if i == 0:
             ax.set_ylabel(f'Total Number of Unique SMILES')
-            ax.legend(loc=(0.077, 0.62), title='Model')
+            ax.legend(loc='upper left', title='Model')
 
         ax.set_xlabel(f'Molecules explored')
         ax.set_xlim(left=0)
