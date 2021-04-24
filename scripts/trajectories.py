@@ -19,19 +19,6 @@ from tqdm import tqdm
 
 sns.set_theme(style='white', context='paper')
 
-METRICS = ['greedy', 'ucb', 'ts', 'ei', 'pi']
-METRIC_NAMES = {'greedy': 'greedy', 'ucb': 'UCB', 'ts': 'TS',
-                'ei': 'EI', 'pi': 'PI'}
-METRIC_COLORS = dict(zip(METRICS, sns.color_palette('bright')))
-
-MODELS = ['rf', 'nn', 'mpn']
-MODEL_COLORS = dict(zip(MODELS, sns.color_palette('dark')))
-
-SPLITS = [0.004, 0.002, 0.001]
-
-DASHES = ['dash', 'dot', 'dashdot']
-MARKERS = ['circle', 'square', 'diamond']
-
 def recursive_conversion(nested_dict):
     if not isinstance(nested_dict, defaultdict):
         return nested_dict
@@ -183,6 +170,19 @@ def gather_all_rewards(parent_dir, true_data, N: int,
 #------------------------------------------------------------------------------#
 ################################################################################
 
+METRICS = ['greedy', 'ucb', 'ts', 'ei', 'pi']
+METRIC_NAMES = {'greedy': 'greedy', 'ucb': 'UCB', 'ts': 'TS',
+                'ei': 'EI', 'pi': 'PI'}
+METRIC_COLORS = dict(zip(METRICS, sns.color_palette('bright')))
+
+MODELS = ['rf', 'nn', 'mpn']
+MODEL_COLORS = dict(zip(MODELS, sns.color_palette('dark')))
+
+SPLITS = [0.004, 0.002, 0.001]
+
+DASHES = ['dash', 'dot', 'dashdot']
+MARKERS = ['circle', 'square', 'diamond']
+
 def style_axis(ax):
     ax.set_xlabel(f'Molecules explored')
     ax.set_xlim(left=0)
@@ -213,7 +213,7 @@ def plot_model_metrics(
     capsize = 2
         
     for i, (model, ax) in enumerate(zip(MODELS, axs)):
-        for metric in results['retrain'][split][model]:
+        for metric in METRICS:
             if metric == 'greedy':
                 metric_ = metric
             elif metric == 'thompson':
@@ -259,7 +259,7 @@ def plot_model_metrics(
 
         ax.set_title(model.upper())
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Metric')
         
         style_axis(ax)
@@ -280,7 +280,7 @@ def plot_split_models(
     for i, (split, ax) in enumerate(zip(SPLITS, axs)):
         xs = [int(size*split * i) for i in range(1, 7)]
 
-        for model in results['retrain'][split]: # MODELS:
+        for model in MODELS:
             if model == 'random':
                 continue
 
@@ -301,7 +301,7 @@ def plot_split_models(
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Model')
 
         style_axis(ax)
@@ -326,7 +326,10 @@ def plot_split_metrics(
         if split not in results['retrain']:
             continue
 
-        for metric in results['retrain'][split][model]:
+        for metric in METRICS:
+            if metric not in results['retrain'][split][model]:
+                continue
+            
             if metric == 'greedy':
                 metric_ = metric
             elif metric == 'thompson':
@@ -350,7 +353,7 @@ def plot_split_metrics(
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Metric')
 
         style_axis(ax)
@@ -430,7 +433,7 @@ def plot_single_batch(
             ms=ms, mec='black', capsize=capsize,
         )
 
-    ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+    ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
     ax.legend(loc='upper left', title='Model')
 
     style_axis(ax)
@@ -451,7 +454,7 @@ def plot_convergence(
     
     split = 0.001        
 
-    for model in results['retrain'][split]:
+    for model in MODELS:
         ys, y_sds = zip(*results['retrain'][split][model][metric][reward])
         ys = [y*100 for y in ys]
         y_sds = [y*100 for y in y_sds]
@@ -463,7 +466,7 @@ def plot_convergence(
             label=model.upper(), ms=ms, mec='black'
         )
     
-    ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+    ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
     ax.legend(loc='upper left', title='Model')
     
     style_axis(ax)

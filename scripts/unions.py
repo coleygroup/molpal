@@ -183,8 +183,6 @@ def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
         size = sizes[i]
 
         xs = [int(size*split * i) for i in range(1, 7)]
-        add_bounds(ax, xs)
-        add_random(ax, xs, results, split, fmt, ms)
 
         for model in MODELS:
             if model not in results['retrain'][split]:
@@ -194,6 +192,9 @@ def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
                 xs, ys, fmt, color=MODEL_COLORS[model],
                 label=model.upper(), ms=ms, mec='black'
             )
+        
+        add_bounds(ax, xs)
+        add_random(ax, xs, results, split, fmt, ms)
         
         ax.set_title(titles[i])
         if i == 0:
@@ -219,9 +220,6 @@ def plot_unions_HTS(results, size, metric: str = 'greedy'):
     for i, (split, ax) in enumerate(zip(SPLITS, axs)):
         xs = [int(size*split * i) for i in range(1, 7)]
 
-        add_bounds(ax, xs)
-        add_random(ax, xs, results, split, fmt, ms)
-
         for model in MODELS:
             if model not in results['retrain'][split]:
                 continue
@@ -230,6 +228,9 @@ def plot_unions_HTS(results, size, metric: str = 'greedy'):
                 xs, ys, fmt, color=MODEL_COLORS[model],
                 label=model.upper(), ms=ms, mec='black'
             )
+
+        add_bounds(ax, xs)
+        add_random(ax, xs, results, split, fmt, ms)
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
@@ -259,9 +260,6 @@ def plot_unions_single(results, size,
 
     xs = [int(size*split * i) for i in range(1, 7)]
 
-    add_bounds(ax, xs)
-    add_random(ax, xs, results, split, fmt, ms)
-
     for model in MODELS:
         if model not in results['retrain'][split]:
             continue
@@ -270,6 +268,9 @@ def plot_unions_single(results, size,
             xs, ys, fmt, color=MODEL_COLORS[model],
             label=model.upper(), ms=ms, mec='black'
         )
+
+    add_bounds(ax, xs)
+    add_random(ax, xs, results, split, fmt, ms)
 
     ax.set_ylabel(f'Total Number of Unique SMILES')
     ax.legend(loc='upper left', title='Model')

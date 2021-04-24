@@ -308,7 +308,7 @@ def plot_model_metrics_rewards(
 
         ax.set_title(model.upper())
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Metric')
         ax.set_ylim(bottom=0)
 
@@ -357,7 +357,7 @@ def plot_split_models_rewards(
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Model')
         ax.set_ylim(bottom=0)
 
@@ -409,7 +409,7 @@ def plot_split_metrics_rewards(
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Metric')
         ax.set_ylim(bottom=0)
 
