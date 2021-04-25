@@ -2,13 +2,10 @@ from argparse import ArgumentParser
 from collections import Counter, defaultdict
 import csv
 from itertools import islice
-import math
 from operator import itemgetter
 from pathlib import Path
 import pickle
-import pprint
-from timeit import default_timer
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Iterable, List, Set, Tuple
 
 from matplotlib import pyplot as plt
 from matplotlib import ticker
@@ -329,7 +326,7 @@ def plot_split_metrics(
         for metric in METRICS:
             if metric not in results['retrain'][split][model]:
                 continue
-            
+
             if metric == 'greedy':
                 metric_ = metric
             elif metric == 'thompson':
@@ -479,24 +476,16 @@ def plot_convergence(
 
 def write_csv(rewards, split):
     results_df = []
-    for training in rewards:
-        for model in rewards[training][split]:
-            if model == 'random':
-                scores = rewards[training][split][model]['scores'][-1]
-                smis = rewards[training][split][model]['smis'][-1]
-                avg = rewards[training][split][model]['avg'][-1]
 
-                random_results = {
-                    'Training': training,
-                    'Model': 'random',
-                    'Metric': 'random',
-                    'Scores ($\pm$ s.d.)': f'{100*scores[0]:0.1f} ({100*scores[1]:0.1f})',
-                    'SMILES ($\pm$ s.d.)': f'{100*smis[0]:0.1f} ({100*smis[1]:0.1f})',
-                    'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
-                }
+    for training in ('online', 'retrain'):
+        for model in MODELS:
+            if model not in rewards[training][split]:
                 continue
 
-            for metric in rewards[training][split][model]:
+            for metric in METRICS:
+                if metric not in rewards[training][split][model]:
+                    continue
+
                 if metric == 'greedy':
                     metric_ = metric
                 elif metric == 'thompson':
@@ -517,12 +506,37 @@ def write_csv(rewards, split):
                     'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
                 })
 
-    try:
+    if 'random' in rewards['online'][split]:
+        scores = rewards['online'][split]['random']['scores'][-1]
+        smis = rewards['online'][split]['random']['smis'][-1]
+        avg = rewards['online'][split]['random']['avg'][-1]
+
+        random_results = {
+            'Training': 'random',
+            'Model': 'random',
+            'Metric': 'random',
+            'Scores ($\pm$ s.d.)': f'{100*scores[0]:0.1f} ({100*scores[1]:0.1f})',
+            'SMILES ($\pm$ s.d.)': f'{100*smis[0]:0.1f} ({100*smis[1]:0.1f})',
+            'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
+        }
         results_df.append(random_results)
-    except UnboundLocalError:
-        pass
+    elif 'random' in rewards['retrain'][split]:
+        scores = rewards['retrain'][split]['random']['scores'][-1]
+        smis = rewards['retrain'][split]['random']['smis'][-1]
+        avg = rewards['retrain'][split]['random']['avg'][-1]
+
+        random_results = {
+            'Training': 'random',
+            'Model': 'random',
+            'Metric': 'random',
+            'Scores ($\pm$ s.d.)': f'{100*scores[0]:0.1f} ({100*scores[1]:0.1f})',
+            'SMILES ($\pm$ s.d.)': f'{100*smis[0]:0.1f} ({100*smis[1]:0.1f})',
+            'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
+        }
+        results_df.append(random_results)
 
     df = pd.DataFrame(results_df).set_index(['Training', 'Model', 'Metric'])
+
     return df
 
 if __name__ == "__main__":

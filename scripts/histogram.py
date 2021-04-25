@@ -5,6 +5,7 @@ import gzip
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib import ticker
 import numpy as np
 import seaborn as sns
 from tqdm import tqdm
@@ -29,6 +30,14 @@ def extract_scores(scores_csv, score_col=1, title_line=True):
                 continue
             scores.append(score)
     return np.sort(np.array(scores))
+
+def abbreviate_k_or_M(x: float, pos) -> str:
+    if x >= 1e6:
+        return f'{x*1e-6:0.1f}M'
+    if x >= 1e3:
+        return f'{x*1e-3:0.0f}k'
+
+    return f'{x:0.0f}'
 
 def plot_histogram(scores_csv: str, score_col: int, name: str, k: int,
                    log: bool = True, clip: bool = False,
@@ -55,7 +64,7 @@ def plot_histogram(scores_csv: str, score_col: int, name: str, k: int,
     """
     scores = extract_scores(scores_csv, score_col)
     if clip:
-        scores = scores[scores <= 0] if not maximize else scores[scores >= 0]
+        scores = scores[scores < 0] if not maximize else scores[scores >= 0]
     cutoff = scores[k] if not maximize else scores[-(k+1)]
 
     if log:
@@ -63,14 +72,18 @@ def plot_histogram(scores_csv: str, score_col: int, name: str, k: int,
 
         BINWIDTH = 0.1
         for ax in (ax1, ax2):
-            ax.hist(scores, color='b', edgecolor='none',
+            hist, _, _ = ax.hist(scores, color='b', edgecolor='none',
                     bins=np.arange(min(scores), max(scores)+BINWIDTH, BINWIDTH))
             ax.axvline(cutoff, color='r', linestyle='dashed', linewidth=1)
             ax.grid(True, linewidth=1, color='whitesmoke')
-            
+
         ax1.set_ylabel('Count')
         ax2.set_yscale('log')
         
+        if max(hist) > 10e3:
+            formatter = ticker.FuncFormatter(abbreviate_k_or_M)
+            ax1.yaxis.set_major_formatter(formatter)
+            
         ax = fig.add_subplot(111, frameon=False)
         ax.tick_params(labelcolor='none',
                     top=False, bottom=False, left=False, right=False)
