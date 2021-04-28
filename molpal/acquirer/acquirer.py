@@ -96,7 +96,7 @@ class Acquirer:
                  b: float = 2., prune_mode: str = 'best',
                  prune_threshold: float = 0.35,
                  metric: str = 'greedy',
-                 epsilon: float = 0., beta: int = 2, xi: float = 0.01,
+                 epsilon: float = 0., beta: float = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
                  temp_i: Optional[float] = None, temp_f: Optional[float] = 1.,
                  seed: Optional[int] = None, verbose: int = 0, **kwargs):

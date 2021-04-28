@@ -2,13 +2,12 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-import shelve
 from typing import Collection, Dict, Optional
 
+import numpy as np
 from tqdm import tqdm
 
 from molpal.objectives.base import Objective
-from molpal.objectives import utils
 
 class LookupObjective(Objective):
     """A LookupObjective calculates the objective function by looking the
@@ -67,4 +66,13 @@ class LookupObjective(Objective):
             smi: self.c * self.data[smi] if smi in self.data else None
             for smi in smis
         }
+    
+    def residuals(self, smis, Y_hat: np.ndarray) -> np.ndarray:
+        Y = np.array([self.data.get(smi, 0.) for smi in smis])
+        # mask = ~np.isnan(Y)
+
+        # Y = self.c * Y[mask]
+        # Y_hat = Y_hat[mask]
+
+        return np.abs(Y - Y_hat)
         

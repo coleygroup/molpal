@@ -88,6 +88,8 @@ class Explorer:
     Parameters
     ----------
     name : str
+    nn_threshold : Optional[float], default=None
+    use_residuals : bool, default=False
     k : Union[int, float] (Default = 0.01)
     window_size : int (Default = 3)
         the number of top-k averages from which to calculate a moving average
@@ -122,6 +124,7 @@ class Explorer:
     """
     def __init__(self, name: str = 'molpal',
                  nn_threshold : Optional[float] = None,
+                 use_residuals: bool = True,
                  k: Union[int, float] = 0.01, window_size: int = 3,
                  delta: float = 0.01, max_epochs: int = 50, 
                  max_explore: Union[int, float] = 1., root: str = '.',
@@ -156,6 +159,7 @@ class Explorer:
         self._validate_acquirer()
         
         self.retrain_from_scratch = retrain_from_scratch
+        self.use_residuals = use_residuals
 
         self.k = k
         self.delta = delta
@@ -685,12 +689,19 @@ class Explorer:
             # and the predictions are already set
             return
 
-        self.y_preds, self.y_vars = self.model.apply(
+        y_preds, y_vars = self.model.apply(
             x_ids=self.pool.smis(), x_feats=self.pool.fps(), 
             batched_size=None, size=len(self.pool), 
             mean_only='vars' not in self.acquirer.needs
         )
-
+        self.y_preds = np.array(y_preds, dtype=float)
+        self.y_vars = np.array(y_vars, dtype=float)
+        
+        if self.use_residuals:
+            self.y_vars = np.abs(self.objective.residuals(
+                self.pool.smis(), self.y_preds
+            ))
+            
         self.updated_model = False
         
         if self.save_preds:

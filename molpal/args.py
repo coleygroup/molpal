@@ -143,7 +143,7 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--xi', type=float, default=0.01,
                         help='the xi value to use in EI and PI metrics')
-    parser.add_argument('--beta', type=int, default=2,
+    parser.add_argument('--beta', type=float, default=2,
                         help='the beta value to use in the UCB metric')
     parser.add_argument('--threshold', type=float,
                         help='the threshold value as a positive number to use in the threshold metric')
@@ -213,6 +213,8 @@ def add_model_args(parser: ArgumentParser) -> None:
     parser.add_argument('--retrain-from-scratch',
                         action='store_true', default=False,
                         help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
+    parser.add_argument('--use-residuals', action='store_true', default=False,
+                        help='whether to use the residuals of the model predictions as the predicted variance. This flag is only available for restrospective studies using a LookupObjective. Setting this to True with other objectives will raise an AttributeError')
     
     # RF args
     parser.add_argument('--n-estimators', type=int, default=100,

@@ -44,7 +44,7 @@ def get_needs(metric: str) -> Set[str]:
 
 def calc(metric: str, Y_mean: np.ndarray, Y_var: np.ndarray,
          current_max: float, threshold: float,
-         beta: int, xi: float, stochastic: bool) -> np.ndarray:
+         beta: float, xi: float, stochastic: bool) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
     if metric == 'random':
         return random(Y_mean)
@@ -129,7 +129,7 @@ def noisy(Y_mean: np.ndarray) -> np.ndarray:
     noise = RG.normal(scale=sd, size=len(Y_mean))
     return Y_mean + noise
 
-def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
+def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: float = 2) -> float:
     """Upper confidence bound acquisition score
 
     Parameters
@@ -147,7 +147,7 @@ def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
     """
     return Y_mean + beta*np.sqrt(Y_var)
 
-def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
+def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: float = 2) -> float:
     """Lower confidence bound acquisition score
 
     Parameters
