@@ -112,8 +112,8 @@ class MPNNOperator(TrainingOperator):
 
         loss.backward()
         optimizer.step()
-        if isinstance(scheduler, NoamLR):
-            scheduler.step()
+        # if isinstance(scheduler, NoamLR):
+        #     scheduler.step()
 
         return {'train_loss': loss.item(), 'num_samples': len(targets)}
     
