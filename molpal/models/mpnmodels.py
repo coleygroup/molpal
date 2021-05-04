@@ -158,7 +158,7 @@ class MPNN:
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
                 num_workers=num_workers, config=config,
-                use_gpu=self.use_gpu, scheduler_step_freq='manual'
+                use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
             pbar = trange(self.epochs, desc='Training', unit='epoch')
@@ -175,6 +175,8 @@ class MPNN:
                 print(f'Epoch {i}: lr={lr}', flush=True)
 
             self.model = trainer.get_model()
+            trainer.shutdown()
+            
             return True
 
         train_dataloader = MoleculeDataLoader(
