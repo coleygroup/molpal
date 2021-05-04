@@ -112,29 +112,35 @@ class MPNNOperator(TrainingOperator):
 
         loss.backward()
         optimizer.step()
-        # if isinstance(scheduler, NoamLR):
-        #     scheduler.step()
+        if isinstance(scheduler, NoamLR):
+            scheduler.step()
 
         return {'train_loss': loss.item(), 'num_samples': len(targets)}
     
-    def validate(self, val_iterator, info):
+    def validate(self, val_iterator, info) -> Dict:
         """Runs one standard validation pass over the val_iterator.
         
-        Args:
-            val_iterator (iter): Iterable constructed from the
-                validation dataloader.
-            info: (dict): Dictionary for information to be used for custom
-                validation operations.
-        Returns:
-            A dict of metrics from the evaluation.
-                By default, returns "val_accuracy" and "val_loss"
-                which is computed by aggregating "loss" and "correct" values
-                from ``validate_batch`` and dividing it by the sum of
-                ``num_samples`` from all calls to ``self.validate_batch``.
+        Parameters
+        ----------
+        val_iterator : Iterable
+            Iterable constructed from the validation dataloader.
+        info : Dict
+            Dictionary for information to be used for custom validation 
+            operations.
+
+        Returns
+        --------
+        Dict
+            A dict of metrics from the evaluation. By default, returns 
+            "val_accuracy" and "val_loss" which is computed by aggregating 
+            "loss" and "correct" values from ``validate_batch`` and dividing it 
+            by the sum of ``num_samples`` from all calls to ``self.
+            validate_batch``.
         """
         self.model.eval()
 
-        losses, num_samples = [], 0
+        losses = []
+        num_samples = 0
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_iterator):
                 batch_info = {"batch_idx": batch_idx}
