@@ -144,7 +144,7 @@ class MPNN:
             
             train_data, val_data = self.make_datasets(smis, targets)
             config['steps_per_epoch'] = (
-                len(train_data) // (self.batch_size) # * num_workers)
+                len(train_data) // (self.batch_size * num_workers)
             )
             config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data, batch_size=self.batch_size * num_workers,
@@ -158,7 +158,7 @@ class MPNN:
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
                 num_workers=num_workers, config=config,
-                use_gpu=self.use_gpu, scheduler_step_freq='batch'
+                use_gpu=self.use_gpu, #scheduler_step_freq='manual'
             )
             
             pbar = trange(self.epochs, desc='Training', unit='epoch')
