@@ -26,12 +26,10 @@ class LitMPNN(pl.LightningModule):
         super().__init__()
         config = config or dict()
 
-        model = config.get('model', mpnn.MoleculeModel())
         dataset_type = config.get('dataset_type', 'regression')
-        uncertainty_method = config.get('uncertainty_method', 'none')
 
-        self.mpnn = model
-        self.uncertainty = uncertainty_method in {'mve'}
+        self.mpnn = config.get('model', mpnn.MoleculeModel())
+        self.uncertainty = config.get('uncertainty')
 
         self.warmup_epochs = config.get('warmup_epochs', 2.)
         self.max_epochs = config.get('max_epochs', 50)
@@ -41,7 +39,7 @@ class LitMPNN(pl.LightningModule):
         self.final_lr = config.get('final_lr', 1e-4)
 
         self.criterion = mpnn.utils.get_loss_func(
-            dataset_type, uncertainty_method
+            dataset_type, self.uncertainty
         )
         # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.metric = {
@@ -70,11 +68,18 @@ class LitMPNN(pl.LightningModule):
         #         ], dim=1) * class_weights * mask
         #     )
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             pred_means = preds[:, 0::2]
             pred_vars = preds[:, 1::2]
 
             loss = self.criterion(pred_means, pred_vars, targets)
+        elif self.uncertainty == 'evidential':
+            means = preds[:, 0::4]
+            lambdas = preds[:, 1::4]
+            alphas = preds[:, 2::4]
+            betas = preds[:, 3::4]
+
+            loss = self.criterion(means, lambdas, alphas, betas, targets)
         else:
             loss = self.criterion(preds, targets) * class_weights * mask
 
@@ -85,8 +90,10 @@ class LitMPNN(pl.LightningModule):
         componentss, targets = batch
 
         preds = self.mpnn(componentss)
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             preds = preds[:, 0::2]
+        elif self.uncertainty == 'evidential':
+            preds = preds[:, 0::4]
 
         targets = torch.tensor(targets, device=self.device)
 
@@ -97,11 +104,10 @@ class LitMPNN(pl.LightningModule):
         self.log('val_loss', val_loss, prog_bar=True)
 
     def configure_optimizers(self) -> List:
-        opt = Adam([{
-            'params': self.mpnn.parameters(),
-            'lr': self.init_lr,
-            'weight_decay': 0
-        }])
+        opt = Adam(
+            self.mpnn.parameters(), self.init_lr,
+            weight_decay=0.2 if self.uncertainty == 'evidential' else 0.
+        )
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],

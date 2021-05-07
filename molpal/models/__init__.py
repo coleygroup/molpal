@@ -49,16 +49,18 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
 def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     """MPN-type Model factory function"""
     from molpal.models.mpnmodels import (
-        MPNModel, MPNDropoutModel, MPNTwoOutputModel
+        MPNModel, MPNDropoutModel, MPNTwoOutputModel, MPNUncertaintyModel
     )
-            
+
+    conf_method = 'mve' if conf_method == 'twooutput' else conf_method
+
     try:
         return {
             'dropout': MPNDropoutModel,
-            'twooutput': MPNTwoOutputModel,
             'mve': MPNTwoOutputModel,
+            'evidential': MPNUncertaintyModel,
             'none': MPNModel
-        }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
+        }.get(conf_method, 'none')(uncertainty=conf_method, **kwargs)
     except KeyError:
         raise NotImplementedError(
             f'Unrecognized MPN confidence method: "{conf_method}"')

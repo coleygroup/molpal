@@ -32,6 +32,21 @@ class MPNN:
     convenience and modularity in addition to uncertainty quantification
     methods as originally implemented in the Chemprop confidence branch
 
+    Parameters
+    ----------
+    batch_size : int, default=50
+    uncertainty : Optional[str], default=None
+        the uncertainty method the model uses. Choices:
+        - 'dropout': perform dropout during inference. Returns only one 
+            prediction for each task during inference. Must manually perform 
+            multiple forward passes to generate an uncertainty estimate
+        - 'mve': use mean-variance estimation to learn uncertainty. Returns
+            both a target and uncertainty estimate for each task during 
+            inference.
+        - 'evidential': use evidential uncertainty estimation to learn 
+            uncertainty. Returns both a target and uncertainty estimate for 
+            each task during inference.
+
     Attributes
     ----------
     model : MoleculeModel
@@ -58,7 +73,7 @@ class MPNN:
         of bits
     """
     def __init__(self, batch_size: int = 50,
-                 uncertainty_method: Optional[str] = None,
+                 uncertainty: Optional[str] = None,
                  dataset_type: str = 'regression', num_tasks: int = 1,
                  atom_messages: bool = False, hidden_size: int = 300,
                  bias: bool = False, depth: int = 3, dropout: float = 0.0,
@@ -78,7 +93,7 @@ class MPNN:
         self.precision = precision
 
         self.model = mpnn.MoleculeModel(
-            uncertainty_method=uncertainty_method,
+            uncertainty=uncertainty,
             dataset_type=dataset_type, num_tasks=num_tasks,
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
@@ -86,8 +101,7 @@ class MPNN:
             ffn_num_layers=ffn_num_layers
         )
 
-        self.uncertainty_method = uncertainty_method
-        self.uncertainty = uncertainty_method in {'mve'}
+        self.uncertainty = uncertainty
         self.dataset_type = dataset_type
         self.num_tasks = num_tasks
 
@@ -101,7 +115,7 @@ class MPNN:
         self.metric = metric
 
         self.loss_func = mpnn.utils.get_loss_func(
-            dataset_type, uncertainty_method)
+            dataset_type, uncertainty)
         self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
@@ -127,7 +141,7 @@ class MPNN:
         config = {
             'model': self.model,
             'dataset_type': self.dataset_type,
-            'uncertainty_method': self.uncertainty_method,
+            'uncertainty': self.uncertainty,
             'warmup_epochs': self.warmup_epochs,
             'max_epochs': self.epochs,
             'init_lr': self.init_lr,
@@ -312,7 +326,7 @@ class MPNDropoutModel(Model):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, uncertainty_method='dropout', dropout=dropout, 
+            MPNN, uncertainty='dropout', dropout=dropout, 
             ncpu=ncpu, ddp=ddp, precision=precision
         )
         self.model = self.build_model()
@@ -366,7 +380,7 @@ class MPNTwoOutputModel(Model):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, uncertainty_method='mve', ncpu=ncpu,
+            MPNN, uncertainty='mve', ncpu=ncpu,
             ddp=ddp, precision=precision
         )
         self.model = self.build_model()
@@ -406,6 +420,57 @@ class MPNTwoOutputModel(Model):
     
     def load(self, path):
         self.model.load(path)
+
+class MPNUncertaintyModel(Model):
+    """Message-passing network model that predicts its own uncertainty"""
+    def __init__(self, uncertainty: str = 'mve',
+                 test_batch_size: Optional[int] = 1000000,
+                 ncpu: int = 1, ddp: bool = False, precision: int = 32,
+                 **kwargs):
+        test_batch_size = test_batch_size or 1000000
+
+        self.build_model = partial(
+            MPNN, uncertainty=uncertainty, ncpu=ncpu,
+            ddp=ddp, precision=precision
+        )
+        self.model = self.build_model()
+
+        super().__init__(test_batch_size=test_batch_size, **kwargs)
+
+    @property
+    def type_(self):
+        return 'mpn'
+
+    @property
+    def provides(self):
+        return {'means', 'vars'}
+
+    def train(self, xs: Iterable[str], ys: Sequence[float], *,
+              retrain: bool = False, **kwargs) -> bool:
+        if retrain:
+            self.model = self.build_model()
+
+        return self.model.train(xs, ys)
+
+    def get_means(self, xs: Sequence[str]) -> ndarray:
+        means, _ = self._get_predictions(xs)
+        return means.flatten()
+
+    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+        means, variances = self._get_predictions(xs)
+        return means.flatten(), variances.flatten()
+
+    def _get_predictions(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+        """Get both the means and the variances for the xs"""
+        means, variances = self.model.predict(xs)
+        return means, variances
+
+    def save(self, path) -> str:
+        return self.model.save(path)
+    
+    def load(self, path):
+        self.model.load(path)
+
 # def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):
 

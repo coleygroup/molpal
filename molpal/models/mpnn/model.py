@@ -18,8 +18,18 @@ class MoleculeModel(nn.Module):
 
     Attributes
     ----------
-    uncertainty_method : Optional[str]
-        the uncertainty method this model is using
+    uncertainty : Optional[str]
+        the uncertainty method this model uses. Choices include:
+        - 'dropout': performs dropout during inference. Returns only one 
+            prediction for each task during inference. Must manually perform 
+            multiple forward passes to generate an uncertainty estimate
+        - 'mve': use mean-variance estimation to learn uncertainty. Output
+            size is equal to 2*num_tasks, where the predicted means are indices
+            0::2 and the predicted variances are indices 1::2
+        - 'evidential': use evidential uncertainty estimation to learn 
+            uncertainty. Output size is equal to 4*num_tasks, where each task
+            has 4 outputs associated with it: mean, lambda, alpha, and beta.
+            I.e., indices 0::4, 1::4, 2::4, and 3::4
     uncertainty : bool
         whether this model predicts its own uncertainty values
         (e.g. Mean-Variance estimation)
@@ -33,7 +43,7 @@ class MoleculeModel(nn.Module):
         the feed-forward network of the message-passing network
     """
     def __init__(self,
-                 uncertainty_method: Optional[str] = None,
+                 uncertainty: Optional[str] = None,
                  dataset_type: str = 'regression', num_tasks: int = 1,
                  atom_messages: bool = False, bias: bool = False,
                  depth: int = 3, dropout: float = 0.0, undirected: bool = False,
@@ -43,13 +53,15 @@ class MoleculeModel(nn.Module):
                  ffn_num_layers: int = 2):
         super().__init__()
 
-        self.uncertainty_method = uncertainty_method
-        self.uncertainty = uncertainty_method in {'mve'}
+        # self.uncertainty_method = uncertainty_method
+        self.uncertainty = uncertainty
         self.classification = dataset_type == 'classification'
-        if self.classification:
-            self.sigmoid = nn.Sigmoid()
 
-        self.output_size = num_tasks
+        if self.classification:
+            if self.uncertainty != 'evidential':
+                self.sigmoid = nn.Sigmoid()
+            else:
+                self.sigmoid = nn.Identity()
 
         self.encoder = self.build_encoder(
             atom_messages=atom_messages, hidden_size=hidden_size,
@@ -86,15 +98,20 @@ class MoleculeModel(nn.Module):
         first_linear_dim = hidden_size
 
         # If dropout uncertainty method, use for both evaluation and training
-        if self.uncertainty_method == 'dropout':
+        if self.uncertainty == 'dropout':
             dropout = EvaluationDropout(dropout)
         else:
             dropout = nn.Dropout(dropout)
 
         activation = get_activation_function(activation)
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             output_size *= 2
+        elif self.uncertainty == 'evidential':
+            if self.classiciation:
+                output_size *= 2
+            else:
+                output_size *= 4
 
         if ffn_num_layers == 1:
             ffn = [dropout,
@@ -123,15 +140,38 @@ class MoleculeModel(nn.Module):
         """Runs the MoleculeModel on the input."""
         z = self.ffn(self.encoder(*inputs))
 
-        if self.uncertainty:
-            pred_means = z[:, 0::2]
-            pred_vars = z[:, 1::2]
-            capped_vars = nn.functional.softplus(pred_vars)
+        if self.uncertainty == 'mve':
+            means = z[:, 0::2]
+            variances = z[:, 1::2]
+
+            capped_variances = nn.functional.softplus(variances)
 
             z = torch.clone(z)
-            z[:, 1::2] = capped_vars
-            # z = torch.stack((pred_means, capped_vars), dim=2).view(z.size())
+            z[:, 1::2] = capped_variances
+            # z = torch.stack((means, capped_variances), dim=2).view(z.size())
 
+        if self.uncertainty == 'evidence':
+            if self.classification:
+                z = nn.functional.softplus(z) + 1
+            else:
+                min_val = 1e-6
+
+                means = z[:, 0::4]
+                loglambdas = z[:, 1::4]
+                logalphas = z[:, 2::4]
+                logbetas = z[:, 3::4]
+
+                lambdas = nn.functional.softplus(loglambdas) + min_val
+                alphas = nn.functional.softplus(logalphas) + min_val + 1
+                betas = nn.functional.softplus(logbetas) + min_val
+
+                z = torch.clone(z)
+                z[:, 1::4] = lambdas
+                z[:, 2::4] = alphas
+                z[:, 3::4] = betas
+
+                # z = torch.stack((means, lambdas, alphas, betas),
+                #                 dim = 2).view(z.size())
         # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
         if self.classification and not self.training:
             z = self.sigmoid(z)
