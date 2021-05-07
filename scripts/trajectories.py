@@ -264,7 +264,7 @@ def plot_model_metrics(
 
         ax.set_title(model.upper())
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Metric')
         
         style_axis(ax)
@@ -309,7 +309,7 @@ def plot_split_models(
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Model')
 
         style_axis(ax)
@@ -322,9 +322,14 @@ def plot_split_models(
 
 def plot_split_metrics(
         results, size: int, N: int,
-        model: str = 'mpn', reward='scores'
+        model: str = 'mpn', reward='scores', split = None
     ):
-    fig, axs = plt.subplots(1, 3, sharey=True, figsize=(4/1.5 * 3, 4))
+    if split:
+        fig, ax = plt.subplots(1, 1, sharey=True, figsize=(4/1.5 * 1, 4))
+        axs = [ax]
+        SPLITS = [split]
+    else:
+        fig, axs = plt.subplots(1, 3, sharey=True, figsize=(4/1.5 * 3, 4))
 
     fmt = 'o-'
     ms = 5
@@ -364,7 +369,7 @@ def plot_split_metrics(
 
         ax.set_title(f'{split*100:0.1f}%')
         if i == 0:
-            ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+            ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
             ax.legend(loc='upper left', title='Metric')
 
         style_axis(ax)
@@ -444,7 +449,7 @@ def plot_single_batch(
             ms=ms, mec='black', capsize=capsize,
         )
 
-    ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+    ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
     ax.legend(loc='upper left', title='Model')
 
     style_axis(ax)
@@ -480,7 +485,7 @@ def plot_convergence(
             label=model.upper(), ms=ms, mec='black'
         )
     
-    ax.set_ylabel(f'Percentage of Top-{N} {reward} Found')
+    ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
     ax.legend(loc='upper left', title='Model')
     
     style_axis(ax)
@@ -490,6 +495,10 @@ def plot_convergence(
 
     fig.tight_layout()
     return fig
+
+################################################################################
+#------------------------------------------------------------------------------#
+################################################################################
 
 def write_csv(rewards, split):
     results_df = []
@@ -538,6 +547,10 @@ def write_csv(rewards, split):
 
     df = pd.DataFrame(results_df).set_index(['Training', 'Model', 'Metric'])
     return df
+
+################################################################################
+#------------------------------------------------------------------------------#
+################################################################################
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -607,7 +620,7 @@ if __name__ == "__main__":
     
     elif args.mode == 'split-metrics':
         fig = plot_split_metrics(
-            results, size, args.N, 'mpn', 'scores'
+            results, size, args.N, 'mpn', 'scores', args.split
         )
 
         name = input('Figure name: ')
