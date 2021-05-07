@@ -698,9 +698,13 @@ class Explorer:
         self.y_vars = np.array(y_vars, dtype=float)
         
         if self.use_residuals:
-            self.y_vars = np.abs(self.objective.residuals(
-                self.pool.smis(), self.y_preds
-            ))
+            s = 0.1
+
+            R = self.objective.residuals(self.pool.smis(), self.y_preds)
+            S = np.exp(s*np.random.randn(R.shape[0]))
+
+            self.y_vars = np.abs(S*R)
+            # self.y_vars = R ** 2
             
         self.updated_model = False
         
