@@ -239,8 +239,8 @@ def add_model_args(parser: ArgumentParser) -> None:
 
     # NN/MPNN args
     parser.add_argument('--conf-method', default='none',
-                        choices={'ensemble', 'twooutput', 
-                                 'mve', 'dropout', 'none'},
+                        choices={'ensemble', 'twooutput', 'mve',
+                                 'evidential','dropout', 'none'},
                         help='Confidence estimation method for NN/MPNN models')
 
     parser.add_argument('--ddp', action='store_true', default=False,
