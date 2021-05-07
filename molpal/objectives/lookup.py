@@ -2,7 +2,7 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-from typing import Collection, Dict, Optional
+from typing import Collection, Dict, Iterable, Optional
 
 import numpy as np
 from tqdm import tqdm
@@ -67,12 +67,28 @@ class LookupObjective(Objective):
             for smi in smis
         }
     
-    def residuals(self, smis, Y_hat: np.ndarray) -> np.ndarray:
-        Y = np.array([self.data.get(smi, 0.) for smi in smis])
-        # mask = ~np.isnan(Y)
+    def residuals(self, smis: Iterable[str], Y_pred: np.ndarray) -> np.ndarray:
+        """
+        return the residuals of the predictions
 
-        # Y = self.c * Y[mask]
-        # Y_hat = Y_hat[mask]
+        Parameters
+        ----------
+        smis : Iterable[str]
+            the SMILES strings corresponding to each prediction
+        Y_pred : np.ndarr
+            the predicted means
 
-        return np.abs(Y - Y_hat)
+        Returns
+        -------
+        np.ndarray
+            the residuals for each prediction. SMILES strings with no 
+            corresponding objective function value will have a residual of 0
+        """
+        Y_true = np.array([self.data.get(smi) for smi in smis], dtype=float)
+        mask = np.isnan(Y_true)
+
+        Y_true[mask] = 0
+        R = Y_true - Y_pred
+        R[mask] = 0
+        return R
         
