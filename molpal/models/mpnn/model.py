@@ -108,7 +108,7 @@ class MoleculeModel(nn.Module):
         if self.uncertainty == 'mve':
             output_size *= 2
         elif self.uncertainty == 'evidential':
-            if self.classiciation:
+            if self.classification:
                 output_size *= 2
             else:
                 output_size *= 4
@@ -150,7 +150,7 @@ class MoleculeModel(nn.Module):
             z[:, 1::2] = capped_variances
             # z = torch.stack((means, capped_variances), dim=2).view(z.size())
 
-        if self.uncertainty == 'evidence':
+        if self.uncertainty == 'evidential':
             if self.classification:
                 z = nn.functional.softplus(z) + 1
             else:
