@@ -602,7 +602,11 @@ class Explorer:
         path = Path(f'{self.root}/{self.name}/preds')
         path.mkdir(parents=True, exist_ok=True)
 
-        if self.y_vars:
+        print(self.y_preds)
+        print(self.y_vars)
+        print(self.y_preds.shape, self.y_vars.shape)
+
+        if self.y_vars is not None:
             Y_pred = np.column_stack((self.y_preds, self.y_vars))
         else:
             Y_pred = np.array(self.y_preds)
