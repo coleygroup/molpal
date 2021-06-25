@@ -126,21 +126,21 @@ class Explorer:
                  delta: float = 0.01, max_iters: int = 10, 
                  max_explore: Union[int, float] = 1., root: str = '.',
                  write_final: bool = True, write_intermediate: bool = False,
-                 chkpt_freq: int = 0, save_preds: bool = False,
+                 chkpt_freq: int = 0,
                  retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
                  scores_csvs: Union[str, List[str], None] = None,
                  verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
                  **kwargs):
-
         args = locals()
         args.pop('self')
-        print('args: ', args)
 
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
         self.tmp = tmp_dir
+
+        self.write_config(args)
 
         self.featurizer = featurizer.Featurizer(
             fingerprint=kwargs['fingerprint'],
@@ -640,6 +640,22 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
     
+    def write_config(self, args):
+        p_config = Path(f'{self.root}/{self.name}/config.ini')
+
+        args.pop('config', None)
+        args.update(**args.pop('kwargs'))
+
+        args['top-k'] = args.pop('k')
+        args['no_title_line'] = not args.pop('title_line')
+
+        for k, v in list(args.items()):
+            if v is None:
+                args.pop(k)
+        with open(p_config, 'w') as fid:
+            ...
+
+
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
         new_scores, scores, and failed accordingly
