@@ -40,8 +40,8 @@ class Explorer:
         whether the model will be retrained from scratch at each iteration.
         If False, train the model online. 
         NOTE: The definition of 'online' is model-specific.
-    epoch : int
-        the current epoch of exploration
+    iter : int
+        the current iter of exploration
     scores : Dict[T, float]
         a dictionary mapping an input's identifier to its corresponding
         objective function value
@@ -66,7 +66,7 @@ class Explorer:
     delta : float
         the minimum acceptable fractional difference between the current 
         average and the moving average in order to continue exploration
-    max_epochs : int
+    max_iters : int
         the maximum number of batches to explore
     root : str
         the directory under which to organize all outputs
@@ -92,7 +92,7 @@ class Explorer:
     window_size : int (Default = 3)
         the number of top-k averages from which to calculate a moving average
     delta : float (Default = 0.01)
-    max_epochs : int (Default = 50)
+    max_iters : int (Default = 50)
     max_explore : Union[int, float] (Default = 1.)
     root : str (Default = '.')
     write_final : bool (Default = True)
@@ -122,10 +122,11 @@ class Explorer:
     """
     def __init__(self, name: str = 'molpal',
                  k: Union[int, float] = 0.01, window_size: int = 3,
-                 delta: float = 0.01, max_epochs: int = 50, 
+                 delta: float = 0.01, max_iters: int = 50, 
                  max_explore: Union[int, float] = 1., root: str = '.',
                  write_final: bool = True, write_intermediate: bool = False,
-                 save_preds: bool = False, retrain_from_scratch: bool = False,
+                 chkpt_freq: int = 0, save_preds: bool = False,
+                 retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
                  scores_csvs: Union[str, List[str], None] = None,
                  verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
@@ -157,14 +158,15 @@ class Explorer:
         self.k = k
         self.delta = delta
         self.max_explore = max_explore
-        self.max_epochs = max_epochs
+        self.max_iters = max_iters
 
         self.write_final = write_final
         self.write_intermediate = write_intermediate
+        self.chkpt_freq = chkpt_freq
         self.save_preds = save_preds
 
         # stateful attributes (not including model)
-        self.epoch = 0
+        self.iter = 0
         self.scores = {}
         self.failures = {}
         self.new_scores = {}
@@ -238,12 +240,12 @@ class Explorer:
         a. explored the entire pool
            (not implemented right now due to complications with 'transfer 
            learning')
-        b. explored for at least <max_epochs> epochs
+        b. explored for at least <max_iters> iters
         c. explored at least <max_explore> inputs
         d. the current top-k average is within a fraction <delta> of the moving
            top-k average. This requires two sub-conditions to be met:
            1. the explorer has successfully explored at least k inputs
-           2. the explorer has completed at least <window_size> epochs after
+           2. the explorer has completed at least <window_size> iters after
               sub-condition (1) has been met
 
         Returns
@@ -251,7 +253,7 @@ class Explorer:
         bool
             whether a stopping condition has been met
         """
-        if self.epoch > self.max_epochs:
+        if self.iter > self.max_iters:
             return True
         if len(self.scores) >= self.max_explore:
             return True
@@ -267,11 +269,11 @@ class Explorer:
 
     def run(self):
         """Explore the MoleculePool until the stopping condition is met"""
-        if self.epoch == 0:
+        if self.iter == 0:
             print('Starting Exploration ...')
             self.explore_initial()
         else:
-            print(f'Resuming Exploration at epoch {self.epoch}...')
+            print(f'Resuming Exploration at iter {self.iter}...')
             self.explore_batch()
 
         while not self.completed:
@@ -282,7 +284,7 @@ class Explorer:
 
         print('Finished exploring!')
         print(f'Explored a total of {len(self)} molecules',
-              f'over {self.epoch} iterations')
+              f'over {self.iter} iterations')
         print(f'Final average of top {self.k}: {self.top_k_avg:0.3f}')
         print(f'Final averages')
         print(f'--------------')
@@ -321,7 +323,7 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
-        self.epoch += 1
+        self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
@@ -339,14 +341,14 @@ class Explorer:
         InvalidExplorationError
             if called before explore_initial or load_scores
         """
-        if self.epoch == 0:
+        if self.iter == 0:
             raise InvalidExplorationError(
                 'Cannot explore a batch before initialization!'
             )
 
         if len(self.scores) >= len(self.pool):
             # this needs to be reconsidered for warm-start type approach
-            self.epoch += 1
+            self.iter += 1
             return self.top_k_avg
 
         self._update_model()
@@ -356,7 +358,7 @@ class Explorer:
             xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes, epoch=self.epoch,
+            cluster_sizes=self.pool.cluster_sizes, iter_=self.iter,
         )
         new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
@@ -368,7 +370,7 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
-        self.epoch += 1
+        self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores)/len(valid_scores)
@@ -398,7 +400,7 @@ class Explorer:
         if k == len(self.pool):
             return sum(score for score in self.scores.items()) / k
         
-        return sum(score for smi, score in self.top_explored(k)) / k
+        return sum(score for _, score in self.top_explored(k)) / k
 
     def top_explored(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the top-k explored molecules
@@ -489,7 +491,7 @@ class Explorer:
             p_scores = p_data / f'all_explored_final.csv'
             include_failed = True
         else:
-            p_scores = p_data / f'top_{m}_explored_iter_{self.epoch}.csv'
+            p_scores = p_data / f'top_{m}_explored_iter_{self.iter}.csv'
         self.scores_csvs.append(str(p_scores))
 
         top_m = self.top_explored(m)
@@ -526,8 +528,8 @@ class Explorer:
         self.scores.update(scores)
         self.failures.update(failures)
         
-        if self.epoch == 0:
-            self.epoch = 1
+        if self.iter == 0:
+            self.iter = 1
         
         if self.verbose > 0:
             print('Done!')
@@ -536,20 +538,20 @@ class Explorer:
         p_states = Path(f'{self.root}/{self.name}/states')
         p_states.mkdir(parents=True, exist_ok=True)
         
-        p_state = p_states / f'epoch_{self.epoch}.pkl'
+        p_state = p_states / f'iter_{self.iter}.pkl'
         with open(p_state, 'wb') as fid:
             pickle.dump(self.scores_csvs, fid)
 
         return str(p_state)
 
-    def save_checkpoint(self) -> str:
+    def checkpoint(self) -> str:
         p_chkpt = Path(
-            f'{self.root}/{self.name}/checkpoints/epoch_{self.epoch}'
+            f'{self.root}/{self.name}/chkpts/iter_{self.iter}'
         )
         p_chkpt.mkdir(parents=True, exist_ok=True)
         
         state = {
-            'epoch': self.epoch,
+            'iter': self.iter,
             'scores': self.scores,
             'failures': self.failures,
             'new_scores': self.new_scores,
@@ -582,7 +584,7 @@ class Explorer:
                 self._update_model()
 
             self.scores = scores
-            self.epoch += 1
+            self.iter += 1
 
             self.top_k_avg = self.avg()
             if len(self.scores) >= self.k:
@@ -600,7 +602,7 @@ class Explorer:
         else:
             Y_pred = np.array(self.y_preds)
         
-        preds_file = f'{path}/preds_iter_{self.epoch}.npy'
+        preds_file = f'{path}/preds_iter_{self.iter}.npy'
         np.save(preds_file, Y_pred)
 
         return preds_file
