@@ -59,6 +59,9 @@ def add_general_args(parser: ArgumentParser) -> None:
                         default=1., dest='m',
                         help='the number of top inputs expressed either as a number or as a fraction of the pool to write, if necessary')
 
+    parser.add_argument('--chkpt-freq', type=int,
+                        nargs='?', default=0, const=-1,
+                        help='The number of iterations that should pass without writing a checkpoint. A value of 0 (or below) means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. Not specifying this flag will result in checkpointing every iteration. Specifying the flag with no value will result in no checkpointing at all.')
     parser.add_argument('--save-preds', action='store_true', default=False,
                         help='whether to write the full prediction data to a file each time the predictions are updated')
     parser.add_argument('--save-state', action='store_true', default=False,
@@ -249,8 +252,8 @@ def add_stopping_args(parser: ArgumentParser) -> None:
                         help='the window size to use for calculation of the moving average of the top-k scores')
     parser.add_argument('--delta', type=restricted_float, default=0.01,
                         help='the minimum acceptable difference between the moving average of the top-k scores and the current average the top-k score in order to continue exploration')
-    parser.add_argument('--max-epochs', type=int, default=50,
-                        help='the maximum number of epochs to explore for')
+    parser.add_argument('--max-iters', type=int, default=10,
+                        help='the maximum number of iterations to explore for')
     parser.add_argument('--max-explore', 
                         type=restricted_float_or_int, default=1.0,
                         help='the maximum number of inputs to explore')
