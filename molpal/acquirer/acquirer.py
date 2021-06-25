@@ -191,7 +191,7 @@ class Acquirer:
                       explored: Optional[Mapping] = None,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
-                      epoch: Optional[int] = None, **kwargs) -> List[T]:
+                      iter_: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
 
         Parameters
@@ -208,8 +208,8 @@ class Acquirer:
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
-        epoch : Optional[int] (Default = None)
-            the current epoch of batch acquisition
+        iter_ : Optional[int] (Default = None)
+            the current iteration of batch acquisition
         is_random : bool (Default = False)
             are the y_means generated through stochastic methods?
 
@@ -295,7 +295,7 @@ class Acquirer:
 
             if self.temp_i and self.temp_f:
                 d_cid_heap = self._scale_heaps(
-                    d_cid_heap, global_pred_max, epoch,
+                    d_cid_heap, global_pred_max, iter_,
                     self.temp_i, self.temp_f
                 )
 
@@ -312,14 +312,14 @@ class Acquirer:
         return [x for _, x in heap]
 
     def _scale_heaps(self, d_cid_heap: Dict[int, List],
-                     pred_global_max: float, epoch: int,
+                     pred_global_max: float, iter_: int,
                      temp_i: float, temp_f: float):
         """Scale each heap's size based on a decay factor
 
         The decay factor is calculated by an exponential decay based on the
         difference between a given heap's local maximum and the predicted
         global maximum then scaled by the current temperature. The temperature
-        is in turn an exponential decay based on the current epoch starting at 
+        is also an exponential decay based on the current iteration starting at 
         the initial temperature and approaching the final temperature.
 
         Parameters
@@ -329,7 +329,7 @@ class Acquirer:
             acquire from that cluster
         pred_global_max : float
             the predicted maximum value of the objective function
-        epoch : int
+        iter_ : int
             the current iteration of acquisition
         temp_i : float
             the initial temperature of the system
@@ -341,7 +341,7 @@ class Acquirer:
         d_cid_heap
             the original mapping scaled down by the calculated decay factor
         """
-        temp = self._calc_temp(epoch, temp_i, temp_f)
+        temp = self._calc_temp(iter_, temp_i, temp_f)
 
         for cid, (heap, heap_size) in d_cid_heap.items():
             if len(heap) == 0:
@@ -361,9 +361,9 @@ class Acquirer:
         return d_cid_heap
 
     @classmethod
-    def _calc_temp(cls, epoch: int, temp_i, temp_f) -> float:
+    def _calc_temp(cls, iter_: int, temp_i, temp_f) -> float:
         """Calculate the temperature of the system"""
-        return temp_i * math.exp(-epoch/0.75) + temp_f
+        return temp_i * math.exp(-iter_/0.75) + temp_f
 
     @classmethod
     def _calc_decay(cls, global_max: float, local_max: float,
