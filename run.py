@@ -53,7 +53,7 @@ def main():
     try:
         explorer.run()
     except BaseException:
-        state_file = explorer.save()
+        state_file = explorer.checkpoint()
         print(f'Exception raised! Intemediate state saved to "{state_file}"')
         raise
     stop = time()
