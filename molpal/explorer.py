@@ -320,10 +320,17 @@ class Explorer:
             print(f'{self.status}.', flush=True)
             self.explore_batch()
 
+        # if self.chkpt_freq < float('inf'):
+        #     chkpt_path = self.checkpoint()
+        #     print(f'Checkpoint file saved to "{chkpt_path}".')
+        previous_chkpt_iter = -float('inf')
+        
         while not self.completed:
             # if self.verbose > 0:
             print(f'{self.status}. Continuing...', flush=True)
             self.explore_batch()
+
+            
 
         print('Finished exploring!')
         print(f'FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | '
