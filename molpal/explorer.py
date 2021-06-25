@@ -641,7 +641,8 @@ class Explorer:
             print('Done!')
     
     def write_config(self, args):
-        p_config = Path(f'{self.root}/{self.name}/config.ini')
+        p_output = Path(f'{self.root}/{self.name}')
+        p_output.mkdir(exist_ok=True, parents=True)
 
         args.pop('config', None)
         args.update(**args.pop('kwargs'))
@@ -652,9 +653,14 @@ class Explorer:
         for k, v in list(args.items()):
             if v is None:
                 args.pop(k)
-        with open(p_config, 'w') as fid:
-            ...
 
+        with open(p_output / 'config.ini', 'w') as fid:
+            for k, v in args.items():
+                if v is None:
+                    continue
+                if v == False:
+                    continue
+                fid.write(f'{k} = {v}\n')
 
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
