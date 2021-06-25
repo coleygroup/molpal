@@ -42,8 +42,8 @@ def add_general_args(parser: ArgumentParser) -> None:
                         help='the random seed to use for initialization.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='the level of output this program should print')
-    parser.add_argument('-nc', '--ncpu', '--cpus', default=MAX_CPU, type=int, 
-                        help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
+    parser.add_argument('-nc', '--ncpu', '--cpus', default=1, type=int, 
+                        help='the number of cores to available to each GPU for dataloading purposes. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
 
     parser.add_argument('--write-intermediate', 
                         action='store_true', default=False,
