@@ -1,19 +1,20 @@
-from functools import partial
+"""This module contains Model implementations that utilize the sklearn models 
+as their underlying model"""
+
 import logging
 from pathlib import Path
 import pickle
-from typing import Callable, Iterable, List, Optional, Sequence, Tuple, TypeVar
+from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
 
 import joblib
 import numpy as np
 from numpy import ndarray
-import ray
 from ray.util.joblib import register_ray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 from tqdm import tqdm
 
-from molpal.encoder import feature_matrix
+from molpal.featurizer import feature_matrix
 from molpal.models.base import Model
 
 T = TypeVar('T')
