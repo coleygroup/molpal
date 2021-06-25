@@ -1,7 +1,6 @@
 import csv
 from functools import partial
 import gzip
-from itertools import chain, product
 from pathlib import Path
 import shelve
 import tempfile
@@ -51,13 +50,8 @@ class DockingObjective(Objective):
         the method to calculate a ligand's overall score from multiple scored
         poses. Choices: 'best' (the best score), 'average' (average all scores),
         and 'boltzmann' (boltzmann average of all scores)
-    num_workers : Optional[int] (Default = -1)
-        the number of worker processes to spread docking calculations over.
-        A value of -1 sets the value equal to the number of cores available.
     ncpu : Optional[int] (Default = 1)
         the number of cores available to each worker processes
-    distributed : bool (Default = False)
-        whether the worker processes are a distributed setup.
     input_map_file : Optional[str] (Default = None)
         NOTE: unused right now
     verbose : int (Default = 0)
@@ -72,16 +66,14 @@ class DockingObjective(Objective):
                  box_size: Optional[Tuple] = None,
                  docked_ligand_file: Optional[str] = None,
                  score_mode: Optional[str] = None,
-                 num_workers: Optional[int] = None,
                  ncpu: Optional[int] = None,
-                 distributed: Optional[bool] = None,
                  input_map_file: Optional[str] = None,
                  verbose: int = 0, **kwargs):
         self.input_map_file = input_map_file
         
         docking_params = {
-            'software': 'vina', 'size': (10., 10., 10.), 'score_mode': 'best',
-            'num_workers': -1, 'ncpu': 1, 'distributed': False, 'verbose': 0
+            'software': 'vina', 'size': (10., 10., 10.),
+            'score_mode': 'best', 'ncpu': 1, 'verbose': 0
         }
         if objective_config is not None:
             docking_params.update(vars(pyscreener_args.gen_args(
@@ -100,12 +92,8 @@ class DockingObjective(Objective):
             docking_params['docked_ligand_file'] = docked_ligand_file
         if score_mode is not None:
             docking_params['score_mode'] = score_mode
-        if num_workers is not None:
-            docking_params['num_workers'] = num_workers
         if ncpu is not None:
             docking_params['ncpu'] = ncpu
-        if distributed is not None:
-            docking_params['distributed'] = distributed
         docking_params['verbose'] = max(docking_params['verbose'], verbose)
 
         if name:
