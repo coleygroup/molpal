@@ -141,6 +141,9 @@ class GPModel(Model):
         X = feature_matrix(xs, featurizer)
         Y = np.array(list(ys))
 
+        self.model = GaussianProcessRegressor(
+            kernel=self.kernel, normalize_y=True
+        )
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
