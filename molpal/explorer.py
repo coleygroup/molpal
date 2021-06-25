@@ -1,5 +1,5 @@
 """This module contains the Explorer class, which is an abstraction
-for batched, Bayesian optimization."""
+for batch Bayesian optimization."""
 from collections import deque
 import csv
 import heapq
@@ -38,10 +38,11 @@ class Explorer:
         observed data
     retrain_from_scratch : bool
         whether the model will be retrained from scratch at each iteration.
-        If False, train the model online. 
+        If False, train the model online.
         NOTE: The definition of 'online' is model-specific.
     iter : int
-        the current iter of exploration
+        the current iteration of exploration. I.e., the loop iteration the
+        explorer has yet to start
     scores : Dict[T, float]
         a dictionary mapping an input's identifier to its corresponding
         objective function value
@@ -92,7 +93,7 @@ class Explorer:
     window_size : int (Default = 3)
         the number of top-k averages from which to calculate a moving average
     delta : float (Default = 0.01)
-    max_iters : int (Default = 50)
+    max_iters : int (Default = 10)
     max_explore : Union[int, float] (Default = 1.)
     root : str (Default = '.')
     write_final : bool (Default = True)
@@ -122,7 +123,7 @@ class Explorer:
     """
     def __init__(self, name: str = 'molpal',
                  k: Union[int, float] = 0.01, window_size: int = 3,
-                 delta: float = 0.01, max_iters: int = 50, 
+                 delta: float = 0.01, max_iters: int = 10, 
                  max_explore: Union[int, float] = 1., root: str = '.',
                  write_final: bool = True, write_intermediate: bool = False,
                  chkpt_freq: int = 0, save_preds: bool = False,
@@ -131,6 +132,11 @@ class Explorer:
                  scores_csvs: Union[str, List[str], None] = None,
                  verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
                  **kwargs):
+
+        args = locals()
+        args.pop('self')
+        print('args: ', args)
+
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
@@ -162,8 +168,8 @@ class Explorer:
 
         self.write_final = write_final
         self.write_intermediate = write_intermediate
-        self.chkpt_freq = chkpt_freq
-        self.save_preds = save_preds
+        self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float('inf')
+        # self.save_preds = save_preds
 
         # stateful attributes (not including model)
         self.iter = 0
@@ -238,8 +244,7 @@ class Explorer:
         Stopping Conditions
         -------------------
         a. explored the entire pool
-           (not implemented right now due to complications with 'transfer 
-           learning')
+           (not implemented right now due to complications with warm starting)
         b. explored for at least <max_iters> iters
         c. explored at least <max_explore> inputs
         d. the current top-k average is within a fraction <delta> of the moving
@@ -276,11 +281,23 @@ class Explorer:
             print(f'Resuming Exploration at iter {self.iter}...')
             self.explore_batch()
 
+        # if self.chkpt_freq < float('inf'):
+        #     chkpt_path = self.checkpoint()
+        #     print(f'Checkpoint file saved to "{chkpt_path}".')
+        previous_chkpt_iter = -float('inf')
+        
         while not self.completed:
+            if (self.iter - previous_chkpt_iter) > self.chkpt_freq:
+                chkpt_path = self.checkpoint()
+                print(f'Checkpoint file saved to "{chkpt_path}".')
+                previous_chkpt_iter = self.iter
+
             if self.verbose > 0:
                 print(f'Current average of top {self.k}: {self.top_k_avg:0.3f}',
                       'Continuing exploration ...', flush=True)
             self.explore_batch()
+
+            
 
         print('Finished exploring!')
         print(f'Explored a total of {len(self)} molecules',
@@ -534,38 +551,68 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
 
-    def save(self) -> str:
-        p_states = Path(f'{self.root}/{self.name}/states')
-        p_states.mkdir(parents=True, exist_ok=True)
+    # def save(self) -> str:
+    #     p_states = Path(f'{self.root}/{self.name}/states')
+    #     p_states.mkdir(parents=True, exist_ok=True)
         
-        p_state = p_states / f'iter_{self.iter}.pkl'
-        with open(p_state, 'wb') as fid:
-            pickle.dump(self.scores_csvs, fid)
+    #     p_state = p_states / f'iter_{self.iter}.pkl'
+    #     with open(p_state, 'wb') as fid:
+    #         pickle.dump(self.scores_csvs, fid)
 
-        return str(p_state)
+    #     return str(p_state)
 
     def checkpoint(self) -> str:
+        """write a checkpoint file for the explorer's current state and return
+        the corresponding filepath"""
         p_chkpt = Path(
             f'{self.root}/{self.name}/chkpts/iter_{self.iter}'
         )
         p_chkpt.mkdir(parents=True, exist_ok=True)
         
+        scores_pkl = 'score.pkl'
+        pickle.dump(self.scores, open(scores_pkl, 'wb'))
+
+        failures_pkl = 'failures.pkl'
+        pickle.dump(self.failures, open(failures_pkl, 'wb'))
+
+        new_scores_pkl = 'new_scores.pkl'
+        pickle.dump(self.new_scores, open(new_scores_pkl, 'wb'))
+
         state = {
             'iter': self.iter,
-            'scores': self.scores,
-            'failures': self.failures,
-            'new_scores': self.new_scores,
+            'scores': scores_pkl,
+            'failures': failures_pkl,
+            'new_scores': new_scores_pkl,
             'updated_model': self.updated_model,
-            'recent_avgs': self.recent_avgs,
+            'recent_avgs': list(self.recent_avgs),
             'top_k_avg': self.top_k_avg,
-            'y_preds': self.write_preds(),
+            'y_preds': self.save_preds(p_chkpt / 'preds.npy'),
             'model': self.model.save(p_chkpt / 'model')
         }
 
         p_state = p_chkpt / 'state.json'
-        json.dump(state, open(p_state))
+        json.dump(state, open(p_state, 'w'))
 
         return str(p_state)
+
+    def save_preds(self, filepath: str) -> str:
+        """save the current predictions to the specified filepath
+        
+        If no uncertainty, the filepath contains an OxN array, where O is the
+        number of objectives and N is the number of pool members.
+        If predicting uncertainty, the filepath contains a 2xOxN array, where
+        index 0 contains an OxN array for the predicted and index 1 contains
+        the same for the uncertainties.
+        """
+        # path = Path(f'{self.root}/{self.name}/preds')
+        # path.mkdir(parents=True, exist_ok=True)
+
+        if self.y_vars:
+            Y_pred = np.stack((self.y_preds, self.y_vars))
+        else:
+            Y_pred = np.array(self.y_preds)
+        
+        np.save(filepath, Y_pred)
 
     def load(self) -> None:
         """Mimic the intermediate state of a previous explorer run by loading
@@ -592,20 +639,6 @@ class Explorer:
 
         if self.verbose > 0:
             print('Done!')
-
-    def write_preds(self) -> str:
-        path = Path(f'{self.root}/{self.name}/preds')
-        path.mkdir(parents=True, exist_ok=True)
-
-        if self.y_vars:
-            Y_pred = np.column_stack((self.y_preds, self.y_vars))
-        else:
-            Y_pred = np.array(self.y_preds)
-        
-        preds_file = f'{path}/preds_iter_{self.iter}.npy'
-        np.save(preds_file, Y_pred)
-
-        return preds_file
     
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
@@ -692,8 +725,8 @@ class Explorer:
 
         self.updated_model = False
         
-        if self.save_preds:
-            self.write_preds()
+        # if self.save_preds:
+        #     self.write_preds()
 
     def _validate_acquirer(self):
         """Ensure that the model provides values the Acquirer needs"""
