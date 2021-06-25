@@ -90,21 +90,6 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
 
     return preds
 
-# @ray.remote(num_cpus=ncpu)
-# def predict(model, smis, batch_size, ncpu, scaler, use_gpu: bool):
-#     model.device = 'cpu'
-
-#     test_data = MoleculeDataset(
-#         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-#     )
-#     data_loader = MoleculeDataLoader(
-#         dataset=test_data, batch_size=batch_size, num_workers=ncpu
-#     )
-#     return _predict(
-#         model, data_loader, self.uncertainty,
-#         disable=True, scaler=scaler
-#     )
-
 def _predict(model: nn.Module, data_loader: Iterable, uncertainty: bool,
             disable: bool = False,
             scaler: Optional[StandardScaler] = None) -> np.ndarray:
