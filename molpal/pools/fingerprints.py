@@ -8,7 +8,7 @@ import numpy as np
 import ray
 from tqdm import tqdm
 
-from molpal.encoder import Featurizer, featurize, feature_matrix
+from molpal.featurizer import Featurizer, featurize, feature_matrix
 
 T = TypeVar('T')
 
