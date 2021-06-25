@@ -134,6 +134,8 @@ class Explorer:
         kwargs['path'] = self.path
         self.verbose = kwargs.get('verbose', 0)
 
+        self.write_config(args)
+
         self.featurizer = featurizer.Featurizer(
             fingerprint=kwargs['fingerprint'],
             radius=kwargs['radius'], length=kwargs['length']
