@@ -5,6 +5,7 @@ from functools import partial
 import logging
 import json
 import os
+from pathlib import Path
 from typing import (Callable, Iterable, List, NoReturn,
                     Optional, Sequence, Tuple, TypeVar)
 
@@ -18,9 +19,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from tensorflow import keras
 
-from molpal.encoder import feature_matrix
+from molpal.featurizer import feature_matrix
 from molpal.models.base import Model
-# from molpal.models.utils import feature_matrix
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -48,16 +48,15 @@ class NN:
     loss : Callable
         the loss function to use
     input_size : int
-        the dimension of the model inputs
-    output_dim : int
-        the dimension of the model outputs
+        the dimension of the model input
+    output_size : int
+        the dimension of the model output
     batch_size : int
-        the size to batch training into
-    dropout : Optional[float]
-        If specified, add a dropout hidden layer with the specified dropout
-        rate after each hidden layer
-    dropout_at_predict : bool (Default = False)
-       Whether to perform stochastic dropout during prediction
+        the size to batch training into        
+    uncertainty_method : Optional[str]
+        the uncertainty method this model is using (if at all)
+    uncertainty : bool
+       Whether the model directly predicts its own uncertainty
     mean : float
         the mean of the unnormalized data
     std : float
@@ -66,40 +65,51 @@ class NN:
     Parameters
     ----------
     input_size : int
-    output_size : int
-    batch_size : int (Default = 4096)
-    layer_sizes : Optional[Sequence[int]] (Default = None)
+    num_tasks : int
+    batch_size : int, default=4096
+    layer_sizes : Optional[Sequence[int]], default=None
         the sizes of the hidden layers in the network. If None, default to
         two hidden layers with 100 neurons each.
-    dropout : Optional[float] (Default = None)
-    dropout_at_predict : bool (Default = False)
-    activation : Optional[str] (Default = 'relu')
+    dropout : Optional[float], default=None
+        if specified, add a dropout hidden layer with the specified dropout
+        rate after each hidden layer
+    activation : Optional[str], default='relu'
         the name of the activation function to use
+    uncertainty_method : Optional[str], default=None
     """
-    def __init__(self, input_size: int, output_size: int,
+    def __init__(self, input_size: int, num_tasks: int,
                  batch_size: int = 4096,
                  layer_sizes: Optional[Sequence[int]] = None,
                  dropout: Optional[float] = None,
-                 dropout_at_predict: bool = False,
-                 activation: Optional[str] = 'relu'):
+                #  dropout_at_predict: bool = False,
+                 activation: Optional[str] = 'relu',
+                 uncertainty_method: Optional[str] = None):
         self.input_size = input_size
-        self.output_size = output_size
+        self.output_size = num_tasks
         self.batch_size = batch_size
+
+        self.uncertainty_method = uncertainty_method
+        self.uncertainty = uncertainty_method in {'mve'}
 
         layer_sizes = layer_sizes or [100, 100]
         self.model, self.optimizer, self.loss = self.build(
-            layer_sizes, dropout, dropout_at_predict, activation
+            input_size, num_tasks, layer_sizes, dropout,
+            uncertainty_method, activation
         )
 
         self.mean = 0
         self.std = 0
 
-    def build(self, layer_sizes, dropout, dropout_at_predict, activation):
+    def build(self, input_size, num_tasks, layer_sizes, dropout, 
+              uncertainty_method, activation):
         """Build the model, optimizer, and loss function"""
-        self.model = keras.Sequential()
+        # self.model = keras.Sequential()
 
-        inputs = keras.layers.Input(shape=(self.input_size,))
-
+        dropout_at_predict = uncertainty_method == 'dropout'
+        output_size = 2*num_tasks if self.uncertainty else num_tasks
+        
+        inputs = keras.layers.Input(shape=(input_size,))
+        
         hidden = inputs
         for layer_size in layer_sizes:
             hidden = keras.layers.Dense(
@@ -114,21 +124,20 @@ class NN:
                 )(hidden, training=dropout_at_predict)
 
         outputs = keras.layers.Dense(
-            self.output_size, activation='linear'
+            output_size, activation='linear'
         )(hidden)
 
         model = keras.Model(inputs, outputs)
 
-        if self.output_size == 1:
+        if uncertainty_method not in {'mve'}:
             optimizer = keras.optimizers.Adam(lr=0.01)
             loss = keras.losses.mse
-        elif self.output_size == 2:
-            # second output means we're using MVE approach
+        elif uncertainty_method == 'mve':
             optimizer = keras.optimizers.Adam(lr=0.05)
             loss = mve_loss
         else:
             raise ValueError(
-                f'NN output size ({self.output_size}) must be 1 or 2')
+                f'Unrecognized uncertainty method: "{uncertainty_method}"')
 
         return model, optimizer, loss
 
@@ -173,23 +182,27 @@ class NN:
         X = np.stack(xs, axis=0)
         Y_pred = self.model.predict(X)
 
-        if self.output_size == 1:
+        if not self.uncertainty:
             Y_pred = Y_pred * self.std + self.mean
         else:
-            Y_pred[:, 0] = Y_pred[:, 0] * self.std + self.mean
-            Y_pred[:, 1] = Y_pred[:, 1] * self.std**2
+            Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.std + self.mean
+            Y_pred[:, 1::2] = Y_pred[:, 1::2] * self.std**2
 
         return Y_pred
     
-    def save(self, path, name: Optional[str] = None) -> str:
-        name = name or 'model'
-        # path = f'{path}/{name}'
+    def save(self, path) -> str:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
 
-        model_path = f'{path}/{name}'
+        model_path = f'{path}/model'
         self.model.save(model_path, include_optimizer=True)
 
         state_path = f'{path}/state.json'
-        state = {'std': self.std, 'mean': self.mean, 'model_path': model_path}
+        state = {
+            'std': self.std,
+            'mean': self.mean,
+            'model_path': model_path
+        }
         json.dump(state, open(state_path, 'w'))
 
         return state_path
@@ -201,7 +214,7 @@ class NN:
         self.std = state['std']
         self.mean = state['mean']
 
-        if self.output_size == 2:
+        if self.uncertainty_method == 'mve':
             custom_objects = {'mve_loss': mve_loss}
         else:
             custom_objects = {}
@@ -212,8 +225,8 @@ class NN:
     
     def _normalize(self, ys: Sequence[float]) -> ndarray:
         Y = np.stack(list(ys))
-        self.mean = np.nanmean(ys)
-        self.std = np.nanstd(ys)
+        self.mean = np.nanmean(Y, axis=0)
+        self.std = np.nanstd(Y, axis=0)
 
         return (Y - self.mean) / self.std
 
@@ -381,8 +394,9 @@ class NNTwoOutputModel(Model):
                  dropout: Optional[float] = 0.0, **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        self.build_model = partial(NN, input_size=input_size, output_size=2,
-                                   batch_size=test_batch_size, dropout=dropout)
+        self.build_model = partial(NN, input_size=input_size, num_tasks=1,
+                                   batch_size=test_batch_size, dropout=dropout,
+                                   uncertainty_method='mve')
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
@@ -447,9 +461,9 @@ class NNDropoutModel(Model):
                  **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        self.build_model = partial(NN, input_size=input_size, output_size=1,
+        self.build_model = partial(NN, input_size=input_size, num_tasks=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   dropout_at_predict=True)
+                                   uncertainty_method='dropout')
         self.model = self.build_model()
         self.dropout_size = dropout_size
 

@@ -3,6 +3,7 @@ their underlying model"""
 from functools import partial
 import json
 import os
+from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
@@ -243,15 +244,23 @@ class MPNN:
         # return mpnn.predict(self.model, data_loader, scaler=self.scaler)
 
     def save(self, path) -> str:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
         model_path = f'{path}/model.pt'
         torch.save(self.model.state_dict(), model_path)
 
         state_path = f'{path}/state.json'
-        state = {
-            'stds': self.scaler.stds.tolist(),
-            'means': self.scaler.means.tolist(),
-            'model_path': model_path
-        }
+        try:
+            state = {
+                'stds': self.scaler.stds.tolist(),
+                'means': self.scaler.means.tolist(),
+                'model_path': model_path
+            }
+        except AttributeError:
+            state = {
+                'model_path': model_path
+            }
         json.dump(state, open(state_path, 'w'))
 
         return state_path
