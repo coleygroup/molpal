@@ -101,7 +101,7 @@ class GPModel(Model):
     Attributes
     ----------
     model : GaussianProcessRegressor
-    kernel : kernels.Kernel
+    kernel : type[kernels.Kernel]
         the GP kernel that will be used
 
     Parameters
@@ -109,14 +109,16 @@ class GPModel(Model):
     gp_kernel : str (Default = 'dotproduct')
     test_batch_size : Optional[int] (Default = 1000)
     """
-    def __init__(self, gp_kernel: str = 'dotproduct',
+    def __init__(self, gp_kernel: str = 'dot',
                  test_batch_size: Optional[int] = 1024,
                  **kwargs):
         test_batch_size = test_batch_size or 1024
 
         self.model = None
         self.kernel = {
-            'dotproduct': kernels.DotProduct
+            'dotproduct': kernels.DotProduct,
+            'matern': kernels.Matern,
+            'rbf': kernels.RBF,
         }[gp_kernel]()
 
         super().__init__(test_batch_size, **kwargs)
@@ -132,9 +134,11 @@ class GPModel(Model):
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurizer, retrain: bool = False) -> bool:
         X = feature_matrix(xs, featurizer)
-        Y = np.array(ys)
+        Y = np.array(list(ys))
 
-        self.model = GaussianProcessRegressor(kernel=self.kernel)
+        self.model = GaussianProcessRegressor(
+            kernel=self.kernel, normalize_y=True
+        )
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
@@ -145,14 +149,14 @@ class GPModel(Model):
 
     def get_means(self, xs: Sequence) -> ndarray:
         X = np.vstack(xs)
-
+        
         return self.model.predict(X)
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
         X = np.vstack(xs)
-        Y_mean, Y_sd = self.model.predict(X, return_std=True)
+        Y_mean_pred, Y_sd_pred = self.model.predict(X, return_std=True)
 
-        return Y_mean, np.power(Y_sd, 2)
+        return Y_mean_pred, Y_sd_pred**2
     
     def save(self, path) -> str:
         model_path = f'{path}/model.pkl'
@@ -162,4 +166,3 @@ class GPModel(Model):
     
     def load(self, path):
         self.model = pickle.load(open(path, 'rb'))
-        
