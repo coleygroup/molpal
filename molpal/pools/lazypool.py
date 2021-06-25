@@ -4,7 +4,7 @@ from typing import Iterator, Sequence, Type
 
 import numpy as np
 
-from molpal.encoder import Featurizer
+from molpal.featurizer import Featurizer
 from molpal.pools.base import MoleculePool, Mol
 
 class LazyMoleculePool(MoleculePool):
