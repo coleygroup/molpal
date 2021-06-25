@@ -14,7 +14,7 @@ import ray
 from rdkit import Chem, RDLogger
 from tqdm import tqdm
 
-from molpal.encoder import Featurizer
+from molpal.featurizer import Featurizer
 from molpal.pools.cluster import cluster_fps_h5
 from molpal.pools import fingerprints
 
