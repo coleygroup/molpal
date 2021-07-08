@@ -261,7 +261,7 @@ class MPNN:
             state = {
                 'model_path': model_path
             }
-        json.dump(state, open(state_path, 'w'))
+        json.dump(state, open(state_path, 'w'), indent=4)
 
         return state_path
     
