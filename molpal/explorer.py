@@ -325,14 +325,11 @@ class Explorer:
         # if self.chkpt_freq < float('inf'):
         #     chkpt_path = self.checkpoint()
         #     print(f'Checkpoint file saved to "{chkpt_path}".')
-        previous_chkpt_iter = -float('inf')
         
         while not self.completed:
             # if self.verbose > 0:
             print(f'{self.status}. Continuing...', flush=True)
             self.explore_batch()
-
-            
 
         print('Finished exploring!')
         print(f'FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | '
@@ -423,6 +420,10 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
+        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+            self.checkpoint()
+            self.previous_chkpt_iter = self.iter
+
         self.iter += 1
 
         # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
