@@ -42,7 +42,9 @@ class Explorer:
         NOTE: The definition of 'online' is model-specific.
     iter : int
         the current iteration of exploration. I.e., the loop iteration the
-        explorer has yet to start
+        explorer has yet to start. This means that the current predictions will
+        be the ones used in the previous iteration (becaus they have yet to be
+        updated for the current iteration)
     scores : Dict[T, float]
         a dictionary mapping an input's identifier to its corresponding
         objective function value
@@ -169,6 +171,7 @@ class Explorer:
         self.write_final = write_final
         self.write_intermediate = write_intermediate
         self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float('inf')
+        self.previous_chkpt_iter = -float('inf')
         # self.save_preds = save_preds
 
         # stateful attributes (not including model)
@@ -284,20 +287,12 @@ class Explorer:
         # if self.chkpt_freq < float('inf'):
         #     chkpt_path = self.checkpoint()
         #     print(f'Checkpoint file saved to "{chkpt_path}".')
-        previous_chkpt_iter = -float('inf')
         
         while not self.completed:
-            if (self.iter - previous_chkpt_iter) > self.chkpt_freq:
-                chkpt_path = self.checkpoint()
-                print(f'Checkpoint file saved to "{chkpt_path}".')
-                previous_chkpt_iter = self.iter
-
             if self.verbose > 0:
                 print(f'Current average of top {self.k}: {self.top_k_avg:0.3f}',
                       'Continuing exploration ...', flush=True)
             self.explore_batch()
-
-            
 
         print('Finished exploring!')
         print(f'Explored a total of {len(self)} molecules',
@@ -330,6 +325,7 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
+
         new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
 
@@ -339,7 +335,11 @@ class Explorer:
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
-        
+
+        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+            self.checkpoint()
+            self.previous_chkpt_iter = self.iter
+
         self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
@@ -377,6 +377,7 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, iter_=self.iter,
         )
+
         new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
 
@@ -387,6 +388,10 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
+        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+            self.checkpoint()
+            self.previous_chkpt_iter = self.iter
+
         self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
@@ -564,36 +569,39 @@ class Explorer:
     def checkpoint(self) -> str:
         """write a checkpoint file for the explorer's current state and return
         the corresponding filepath"""
-        p_chkpt = Path(
+        chkpt_dir = Path(
             f'{self.root}/{self.name}/chkpts/iter_{self.iter}'
         )
-        p_chkpt.mkdir(parents=True, exist_ok=True)
+        chkpt_dir.mkdir(parents=True, exist_ok=True)
         
-        scores_pkl = 'score.pkl'
+        scores_pkl = chkpt_dir / 'scores.pkl'
         pickle.dump(self.scores, open(scores_pkl, 'wb'))
 
-        failures_pkl = 'failures.pkl'
+        failures_pkl =  chkpt_dir / 'failures.pkl'
         pickle.dump(self.failures, open(failures_pkl, 'wb'))
 
-        new_scores_pkl = 'new_scores.pkl'
+        new_scores_pkl =  chkpt_dir / 'new_scores.pkl'
         pickle.dump(self.new_scores, open(new_scores_pkl, 'wb'))
 
         state = {
             'iter': self.iter,
-            'scores': scores_pkl,
-            'failures': failures_pkl,
-            'new_scores': new_scores_pkl,
+            'scores': str(scores_pkl),
+            'failures': str(failures_pkl),
+            'new_scores': str(new_scores_pkl),
             'updated_model': self.updated_model,
             'recent_avgs': list(self.recent_avgs),
             'top_k_avg': self.top_k_avg,
-            'y_preds': self.save_preds(p_chkpt / 'preds.npy'),
-            'model': self.model.save(p_chkpt / 'model')
+            'y_preds': self.save_preds(chkpt_dir / 'preds.npy'),
+            'model': self.model.save(chkpt_dir / 'model')
         }
 
-        p_state = p_chkpt / 'state.json'
-        json.dump(state, open(p_state, 'w'))
+        p_chkpt = chkpt_dir / 'state.json'
+        json.dump(state, open(p_chkpt, 'w'), indent=4)
 
-        return str(p_state)
+        if self.verbose > 1:
+            print(f'Checkpoint file saved to "{p_chkpt}".')
+
+        return str(p_chkpt)
 
     def save_preds(self, filepath: str) -> str:
         """save the current predictions to the specified filepath
