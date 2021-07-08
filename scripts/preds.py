@@ -5,8 +5,6 @@ import gzip
 from pathlib import Path
 from typing import Dict, List
 
-from matplotlib import pyplot as plt
-from matplotlib import ticker
 import numpy as np
 from scipy import stats
 from tqdm import tqdm
