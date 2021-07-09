@@ -134,8 +134,6 @@ class Explorer:
         kwargs['path'] = self.path
         self.verbose = kwargs.get('verbose', 0)
 
-        self.write_config(args)
-
         self.featurizer = featurizer.Featurizer(
             fingerprint=kwargs['fingerprint'],
             radius=kwargs['radius'], length=kwargs['length']
@@ -322,10 +320,6 @@ class Explorer:
             print(f'{self.status}.', flush=True)
             self.explore_batch()
 
-        # if self.chkpt_freq < float('inf'):
-        #     chkpt_path = self.checkpoint()
-        #     print(f'Checkpoint file saved to "{chkpt_path}".')
-        
         while not self.completed:
             # if self.verbose > 0:
             print(f'{self.status}. Continuing...', flush=True)
