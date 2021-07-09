@@ -5,6 +5,8 @@ import gzip
 from pathlib import Path
 from typing import Dict, List
 
+from matplotlib import pyplot as plt
+from matplotlib import ticker
 import numpy as np
 from scipy import stats
 from tqdm import tqdm
@@ -60,10 +62,28 @@ def gather_experiment_predss(experiment) -> List[np.ndarray]:
         chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
     )[1:]
 
-    predss = [np.load(chkpt_iter_dir / 'preds.npy')
+    predss = [np.load(chkpt_iter_dir / 'preds.npz')['Y_mean']
               for chkpt_iter_dir in chkpt_iter_dirs]
 
     return predss
+
+def plot_residualss(Y_true, Y_predss, mask):
+    fig, ax = plt.subplots(1, 1, figsize=(6, 4), sharey=True)
+
+    for i, Y_pred in enumerate(Y_predss):
+        R = np.abs(Y_true - Y_pred)
+        ax.hist(
+            R, cumulative=True, density=True, bins=np.linspace(0, 10, 20),
+            histtype='step', label=f'Iter {i+1}'
+        )
+
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax.grid(which='both')
+    ax.legend()
+    ax.set_xlabel('absolute predictive error')
+    ax.set_ylabel('density')
+    
+    return fig
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -78,6 +98,8 @@ if __name__ == "__main__":
     parser.add_argument('--no-title-line', action='store_true', default=False)
     parser.add_argument('--maximize', action='store_true', default=False,
                         help='whether the objective for which you are calculating performance should be maximized.')
+    parser.add_argument('-n', '--name')
+    parser.add_argument('--bins', type=int, default=20)
     
     args = parser.parse_args()
     args.title_line = not args.no_title_line
@@ -98,15 +120,48 @@ if __name__ == "__main__":
 
     for experiment in args.experiments:
         predss = gather_experiment_predss(experiment)
+
+        fig1, ax = plt.subplots(1, 1, sharex=True, figsize=(6, 4))
+        fig2, axs = plt.subplots(len(predss), 1, figsize=(4, 10),
+                                 sharex=True, sharey=True)
+
         for i, preds in enumerate(predss):
-            mse = ((Y_true[mask] - preds[mask])**2).mean(axis=0)
+            E = (Y_true[mask] - preds[mask])
+            mse = (E**2).mean(axis=0)
             pearson, _ = stats.pearsonr(Y_true[mask], preds[mask])
             spearman, _ = stats.spearmanr(Y_true[mask], preds[mask])
-                
+
             print(
                 f'Iteration {i+1}: MSE: {mse:0.3f}, '
                 f'pearson: {pearson:0.3f}, spearman: {spearman:0.3f}',
                 flush=True
             )
+
+            R = np.abs(E)
+            ax.hist(
+                R, cumulative=True, density=True,
+                bins=np.linspace(0, 2, args.bins),
+                histtype='step', alpha=0.7, label=f'Iter {i+1}'
+            )
+            axs[i].hist2d(Y_true[mask], R, bins=2*args.bins, density=True)
+            axs[i].set_title(f'Iter {i+1}')
+
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+        ax.grid(which='both')
+        ax.legend()
+        ax.set_xlabel('Absolute predictive error')
+        ax.set_ylabel('Density')
+
+        ax = fig2.add_subplot(111, frameon=False)
+        ax.tick_params(labelcolor='none', which='both', top=False, 
+                        bottom=False, left=False, right=False)
+        ax.set_xlabel('Docking score')
+        ax.set_ylabel('Residual')
+
+        fig1.tight_layout()
+        fig2.tight_layout()        
+        
+        fig1.savefig(f'figures/{args.name}_hist.png')
+        fig2.savefig(f'figures/{args.name}_2Dhist.png')
 
     exit()
