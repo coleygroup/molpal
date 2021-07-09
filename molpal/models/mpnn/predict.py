@@ -76,17 +76,23 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
     preds = preds.cpu().numpy()
 
     if uncertainty:
-        means = preds[:, 0::2]
-        variances = preds[:, 1::2]
+        # means = preds[:, 0::2]
+        # variances = preds[:, 1::2]
 
         if scaler:
-            means = scaler.inverse_transform(means)
-            variances = scaler.stds**2 * variances
+            preds[:, 0::2] *= scaler.stds
+            preds[:, 0::2] += scaler.means
+            preds[:, 1::2] *= scaler.stds**2
+            # means = means*scaler.stds + scaler.means
+            # # means = scaler.inverse_transform(means)
+            # variances = scaler.stds**2 * variances
 
-        return means, variances
+        return preds
 
     if scaler:
-        preds = scaler.inverse_transform(preds)
+        preds *= scaler.stds
+        preds += scaler.means
+        # preds = scaler.inverse_transform(preds)
 
     return preds
 

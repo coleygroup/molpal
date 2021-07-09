@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import (Callable, Iterable, List, Optional,
                     Sequence, Set, Tuple, TypeVar)
 
-from numpy import ndarray
+import numpy as np
 from tqdm import tqdm
 
 from molpal.models.utils import batches
@@ -48,7 +48,7 @@ class Model(ABC):
     def __init__(self, test_batch_size: int, **kwargs):
         self.test_batch_size = test_batch_size
 
-    def __call__(self, *args, **kwargs) -> Tuple[List[float], List[float]]:
+    def __call__(self, *args, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
         return self.apply(*args, **kwargs)
 
     @property
@@ -82,17 +82,17 @@ class Model(ABC):
         # TODO: hyperparameter optimizations in inner loop?
 
     @abstractmethod
-    def get_means(self, xs: Sequence) -> ndarray:
+    def get_means(self, xs: Sequence) -> np.ndarray:
         """Get the mean predicted values for a sequence of inputs"""
 
     @abstractmethod
-    def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         """Get both the predicted mean and variance for a sequence of inputs"""
 
     def apply(self, x_ids: Iterable[T], x_feats: Iterable[T_feat],
               batched_size: Optional[int] = None,
               size: Optional[int] = None, mean_only: bool = True
-              ) -> Tuple[List[float], List[float]]:
+              ) -> Tuple[np.ndarray, np.ndarray]:
         """Apply the model to the inputs
 
         Parameters
@@ -112,10 +112,10 @@ class Model(ABC):
 
         Returns
         -------
-        means : List[float]
+        means : np.ndarray
             the mean predicted values
-        variances: List[float]
-            the variance in the predicted values, empty if mean_only is True
+        variances: np.ndarray
+            the variance in the predicted means, empty if mean_only is True
         """
         if self.type_ == 'mpn':
             # MPNs predict directly on the input identifier
@@ -130,22 +130,23 @@ class Model(ABC):
             n_batches = (size//self.test_batch_size) + 1 if size else None
             xs = batches(xs, self.test_batch_size)
 
-        means = []
-        variances = []
+        meanss = []
+        variancess = []
 
         if mean_only:
             for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
                                  desc='Inference', unit='batch'):
-                batch_means = self.get_means(batch_xs)
-                means.extend(batch_means)
+                means = self.get_means(batch_xs)
+                meanss.append(means)
+                variancess.append([])
         else:
             for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
                                  desc='Inference', unit='batch'):
-                batch_means, batch_vars = self.get_means_and_vars(batch_xs)
-                means.extend(batch_means)
-                variances.extend(batch_vars)
+                means, variances = self.get_means_and_vars(batch_xs)
+                meanss.append(means)
+                variancess.append(variances)
 
-        return means, variances
+        return np.concatenate(meanss), np.concatenate(variancess)
     
     @abstractmethod
     def save(self, path) -> str:
