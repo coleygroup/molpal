@@ -30,10 +30,13 @@ def gather_experiment_predss(experiment) -> List[np.ndarray]:
         chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
     )[1:]
 
-    predss = [np.load(chkpt_iter_dir / 'preds.npy')
-              for chkpt_iter_dir in chkpt_iter_dirs]
-
-    return predss
+    preds_npzs = [np.load(chkpt_iter_dir / 'preds.npz')
+                  for chkpt_iter_dir in chkpt_iter_dirs]
+    predss, varss = [
+        (preds_npz['Y_mean'], preds_npz['Y_var'])
+        for preds_npz in preds_npzs
+    ]
+    return predss, varss
 
 def extract_smis(library, smiles_col=0, title_line=True) -> List:
     if Path(library).suffix == '.gz':
@@ -169,7 +172,7 @@ def calculate_reward_in_order(
     Returns
     -------
     np.ndarray    """
-    predss = gather_experiment_predss(experiment)
+    predss, varss = gather_experiment_predss(experiment)
     Us = predss # fix with other metrics later
 
     k = len(true_top_k)
