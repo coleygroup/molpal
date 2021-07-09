@@ -216,7 +216,18 @@ class MPNN:
         return train_data, val_data
 
     def predict(self, smis: Iterable[str]) -> ndarray:
-        """Generate predictions for the inputs xs"""
+        """Generate predictions for the inputs xs
+        
+        Parameters
+        ----------
+        smis : Iterable[str]
+            the SMILES strings for which to generate predictions
+        
+        Returns
+        -------
+        np.ndarray
+            the array of predictions with shape NxO, where N is the number of
+            inputs and O is the number of tasks."""
         smis_batches = utils.batches(smis, 20000)
 
         model = ray.put(self.model)
@@ -230,9 +241,7 @@ class MPNN:
         preds_chunks = [
             ray.get(r) for r in tqdm(refs, desc='Prediction', leave=False)
         ]
-        preds_chunks = np.column_stack(preds_chunks)
-
-        return preds_chunks
+        return np.concatenate(preds_chunks)
 
         # test_data = MoleculeDataset([MoleculeDatapoint(smiles=[smi]) for smi in smis])
         # data_loader = MoleculeDataLoader(
@@ -300,7 +309,7 @@ class MPNModel(Model):
 
     def get_means(self, xs: Sequence[str]) -> ndarray:
         preds = self.model.predict(xs)
-        return preds
+        return preds[:, 0] # assume single-task
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
         raise TypeError('MPNModel cannot predict variance!')
@@ -357,7 +366,7 @@ class MPNDropoutModel(Model):
         predss = np.zeros((len(xs), self.dropout_size))
         for j in tqdm(range(self.dropout_size),
                       desc='dropout prediction'):
-            predss[:, j] = self.model.predict(xs)
+            predss[:, j] = self.model.predict(xs)[:, 0] # assume single-task
         return predss
 
     def save(self, path) -> str:
@@ -399,15 +408,18 @@ class MPNTwoOutputModel(Model):
 
     def get_means(self, xs: Sequence[str]) -> ndarray:
         means, _ = self._get_predictions(xs)
-        return means.flatten()
+        return means
 
     def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
         means, variances = self._get_predictions(xs)
-        return means.flatten(), variances.flatten()
+        return means, variances
 
     def _get_predictions(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
         """Get both the means and the variances for the xs"""
-        means, variances = self.model.predict(xs)
+        preds = self.model.predict(xs)
+        # assume single task prediction now
+        # means, variances = preds[:, 0::2], preds[:, 1::2]
+        means, variances = preds[:, 0], preds[:, 1] # 
         return means, variances
 
     def save(self, path) -> str:
@@ -415,6 +427,7 @@ class MPNTwoOutputModel(Model):
     
     def load(self, path):
         self.model.load(path)
+
 # def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):
 
