@@ -58,7 +58,7 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
 
 def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
                         featurizer: Featurizer = Featurizer(),
-                        name: str = 'fps',
+                        name: str = 'fps.h5',
                         path: str = '.') -> Tuple[str, Set[int]]:
     """Precalculate the fature matrix of xs with the given featurizer and store
     the matrix in an HDF5 file
@@ -74,8 +74,8 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
     featurizer : Featurizer, default=Featurizer()
         an object that encodes inputs from an identifier representation to
         a feature representation
-    name : str (Default = 'fps')
-        the name of the output HDF5 file
+    name : str (Default = 'fps.h5')
+        the name of the output HDF5 file with or without the extension
     path : str (Default = '.')
         the path under which the HDF5 file should be written
 
@@ -88,7 +88,7 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
     invalid_idxs : Set[int]
         the set of indices in xs containing invalid inputs
     """
-    fps_h5 = str(Path(path)/f'{name}.h5')
+    fps_h5 = str((Path(path) / name).with_suffix('.h5'))
 
     # fingerprint = featurizer.fingerprint
     # radius = featurizer.radius
@@ -122,7 +122,7 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
 
                 fps_dset[i] = fp
                 i += 1
-        # original dataset size included potentially invalid xs
+
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
             fps_dset.resize(valid_size, axis=0)
