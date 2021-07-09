@@ -167,7 +167,7 @@ class DockingObjective(Objective):
         input_map = utils.get_temp_file()
 
         with open_(input_map_file) as fid, \
-             shelve.open(input_map) as d_smi_inputs:
+            shelve.open(input_map) as d_smi_inputs:
             reader = csv.reader(fid)
             
             for smi, *ligands in reader:
