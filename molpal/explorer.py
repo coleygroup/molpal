@@ -58,10 +58,10 @@ class Explorer:
         whether the predictions are currently out-of-date with the model
     top_k_avg : float
         the average of the top-k explored inputs
-    y_preds : List[float]
+    Y_pred : np.ndarray
         a list parallel to the pool containing the mean predicted score
         for an input
-    y_vars : List[float]
+    Y_var : np.ndarray
         a list parallel to the pool containing the variance in the predicted
         score for an input. Will be empty if model does not provide variance
     recent_avgs : Deque[float]
@@ -135,21 +135,17 @@ class Explorer:
                  verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
                  **kwargs):
         args = locals()
-        args.pop('self')
-
+        
         self.name = name; kwargs['name'] = name
         self.verbose = verbose; kwargs['verbose'] = verbose
         self.root = root
         self.tmp = tmp_dir
 
-        self.write_config(args)
-
         self.featurizer = featurizer.Featurizer(
             fingerprint=kwargs['fingerprint'],
             radius=kwargs['radius'], length=kwargs['length']
         )
-        self.pool = pools.pool(featurizer=self.featurizer, 
-                               path=self.tmp, **kwargs)
+        self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
         if self.acquirer.metric == 'thompson':
@@ -172,7 +168,6 @@ class Explorer:
         self.write_intermediate = write_intermediate
         self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float('inf')
         self.previous_chkpt_iter = -float('inf')
-        # self.save_preds = save_preds
 
         # stateful attributes (not including model)
         self.iter = 0
@@ -182,8 +177,8 @@ class Explorer:
         self.updated_model = None
         self.recent_avgs = deque(maxlen=window_size)
         self.top_k_avg = None
-        self.y_preds = None
-        self.y_vars = None
+        self.Y_pred = None
+        self.Y_var = None
 
         if isinstance(scores_csvs, str):
             self.scores_csvs = pickle.load(open(scores_csvs, 'rb'))
@@ -196,6 +191,13 @@ class Explorer:
             self.load_scores(previous_scores)
         elif scores_csvs:
             self.load()
+
+        args.pop('self')
+        args.update(**args.pop('kwargs'))
+        args['fps'] = self.pool.fps_
+        args.pop('config', None)
+        args.pop('verbose')
+        self.write_config(args)
 
     @property
     def k(self) -> int:
@@ -284,10 +286,6 @@ class Explorer:
             print(f'Resuming Exploration at iter {self.iter}...')
             self.explore_batch()
 
-        # if self.chkpt_freq < float('inf'):
-        #     chkpt_path = self.checkpoint()
-        #     print(f'Checkpoint file saved to "{chkpt_path}".')
-        
         while not self.completed:
             if self.verbose > 0:
                 print(f'Current average of top {self.k}: {self.top_k_avg:0.3f}',
@@ -372,7 +370,7 @@ class Explorer:
         self._update_predictions()
 
         inputs = self.acquirer.acquire_batch(
-            xs=self.pool.smis(), y_means=self.y_preds, y_vars=self.y_vars,
+            xs=self.pool.smis(), y_means=self.Y_pred, y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, iter_=self.iter,
@@ -471,7 +469,7 @@ class Explorer:
         k = min(k, len(self.scores))
 
         selected = []
-        for x, y in zip(self.pool.smis(), self.y_preds):
+        for x, y in zip(self.pool.smis(), self.Y_pred):
             if len(selected) < k:
                 heapq.heappush(selected, (y, x))
             else:
@@ -556,16 +554,6 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
 
-    # def save(self) -> str:
-    #     p_states = Path(f'{self.root}/{self.name}/states')
-    #     p_states.mkdir(parents=True, exist_ok=True)
-        
-    #     p_state = p_states / f'iter_{self.iter}.pkl'
-    #     with open(p_state, 'wb') as fid:
-    #         pickle.dump(self.scores_csvs, fid)
-
-    #     return str(p_state)
-
     def checkpoint(self) -> str:
         """write a checkpoint file for the explorer's current state and return
         the corresponding filepath"""
@@ -583,6 +571,9 @@ class Explorer:
         new_scores_pkl =  chkpt_dir / 'new_scores.pkl'
         pickle.dump(self.new_scores, open(new_scores_pkl, 'wb'))
 
+        preds_npz = chkpt_dir / 'preds.npz'
+        np.savez(preds_npz, Y_pred=self.Y_pred, Y_var=self.Y_var)
+
         state = {
             'iter': self.iter,
             'scores': str(scores_pkl),
@@ -591,7 +582,7 @@ class Explorer:
             'updated_model': self.updated_model,
             'recent_avgs': list(self.recent_avgs),
             'top_k_avg': self.top_k_avg,
-            'y_preds': self.save_preds(chkpt_dir / 'preds.npy'),
+            'preds': str(preds_npz),
             'model': self.model.save(chkpt_dir / 'model')
         }
 
@@ -603,47 +594,68 @@ class Explorer:
 
         return str(p_chkpt)
 
-    def save_preds(self, filepath: str) -> str:
-        """save the current predictions to the specified filepath
+    # def save_preds(self, path: str) -> str:
+    #     """save the current predictions to the specified filepath
         
-        If no uncertainty, the filepath contains an OxN array, where O is the
-        number of objectives and N is the number of pool members.
-        If predicting uncertainty, the filepath contains a 2xOxN array, where
-        index 0 contains an OxN array for the predicted and index 1 contains
-        the same for the uncertainties.
-        """
-        # path = Path(f'{self.root}/{self.name}/preds')
-        # path.mkdir(parents=True, exist_ok=True)
+    #     If no uncertainty, the filepath contains an OxN array, where O is the
+    #     number of objectives and N is the number of pool members.
+    #     If predicting uncertainty, the filepath contains a 2xOxN array, where
+    #     index 0 contains an OxN array for the predicted and index 1 contains
+    #     the same for the uncertainties.
+    #     """
+    #     path = Path(path)
+    #     path.mkdir(parents=True, exist_ok=True)
 
-        if self.y_vars:
-            Y_pred = np.stack((self.y_preds, self.y_vars))
-        else:
-            Y_pred = np.array(self.y_preds)
+    #     preds_path = path / 'preds.npy'
+    #     np.save(preds_path, self.Y_pred)
+
+    #     if self.Y_var:
+    #         vars_path = path / 'vars.npy'
+    #         np.save(preds_path, self.Y_var)
+    #     else:
+    #         vars_path = None
         
-        np.save(filepath, Y_pred)
+    #     return str(preds_path), str(vars_path)
 
-    def load(self) -> None:
+    def load(self, chkpt_file: str) -> None:
         """Mimic the intermediate state of a previous explorer run by loading
         the data from the list of output files"""
 
         if self.verbose > 0:
             print(f'Loading in previous state ... ', end='')
 
-        for scores_csv in self.scores_csvs:
-            scores, self.failures = self._read_scores(scores_csv)
+        state = json.load(open(chkpt_file))
 
-            self.new_scores = {smi: score for smi, score in scores.items()
-                               if smi not in self.scores}
+        self.iter = state['iter']
 
-            if not self.retrain_from_scratch:
-                self._update_model()
+        self.scores = pickle.load(open(state['scores'], 'rb'))
+        self.failures = pickle.load(open(state['failures'], 'rb'))
+        self.new_scores = pickle.load(open(state['new_scores'], 'rb'))
 
-            self.scores = scores
-            self.iter += 1
+        self.updated_model = state['updated_model']
+        self.recent_avgs.extend(state['recent_avgs'])
+        self.top_k_avg = state['top_k_avg']
 
-            self.top_k_avg = self.avg()
-            if len(self.scores) >= self.k:
-                self.recent_avgs.append(self.top_k_avg)
+        preds_npz = np.load(state['preds'])
+        self.Y_pred = preds_npz['Y_pred']
+        self.Y_var = preds_npz['Y_var']
+
+        self.model.load(state['model'])
+        # for scores_csv in self.scores_csvs:
+        #     scores, self.failures = self._read_scores(scores_csv)
+
+        #     self.new_scores = {smi: score for smi, score in scores.items()
+        #                        if smi not in self.scores}
+
+        #     if not self.retrain_from_scratch:
+        #         self._update_model()
+
+        #     self.scores = scores
+        #     self.iter += 1
+
+        #     self.top_k_avg = self.avg()
+        #     if len(self.scores) >= self.k:
+        #         self.recent_avgs.append(self.top_k_avg)
 
         if self.verbose > 0:
             print('Done!')
@@ -651,9 +663,6 @@ class Explorer:
     def write_config(self, args):
         p_output = Path(f'{self.root}/{self.name}')
         p_output.mkdir(exist_ok=True, parents=True)
-
-        args.pop('config', None)
-        args.update(**args.pop('kwargs'))
 
         args['top-k'] = args.pop('k')
         args['no_title_line'] = not args.pop('title_line')
@@ -668,7 +677,7 @@ class Explorer:
                     continue
                 if v == False:
                     continue
-                fid.write(f'{k} = {v}\n')
+                fid.write(f'{k.replace("_", "-")} = {v}\n')
 
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
@@ -722,7 +731,6 @@ class Explorer:
         self.model.train(
             xs, ys, retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
-            # featurize=self.encoder.encode_and_uncompress
         )
         self.new_scores = {}
         self.updated_model = True
@@ -732,22 +740,22 @@ class Explorer:
 
         Side effects
         ------------
-        (sets) self.y_preds : List[float]
+        (sets) self.Y_pred : np.ndarray
             a list of floats parallel to the pool inputs containing the mean
             predicted score for each input
-        (sets) self.y_vars : List[float]
+        (sets) self.Y_var : np.ndarray
             a list of floats parallel to the pool inputs containing the
             predicted variance for each input
         (sets) self.updated_model : bool
             sets self.updated_model to False, indicating that the predictions 
             are now up-to-date with the current model
         """
-        if not self.updated_model and self.y_preds:
+        if not self.updated_model and self.Y_pred:
             # don't update predictions if the model has not been updated 
             # and the predictions are already set
             return
 
-        self.y_preds, self.y_vars = self.model.apply(
+        self.Y_pred, self.Y_var = self.model.apply(
             x_ids=self.pool.smis(), x_feats=self.pool.fps(), 
             batched_size=None, size=len(self.pool), 
             mean_only='vars' not in self.acquirer.needs
@@ -755,9 +763,6 @@ class Explorer:
 
         self.updated_model = False
         
-        # if self.save_preds:
-        #     self.write_preds()
-
     def _validate_acquirer(self):
         """Ensure that the model provides values the Acquirer needs"""
         if self.acquirer.needs > self.model.provides:
