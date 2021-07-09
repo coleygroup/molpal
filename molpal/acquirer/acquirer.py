@@ -43,11 +43,12 @@ class Acquirer:
     Parameters
     ----------
     size : int
-    init_size : Union[int, float] (Default = 0.02)
+    init_size : Union[int, float] (Default = 0.01)
         the number of ligands or fraction of the pool to acquire initially.
-    batch_size : Union[int, float] (Default = 0.02)
-        the number of ligands or fraction of the pool to acquire
-        in each batch
+    batch_sizes : Iterable[Union[int, float]] (Default = [0.01])
+        the number of inputs or fraction of the pool to acquire in each
+        successive batch. Will successively use each value in the list after
+        each call to acquire_batch(), repeating the final value as necessary.
     metric : str (Default = 'greedy')
     epsilon : float (Default = 0.)
     temp_i : Optional[float] (Default = None)
@@ -63,7 +64,7 @@ class Acquirer:
     """
     def __init__(self, size: int,
                  init_size: Union[int, float] = 0.01,
-                 batch_size: Union[int, float] = 0.01,
+                 batch_sizes: Iterable[Union[int, float]] = [0.01],
                  metric: str = 'greedy',
                  epsilon: float = 0., beta: int = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
@@ -71,7 +72,8 @@ class Acquirer:
                  seed: Optional[int] = None, verbose: int = 0, **kwargs):
         self.size = size
         self.init_size = init_size
-        self.batch_size = batch_size
+        self.batch_sizes = iter(batch_sizes)
+        self.batch_size = next(self.batch_sizes)
 
         self.metric = metric
         self.stochastic_preds = False
@@ -102,15 +104,17 @@ class Acquirer:
     @property
     def init_size(self) -> int:
         """int : the number of inputs to acquire initially"""
-        if isinstance(self.__init_size, float):
-            return math.ceil(self.size * self.__init_size)
+        # if isinstance(self.__init_size, float):
+        #     return math.ceil(self.size * self.__init_size)
 
         return self.__init_size
     
     @init_size.setter
     def init_size(self, init_size: Union[int, float]):
-        if isinstance(init_size, float) and (init_size < 0 or init_size > 1):
-            raise ValueError(f'init_size(={init_size} must be in [0, 1]')
+        if isinstance(init_size, float):
+            if init_size < 0 or init_size > 1:
+                raise ValueError(f'init_size(={init_size} must be in [0, 1]')
+            init_size = math.ceil(self.size * init_size)
         if init_size < 0:
             raise ValueError(f'init_size(={init_size}) must be positive')
 
@@ -119,15 +123,17 @@ class Acquirer:
     @property
     def batch_size(self) -> int:
         """int : the number of inputs to acquire in each batch"""
-        if isinstance(self.__batch_size, float):
-            return math.ceil(self.size * self.__batch_size)
+        # if isinstance(self.__batch_size, float):
+        #     return math.ceil(self.size * self.__batch_size)
 
         return self.__batch_size
     
     @batch_size.setter
     def batch_size(self, batch_size: Union[int, float]):
-        if isinstance(batch_size, float) and (batch_size < 0 or batch_size > 1):
-            raise ValueError(f'batch_size(={batch_size} must be in [0, 1]')
+        if isinstance(batch_size, float):
+            if batch_size < 0 or batch_size > 1:
+                raise ValueError(f'batch_size(={batch_size} must be in [0, 1]')
+            batch_size = math.ceil(self.size * batch_size)
         if batch_size < 0:
             raise ValueError(f'batch_size(={batch_size} must be positive')
 
@@ -222,7 +228,6 @@ class Acquirer:
             try:
                 current_max = max(y for y in explored.values() if y is not None)
             except ValueError:
-                # all None values case
                 current_max = float('-inf')
         else:
             explored = {}
@@ -256,8 +261,6 @@ class Acquirer:
             print(f'      Utility calculation took {mins}m {secs}s')
         
         if cluster_ids is None and cluster_sizes is None:
-            # unclustered acquisition maintains one heap that pushes
-            # inputs on based on their utility
             heap = []
             for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
                 if x in explored:
@@ -271,8 +274,6 @@ class Acquirer:
             # this is broken for e-greedy/pi/etc. approaches
             # the random indices are not distributed evenly amongst clusters
 
-            # clustered acquisition maintains o independent heaps that
-            # operate similarly to the above
             d_cid_heap = {
                 cid: ([], math.ceil(self.batch_size * cluster_size/U.size))
                 for cid, cluster_size in cluster_sizes.items()
@@ -301,6 +302,11 @@ class Acquirer:
 
             heaps = [heap for heap, _ in d_cid_heap.values()]
             heap = list(chain(*heaps))
+
+        try:
+            self.batch_size = next(self.batch_sizes)
+        except StopIteration:
+            pass
 
         if self.verbose > 1:
             print(f'Selected {len(heap)} new samples')
@@ -347,7 +353,6 @@ class Acquirer:
             if len(heap) == 0:
                 continue
 
-            # get the largest non-infinity value
             pred_local_max = max(
                 heap, key=lambda yx: -1 if math.isinf(yx[0]) else yx[0]
             )
