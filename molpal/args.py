@@ -25,7 +25,7 @@ def gen_args(args: Optional[str] = None) -> Namespace:
 
     args = parser.parse_args(args)
 
-    modify_objective_args(args)
+    # modify_objective_args(args)
     cleanup_args(args)
 
     return args
@@ -50,9 +50,6 @@ def add_general_args(parser: ArgumentParser) -> None:
                         help='whether to write a summary file with all of the explored inputs and their associated scores after each round of exploration')
     parser.add_argument('--write-final', action='store_true', default=False,
                         help='whether to write a summary file with all of the explored inputs and their associated scores')
-    parser.add_argument('-m', '--top-m', type=restricted_float_or_int, 
-                        default=1., dest='m',
-                        help='the number of top inputs expressed either as a number or as a fraction of the pool to write, if necessary')
 
     parser.add_argument('--chkpt-freq', type=int,
                         nargs='?', default=0, const=-1,
@@ -115,10 +112,10 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--init-size', 
                         type=restricted_float_or_int, default=0.01,
-                        help='the number of ligands or fraction of total library to initially dock')
-    parser.add_argument('--batch-size',
-                        type=restricted_float_or_int, default=0.01,
-                        help='the number of ligands or fraction of total library for each batch of exploration')
+                        help='the number of ligands or fraction of total library to initially sample')
+    parser.add_argument('--batch-sizes',
+                        type=restricted_float_or_int, default=[0.01], nargs='+',
+                        help='the number of ligands or fraction of total library to sample for each successive batch of exploration. Will proceed through the values provided and repeat the final value as neccessary. I.e., passing --batch-sizes 10 20 30 will acquire 10 inputs in the first exploration iteration, 20 in the second, and 30 for all remaining exploration batches')
     parser.add_argument('--epsilon', type=float, default=0.,
                         help='the fraction of each batch that should be acquired randomly')
 
@@ -141,51 +138,51 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('-o', '--objective', required=True,
                         choices={'lookup', 'docking'},
                         help='the objective function to use')
-    parser.add_argument('--minimize', action='store_true', default=False,
-                        help='whether to minimize the objective function')
+    # parser.add_argument('--minimize', action='store_true', default=False,
+    #                     help='whether to minimize the objective function')
     parser.add_argument('--objective-config',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 
     # DockingObjective args
-    parser.add_argument('--software', default='vina',
-                        choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
-                        help='the name of the docking program to use')
-    parser.add_argument('--receptor',
-                        help='the filename of the receptor')
-    parser.add_argument('--box-center', type=float, nargs=3,
-                        metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
-                        help='the x-, y-, and z-coordinates of the center of the docking box')
-    parser.add_argument('--box-size', type=int, nargs=3,
-                        metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
-                        help='the x-, y-, and z-dimensions of the docking box')
-    parser.add_argument('--docked-ligand-file',
-                        help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
-    parser.add_argument('--score-mode', default='best',
-                        help='the method by which to calculate an overall score from multiple scored conformations')
+    # parser.add_argument('--software', default='vina',
+    #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
+    #                     help='the name of the docking program to use')
+    # parser.add_argument('--receptor',
+    #                     help='the filename of the receptor')
+    # parser.add_argument('--box-center', type=float, nargs=3,
+    #                     metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
+    #                     help='the x-, y-, and z-coordinates of the center of the docking box')
+    # parser.add_argument('--box-size', type=int, nargs=3,
+    #                     metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
+    #                     help='the x-, y-, and z-dimensions of the docking box')
+    # parser.add_argument('--docked-ligand-file',
+    #                     help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
+    # parser.add_argument('--score-mode', default='best',
+    #                     help='the method by which to calculate an overall score from multiple scored conformations')
 
-    # LookupObjective args
-    parser.add_argument('--lookup-path',
-                        help='filepath pointing to a file containing lookup scoring data')
-    parser.add_argument('--no-lookup-title-line', action='store_true',
-                        default=False,
-                        help='whether there is a title line in the data lookup file')
-    parser.add_argument('--lookup-sep', default=',',
-                        help='the column separator in the data lookup file')
-    parser.add_argument('--lookup-smiles-col', default=0, type=int,
-                        help='the column containing the SMILES strings in the data lookup file')
-    parser.add_argument('--lookup-data-col', default=1, type=int,
-                        help='the column containing the score data in the data lookup file')
+    # # LookupObjective args
+    # parser.add_argument('--lookup-path',
+    #                     help='filepath pointing to a file containing lookup scoring data')
+    # parser.add_argument('--no-lookup-title-line', action='store_true',
+    #                     default=False,
+    #                     help='whether there is a title line in the data lookup file')
+    # parser.add_argument('--lookup-sep', default=',',
+    #                     help='the column separator in the data lookup file')
+    # parser.add_argument('--lookup-smiles-col', default=0, type=int,
+    #                     help='the column containing the SMILES strings in the data lookup file')
+    # parser.add_argument('--lookup-data-col', default=1, type=int,
+    #                     help='the column containing the score data in the data lookup file')
 
-def modify_objective_args(args: Namespace) -> None:
-    if args.objective == 'lookup':
-        modify_LookupObjective_args(args)
+# def modify_objective_args(args: Namespace) -> None:
+#     if args.objective == 'lookup':
+#         modify_LookupObjective_args(args)
 
-def modify_LookupObjective_args(args: Namespace) -> None:
-    args.lookup_title_line = not args.no_lookup_title_line
-    delattr(args, 'no_lookup_title_line')
+# def modify_LookupObjective_args(args: Namespace) -> None:
+#     args.lookup_title_line = not args.no_lookup_title_line
+#     delattr(args, 'no_lookup_title_line')
 
-    if args.name is None:
-        args.name = Path(args.library).stem
+#     if args.name is None:
+#         args.name = Path(args.library).stem
 
 ###############################
 #       MODEL ARGUMENTS       #
@@ -257,15 +254,15 @@ def cleanup_args(args: Namespace) -> None:
     
     args_to_remove = {'no_title_line'}
 
-    if args.objective == 'docking':
-        args_to_remove |= {
-            'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
-            'lookup_data_col', 'lookup_sep'
-        }
-    elif args.objective == 'lookup':
-        args_to_remove |= {
-            'software', 'receptor', 'box_center', 'box_size', 'score_mode',
-        }
+    # if args.objective == 'docking':
+    #     args_to_remove |= {
+    #         'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
+    #         'lookup_data_col', 'lookup_sep'
+    #     }
+    # elif args.objective == 'lookup':
+    #     args_to_remove |= {
+    #         'software', 'receptor', 'box_center', 'box_size', 'score_mode',
+    #     }
 
     if args.metric != 'ei' or args.metric != 'pi':
         args_to_remove.add('xi')
