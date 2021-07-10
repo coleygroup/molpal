@@ -91,28 +91,28 @@ class Explorer:
     Parameters
     ----------
     name : str
-    k : Union[int, float] (Default = 0.01)
-    window_size : int (Default = 3)
+    k : Union[int, float], default=0.01
+    window_size : int, default=3
         the number of top-k averages from which to calculate a moving average
-    delta : float (Default = 0.01)
-    max_iters : int (Default = 10)
-    max_explore : Union[int, float] (Default = 1.)
-    root : str (Default = '.')
-    write_final : bool (Default = True)
-    write_intermediate : bool (Default = False)
-    save_preds : bool (Default = False)
-    retrain_from_scratch : bool (Default = False)
-    previous_scores : Optional[str] (Default = None)
+    delta : float, default=0.01
+    max_iters : int, default=10
+    max_explore : Union[int, float], default=1.
+    root : str, default='.'
+    write_final : bool, default=True
+    write_intermediate : bool, default=False
+    save_preds : bool, default=False
+    retrain_from_scratch : bool, default=False
+    previous_scores : Optional[str], default=None
         the filepath of a CSV file containing previous scoring data which will
         be treated as the initialization batch (instead of randomly selecting
         from the bool.)
-    scores_csvs : Union[str, List[str], None] (Default = None)
+    scores_csvs : Union[str, List[str], None], default=None
         a list of filepaths containing CSVs with previous scoring data or a 
         pickle file containing this list. These
         CSVs will be read in and the model trained on the data in the order
         in which the CSVs are provide. This is useful for mimicking the
         intermediate state of a previous Explorer instance
-    verbose : int (Default = 0)
+    verbose : int, default=0
     **kwargs
         keyword arguments to initialize an Encoder, MoleculePool, Acquirer, 
         Model, and Objective classes
@@ -400,7 +400,7 @@ class Explorer:
         
         Parameter
         ---------
-        k : Union[int, float, None] (Default = None)
+        k : Union[int, float, None], default = None)
             the number of molecules to consider when calculating the
             average, expressed either as a specific number or as a 
             fraction of the pool. If the value specified is greater than the 
@@ -427,7 +427,7 @@ class Explorer:
         
         Parameter
         ---------
-        k : Union[int, float, None] (Default = None)
+        k : Union[int, float, None], default=None
             the number of top-scoring molecules to get, expressed either as a 
             specific number or as a fraction of the pool. If the value 
             specified is greater than the number of successfully evaluated 
@@ -454,7 +454,7 @@ class Explorer:
         
         Parameter
         ---------
-        k : Union[int, float, None] (Default = None)
+        k : Union[int, float, None], default=None
             see documentation for avg()
         
         Returns
@@ -487,15 +487,15 @@ class Explorer:
 
         Parameters
         ----------
-        m : Union[int, float] (Default = 1.)
+        m : Union[int, float], default=1.
             The number of top-scoring inputs to write, expressed either as an
             integer or as a float representing the fraction of explored inputs.
             By default, writes all inputs
-        final : bool (Default = False)
+        final : bool, default=False
             Whether the explorer has finished. If true, write all explored
             inputs (both successful and failed) and name the output CSV file
             "all_explored_final.csv"
-        include_failed : bool (Default = False)
+        include_failed : bool, default=False
             Whether to include the inputs for which objective function
             evaluation failed
         """
