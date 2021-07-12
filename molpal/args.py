@@ -99,7 +99,9 @@ def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--cache', action='store_true', default=False,
                         help='whether to store the full MoleculePool in memory')
     parser.add_argument('--validated', action='store_true', default=False,
-                        help='whether the pool has been manually validated and invalid SMILES strings have been removed.')
+                        help='DEPRECATED. whether the pool has been manually validated and invalid SMILES strings have been removed.')
+    parser.add_argument('--invalid-lines', type=int, nargs='*',
+                        help='the line numbers in the library files containing invalid SMILES strings')
 
 #####################################
 #       ACQUISITION ARGUMENTS       #
@@ -110,7 +112,7 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                                  'ucb', 'ei', 'pi', 'thompson'},
                         help='the acquisition metric to use')
 
-    parser.add_argument('--init-size', 
+    parser.add_argument('--init-size',
                         type=restricted_float_or_int, default=0.01,
                         help='the number of ligands or fraction of total library to initially sample')
     parser.add_argument('--batch-sizes',
@@ -246,23 +248,17 @@ def add_stopping_args(parser: ArgumentParser) -> None:
                         type=restricted_float_or_int, default=1.0,
                         help='the maximum number of inputs to explore')
 
-def cleanup_args(args: Namespace) -> None:
+def cleanup_args(args: Namespace):
     """Remove unnecessary attributes and change some arguments"""
     if isinstance(args.scores_csvs, list) and len(args.scores_csvs)==1:
         args.scores_csvs = args.scores_csvs[0]
+
     args.title_line = not args.no_title_line
-    
+    # if args.invalid_lines is not None:
+    #     args.invalid_lines = set(args.invalid_lines)
+
     args_to_remove = {'no_title_line'}
 
-    # if args.objective == 'docking':
-    #     args_to_remove |= {
-    #         'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
-    #         'lookup_data_col', 'lookup_sep'
-    #     }
-    # elif args.objective == 'lookup':
-    #     args_to_remove |= {
-    #         'software', 'receptor', 'box_center', 'box_size', 'score_mode',
-    #     }
 
     if args.metric != 'ei' or args.metric != 'pi':
         args_to_remove.add('xi')
