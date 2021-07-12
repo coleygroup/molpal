@@ -2,6 +2,7 @@
 as their underlying model"""
 
 import logging
+from molpal.molpal.acquirer.metrics import random
 from pathlib import Path
 import pickle
 from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
@@ -39,12 +40,14 @@ class RFModel(Model):
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
                  min_samples_leaf: int = 1,
                  test_batch_size: Optional[int] = 65536,
+                 model_seed: Optional[int] = None,
                  **kwargs):
         test_batch_size = test_batch_size or 65536
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators, max_depth=max_depth,
             min_samples_leaf=min_samples_leaf, n_jobs=-1,
+            random_state=model_seed
         )
 
         super().__init__(test_batch_size, **kwargs)
@@ -111,21 +114,24 @@ class GPModel(Model):
 
     Parameters
     ----------
-    gp_kernel : str (Default = 'dotproduct')
+    gp_kernel : str (Default = 'dot')
     test_batch_size : Optional[int] (Default = 1000)
     """
     def __init__(self, gp_kernel: str = 'dot',
                  test_batch_size: Optional[int] = 1024,
+                 model_seed: Optional[int] = None,
                  **kwargs):
         test_batch_size = test_batch_size or 1024
 
-        self.model = None
-        self.kernel = {
-            'dotproduct': kernels.DotProduct,
+        kernel = {
+            'dot': kernels.DotProduct,
             'matern': kernels.Matern,
             'rbf': kernels.RBF,
         }[gp_kernel]()
-
+        
+        self.model = GaussianProcessRegressor(
+            kernel=kernel, normalize_y=True, random_state=model_seed
+        )
         super().__init__(test_batch_size, **kwargs)
         
     @property
@@ -141,9 +147,6 @@ class GPModel(Model):
         X = feature_matrix(xs, featurizer)
         Y = np.array(list(ys))
 
-        self.model = GaussianProcessRegressor(
-            kernel=self.kernel, normalize_y=True
-        )
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y

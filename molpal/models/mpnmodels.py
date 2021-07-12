@@ -69,7 +69,8 @@ class MPNN:
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
                  final_lr: float = 1e-4, ncpu: int = 1,
-                 ddp: bool = False, precision: int = 32):
+                 ddp: bool = False, precision: int = 32,
+                 model_seed: Optional[int] = None):
         self.ncpu = ncpu
         self.ddp = ddp
         if precision not in (16, 32):
@@ -114,6 +115,9 @@ class MPNN:
         
         self._predict = _predict
 
+        if model_seed is not None:
+            torch.manual_seed(model_seed)
+        
     @property
     def device(self):
         return self.__device
@@ -282,11 +286,11 @@ class MPNModel(Model):
     passes these inputs to a feed-forward neural network to predict means"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32, 
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, ncpu=ncpu, ddp=ddp, precision=precision
+            MPNN, ncpu=ncpu, ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
@@ -326,12 +330,12 @@ class MPNDropoutModel(Model):
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  dropout: float = 0.2, dropout_size: int = 10,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32,
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
             MPNN, uncertainty_method='dropout', dropout=dropout, 
-            ncpu=ncpu, ddp=ddp, precision=precision
+            ncpu=ncpu, ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
@@ -380,12 +384,12 @@ class MPNTwoOutputModel(Model):
     through mean-variance estimation"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32,
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
             MPNN, uncertainty_method='mve', ncpu=ncpu,
-            ddp=ddp, precision=precision
+            ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
