@@ -10,6 +10,7 @@ def model(model: str, **kwargs) -> Type[Model]:
     """Model factory function"""
     if model == 'rf':
         from molpal.models.sklmodels import RFModel
+
         return RFModel(**kwargs)
 
     if model == 'gp':
