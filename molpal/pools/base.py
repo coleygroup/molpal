@@ -103,7 +103,9 @@ class MoleculePool(Sequence[Mol]):
                  delimiter: str = ',', smiles_col: int = 0,
                  fps: Optional[str] = None,
                  featurizer: Featurizer = Featurizer(),
-                 cache: bool = False, validated: bool = False,
+                 cache: bool = False,
+                #  validated: bool = False,
+                 invalid_lines: Optional[Iterable[int]] = None,
                  cluster: bool = False, ncluster: int = 100,
                  path: Optional[str] = None, verbose: int = 0, **kwargs):
         self.library = library
@@ -118,17 +120,19 @@ class MoleculePool(Sequence[Mol]):
             self.open_ = open
 
         self.fps_ = fps
-        self.invalid_lines = None
-
+        if invalid_lines is not None:
+            self.invalid_lines = set(invalid_lines)
+        else:
+            self.invalid_lines = None
+        self.size = None
+        self.chunk_size = None
+        self._encode_mols(featurizer, path)
+        
         self.smis_ = None
+        self._validate_and_cache_smis(cache)
+
         self.cluster_ids_ = None
         self.cluster_sizes = None
-        
-        self.size, self.chunk_size = self._encode_mols(featurizer, path)
-        self.size, self.invalid_lines = self._validate_and_cache_smis(
-            cache, validated
-        )
-
         if cluster:
             self._cluster_mols(ncluster)
 
@@ -386,27 +390,25 @@ class MoleculePool(Sequence[Mol]):
         return None
 
     def _encode_mols(self, featurizer: Featurizer, 
-                     path: Optional[str] = None) -> int:
+                     path: Optional[str] = None
+                     ):
         """Precalculate the fingerprints of the library members, if necessary.
 
         Parameters
         ----------
         featurizer : Featurizer
-            the featurizer to use for generating the fingerprints
+            the featurizer to use for calculating the fingerprints
         path : Optional[str], default=None
             the path to which the fingerprints file should be written
         
-        Returns
-        -------
-        size : int
-            the number of fingerprints in the HDF5 file
-        chunk_size : int
-            the length of each chunk in the HDF5 file
-        
         Side effects
         ------------
+        (sets) self.size : int
+            the total number of fingerprints in the fingerprints HDF5 file
+        (sets) self.chunk_size : int
+            the length of each chunk in the HDF5 file
         (sets) self.fps_ : str
-            the filepath of the h5 file containing the fingerprints
+            the filepath of the HDF5 file containing the fingerprints
         (sets) self.invalid_lines : Set[int]
             the set of invalid lines in the library file
         """
@@ -436,10 +438,11 @@ class MoleculePool(Sequence[Mol]):
 
         with h5py.File(self.fps_, 'r') as h5f:
             fps = h5f['fps']
-            size = len(fps)
-            chunk_size = fps.chunks[0]
+            self.size = len(fps)
+            self.chunk_size = fps.chunks[0]
 
-        return size, chunk_size
+        # return self.fps_, self.invalid_lines self.size, self.chunk_size
+    
 
     def _validate_and_cache_smis(self, cache: bool = False,
                                  validated: bool = False) -> int:
@@ -448,9 +451,9 @@ class MoleculePool(Sequence[Mol]):
 
         Parameters
         ----------
-        cache : bool (Default = False)
+        cache : bool, default=False
             whether to cache the SMILES strings as well
-        validated : bool (Default = False)
+        validated : bool, default=False
             whether the pool has been validated already. If True, the user 
             accepts the risk of an invalid molecule raising an exception later
             on. Mostly useful for multiple runs on a pool that has been
@@ -467,43 +470,56 @@ class MoleculePool(Sequence[Mol]):
         ------------
         (sets) self.smis_ : List[str]
             if cache is True
+        (sets) self.size : int
+        (sets) self.invalid_lines : Set[int]
         """
-        if self.invalid_lines is not None:
+        if self.invalid_lines is not None and len(self.invalid_lines) == 0:
             if cache:
                 self.smis_ = [smi for smi in self.smis()]
+                self.size = len(self.smis_)
+            else:
+                self.size = self.size or sum(1 for _ in self.smis())
+            self.invalid_lines = set()
 
-            return self.size, self.invalid_lines
-
-        if validated:
+        elif self.invalid_lines is not None:
             if cache:
-                self.smis_ = [smi for smi in self.smis()]
-                return len(self.smis_), set()
+                self.smis_ = [
+                    smi for i, smi in enumerate(self.smis())
+                    if i not in self.invalid_lines
+                ]
+                self.size = len(self.smis_)
+            else:
+                if self.size is None:
+                    n_total_smis = sum(1 for _ in self.smis())
+                    self.size = n_total_smis - len(self.invalid_lines)
 
-            return sum(1 for _ in self.smis()), set()
-
-        if self.verbose > 0:
-            print('Validating SMILES strings ...', end=' ')
-
-        valid_smis = validate_smis(self.smis())
-        if cache:
-            invalid_lines = set()
-            self.smis_ = []
-            for i, smi in enumerate(valid_smis):
-                if smi is None:
-                    invalid_lines.add(i)
-                else:
-                    self.smis_.append(smi)
         else:
-            invalid_lines = {
-                i for i, smi in enumerate(valid_smis) if smi is None
-            }
+            if self.verbose > 0:
+                print('Validating SMILES strings ...', end=' ')
 
-        if self.verbose > 0:
-            print('Done!', flush=True)
-        if self.verbose > 1:
-            print(f'Detected {len(self.invalid_lines)} invalid SMILES')
+            valid_smis = validate_smis(self.smis())
+            invalid_lines = set()
+            if cache:
+                self.smis_ = []
+                for i, smi in enumerate(valid_smis):
+                    if smi is None:
+                        invalid_lines.add(i)
+                    else:
+                        self.smis_.append(smi)
+            else:
+                for i, smi in enumerate(valid_smis):
+                    if smi is None:
+                        invalid_lines.add(i)
 
-        return (i+1) - len(invalid_lines), invalid_lines
+            self.size = (i+1) - len(invalid_lines)
+            self.invalid_lines = invalid_lines
+
+            if self.verbose > 0:
+                print('Done!', flush=True)
+            if self.verbose > 1:
+                print(f'Detected {len(self.invalid_lines)} invalid SMILES')
+
+            # return (i+1) - len(invalid_lines), invalid_lines
 
     def _cluster_mols(self, ncluster: int) -> None:
         """Cluster the molecules in the library.
