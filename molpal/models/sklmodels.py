@@ -1,6 +1,7 @@
 """This module contains Model implementations that utilize the sklearn models 
 as their underlying model"""
 import logging
+from molpal.molpal.acquirer.metrics import random
 from pathlib import Path
 import pickle
 from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
@@ -141,9 +142,6 @@ class GPModel(Model):
         X = feature_matrix(xs, featurizer)
         Y = np.array(list(ys))
 
-        self.model = GaussianProcessRegressor(
-            kernel=self.kernel, normalize_y=True
-        )
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
