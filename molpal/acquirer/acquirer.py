@@ -72,8 +72,8 @@ class Acquirer:
                  seed: Optional[int] = None, verbose: int = 0, **kwargs):
         self.size = size
         self.init_size = init_size
-        self.batch_sizes = iter(batch_sizes)
-        self.batch_size = next(self.batch_sizes)
+        self.batch_sizes = batch_sizes
+        # self.batch_size = next(self.batch_sizes)
 
         self.metric = metric
         self.stochastic_preds = False
@@ -103,10 +103,7 @@ class Acquirer:
     
     @property
     def init_size(self) -> int:
-        """int : the number of inputs to acquire initially"""
-        # if isinstance(self.__init_size, float):
-        #     return math.ceil(self.size * self.__init_size)
-
+        """the number of inputs to acquire initially"""
         return self.__init_size
     
     @init_size.setter
@@ -121,23 +118,21 @@ class Acquirer:
         self.__init_size = init_size
 
     @property
-    def batch_size(self) -> int:
-        """int : the number of inputs to acquire in each batch"""
-        # if isinstance(self.__batch_size, float):
-        #     return math.ceil(self.size * self.__batch_size)
-
-        return self.__batch_size
+    def batch_sizes(self) -> List[int]:
+        """the number of inputs to acquire in exploration batch"""
+        return self.__batch_sizes
     
-    @batch_size.setter
-    def batch_size(self, batch_size: Union[int, float]):
-        if isinstance(batch_size, float):
-            if batch_size < 0 or batch_size > 1:
-                raise ValueError(f'batch_size(={batch_size} must be in [0, 1]')
-            batch_size = math.ceil(self.size * batch_size)
-        if batch_size < 0:
-            raise ValueError(f'batch_size(={batch_size} must be positive')
+    @batch_sizes.setter
+    def batch_sizes(self, batch_sizes: Iterable[Union[int, float]]):
+        self.__batch_sizes = [bs for bs in batch_sizes]
 
-        self.__batch_size = batch_size
+        for i, bs in enumerate(self.__batch_sizes):
+            if isinstance(bs, float):
+                if bs < 0 or bs > 1:
+                    raise ValueError(f'batch_size(={bs} must be in [0, 1]')
+                self.__batch_sizes[i] = math.ceil(self.size * bs)
+            if bs < 0:
+                raise ValueError(f'batch_size(={bs} must be positive')
 
     def acquire_initial(self, xs: Iterable[T],
                         cluster_ids: Optional[Iterable[int]] = None,
@@ -197,7 +192,7 @@ class Acquirer:
                       explored: Optional[Mapping] = None,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
-                      iter_: Optional[int] = None, **kwargs) -> List[T]:
+                      t: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
 
         Parameters
@@ -214,7 +209,7 @@ class Acquirer:
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
-        iter_ : Optional[int] (Default = None)
+        t : Optional[int] (Default = None)
             the current iteration of batch acquisition
         is_random : bool (Default = False)
             are the y_means generated through stochastic methods?
@@ -232,6 +227,11 @@ class Acquirer:
         else:
             explored = {}
             current_max = float('-inf')
+
+        try:
+            batch_size = self.batch_sizes[t]
+        except IndexError:
+            batch_size = self.batch_sizes[-1]
 
         begin = default_timer()
 
@@ -296,17 +296,12 @@ class Acquirer:
 
             if self.temp_i and self.temp_f:
                 d_cid_heap = self._scale_heaps(
-                    d_cid_heap, global_pred_max, iter_,
+                    d_cid_heap, global_pred_max, t,
                     self.temp_i, self.temp_f
                 )
 
             heaps = [heap for heap, _ in d_cid_heap.values()]
             heap = list(chain(*heaps))
-
-        try:
-            self.batch_size = next(self.batch_sizes)
-        except StopIteration:
-            pass
 
         if self.verbose > 1:
             print(f'Selected {len(heap)} new samples')
@@ -318,7 +313,7 @@ class Acquirer:
         return [x for _, x in heap]
 
     def _scale_heaps(self, d_cid_heap: Dict[int, List],
-                     pred_global_max: float, iter_: int,
+                     pred_global_max: float, t: int,
                      temp_i: float, temp_f: float):
         """Scale each heap's size based on a decay factor
 
@@ -335,7 +330,7 @@ class Acquirer:
             acquire from that cluster
         pred_global_max : float
             the predicted maximum value of the objective function
-        iter_ : int
+        t : int
             the current iteration of acquisition
         temp_i : float
             the initial temperature of the system
@@ -347,7 +342,7 @@ class Acquirer:
         d_cid_heap
             the original mapping scaled down by the calculated decay factor
         """
-        temp = self._calc_temp(iter_, temp_i, temp_f)
+        temp = self._calc_temp(t, temp_i, temp_f)
 
         for cid, (heap, heap_size) in d_cid_heap.items():
             if len(heap) == 0:
@@ -366,9 +361,9 @@ class Acquirer:
         return d_cid_heap
 
     @classmethod
-    def _calc_temp(cls, iter_: int, temp_i, temp_f) -> float:
+    def _calc_temp(cls, t: int, temp_i, temp_f) -> float:
         """Calculate the temperature of the system"""
-        return temp_i * math.exp(-iter_/0.75) + temp_f
+        return temp_i * math.exp(-t/0.75) + temp_f
 
     @classmethod
     def _calc_decay(cls, global_max: float, local_max: float,
