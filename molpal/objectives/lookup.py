@@ -4,7 +4,7 @@ import gzip
 from pathlib import Path
 from typing import Collection, Dict, Optional
 
-from configargparse import ArgumentTypeError, ArgumentParser
+from configargparse import ArgumentParser
 from tqdm import tqdm
 
 from molpal.objectives.base import Objective
@@ -81,7 +81,7 @@ def parse_config(config: str):
     parser.add_argument('--score-col', type=int, default=1)
     parser.add_argument('--minimize', action='store_true', default=False)
 
-    params = vars(parser.parse_args([config]))
+    params = vars(parser.parse_args(config))
     return (
         params['path'], params['sep'], not params['no_title_line'],
         params['smiles_col'], params['score_col'], params['minimize']
