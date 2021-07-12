@@ -243,8 +243,9 @@ def main():
 
     if len(invalid_lines) == 0:
         print('Detected no invalid lines! When using this fingerprints file,',
-              'you can pass the --validated flag to MolPAL to speed up pool',
-              'construction.')
+              'you should add "--invalid-lines" to the command line or',
+              '"invalid-lines=[] to the configuration file to speed up',
+              'pool construction')
 
 if __name__ == "__main__":
     main()
