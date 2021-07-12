@@ -87,6 +87,10 @@ class Explorer:
         whether the predictions should be written after each exploration batch
     verbose : int
         the level of output the Explorer prints
+    config : str
+        the filepath of a configuration file containing the options necessary
+        to recreate this Explorer. NOTE: this does not necessarily ensure
+        reproducibility if a random seed was not set
 
     Parameters
     ----------
@@ -195,6 +199,7 @@ class Explorer:
         args.pop('self')
         args.update(**args.pop('kwargs'))
         args['fps'] = self.pool.fps_
+        args['invalid_lines'] = list(self.pool.invalid_lines)
         args.pop('config', None)
         args.pop('verbose')
         self.write_config(args)
@@ -373,7 +378,7 @@ class Explorer:
             xs=self.pool.smis(), y_means=self.Y_pred, y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes, iter_=self.iter,
+            cluster_sizes=self.pool.cluster_sizes, t=self.iter,
         )
 
         new_scores = self.objective.calc(inputs)
@@ -618,8 +623,7 @@ class Explorer:
     #     return str(preds_path), str(vars_path)
 
     def load(self, chkpt_file: str) -> None:
-        """Mimic the intermediate state of a previous explorer run by loading
-        the data from the list of output files"""
+        """Load in the state of a previous Explorer's checkpoint"""
 
         if self.verbose > 0:
             print(f'Loading in previous state ... ', end='')
@@ -660,7 +664,7 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
     
-    def write_config(self, args):
+    def write_config(self, args) -> str:
         p_output = Path(f'{self.root}/{self.name}')
         p_output.mkdir(exist_ok=True, parents=True)
 
@@ -671,13 +675,16 @@ class Explorer:
             if v is None:
                 args.pop(k)
 
-        with open(p_output / 'config.ini', 'w') as fid:
+        config_file = p_output / 'config.ini'
+        with open(config_file, 'w') as fid:
             for k, v in args.items():
                 if v is None:
                     continue
                 if v == False:
                     continue
                 fid.write(f'{k.replace("_", "-")} = {v}\n')
+
+        return str(config_file)
 
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
         """Remove the None entries from new_scores and update the attributes 
