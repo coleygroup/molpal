@@ -260,6 +260,11 @@ class Acquirer:
 
         batch_size = self.batch_size(t)
 
+        try:
+            batch_size = self.batch_sizes[t]
+        except IndexError:
+            batch_size = self.batch_sizes[-1]
+
         begin = default_timer()
 
         Y_means = np.array(y_means)
@@ -330,11 +335,6 @@ class Acquirer:
 
             heaps = [heap for heap, _ in d_cid_heap.values()]
             heap = list(chain(*heaps))
-
-        try:
-            self.batch_size = next(self.batch_sizes)
-        except StopIteration:
-            pass
 
         if self.verbose > 1:
             print(f'Selected {len(heap)} new samples')
