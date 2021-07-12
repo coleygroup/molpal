@@ -82,7 +82,8 @@ class NN:
                  dropout: Optional[float] = None,
                 #  dropout_at_predict: bool = False,
                  activation: Optional[str] = 'relu',
-                 uncertainty_method: Optional[str] = None):
+                 uncertainty_method: Optional[str] = None,
+                 model_seed: Optional[int] = None):
         self.input_size = input_size
         self.output_size = num_tasks
         self.batch_size = batch_size
@@ -99,6 +100,8 @@ class NN:
         self.mean = 0
         self.std = 0
 
+        tf.random.set_seed(model_seed)
+        
     def build(self, input_size, num_tasks, layer_sizes, dropout, 
               uncertainty_method, activation):
         """Build the model, optimizer, and loss function"""
@@ -254,11 +257,14 @@ class NNModel(Model):
     NNTwoOutputModel
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, **kwargs):
+                 dropout: Optional[float] = 0.0,
+                 model_seed: Optional[int] = None,
+                 **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout)
+                                   batch_size=test_batch_size, dropout=dropout,
+                                   model_seed=model_seed)
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -315,10 +321,12 @@ class NNEnsembleModel(Model):
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.0, ensemble_size: int = 5,
-                 bootstrap_ensemble: Optional[bool] = False, **kwargs):
+                 bootstrap_ensemble: Optional[bool] = False,
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 4096
         self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout)
+                                   batch_size=test_batch_size, dropout=dropout,
+                                   model_seed=model_seed)
 
         self.ensemble_size = ensemble_size
         self.models = [self.build_model() for _ in range(self.ensemble_size)]
@@ -389,13 +397,17 @@ class NNTwoOutputModel(Model):
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
     """
-    def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0, **kwargs):
+    def __init__(self, input_size: int,
+                 test_batch_size: Optional[int] = 4096,
+                 dropout: Optional[float] = 0.0,
+                 model_seed: Optional[int] = None,
+                 **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, num_tasks=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   uncertainty_method='mve')
+                                   uncertainty_method='mve', 
+                                   model_seed=model_seed)
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
@@ -457,12 +469,13 @@ class NNDropoutModel(Model):
     """
     def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
                  dropout: Optional[float] = 0.2, dropout_size: int = 10,
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(NN, input_size=input_size, num_tasks=1,
                                    batch_size=test_batch_size, dropout=dropout,
-                                   uncertainty_method='dropout')
+                                   uncertainty_method='dropout',
+                                   model_seed=model_seed)
         self.model = self.build_model()
         self.dropout_size = dropout_size
 
