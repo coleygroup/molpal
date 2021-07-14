@@ -249,7 +249,7 @@ class Acquirer:
 
         idxs = np.random.choice(
             np.arange(U.size), replace=False,
-            size=int(self.batch_size * self.epsilon)
+            size=int(batch_size * self.epsilon)
         )
         U[idxs] = np.inf
 
@@ -266,7 +266,7 @@ class Acquirer:
                 if x in explored:
                     continue
 
-                if len(heap) < self.batch_size:
+                if len(heap) < batch_size:
                     heapq.heappush(heap, (u, x))
                 else:
                     heapq.heappushpop(heap, (u, x))
@@ -275,7 +275,7 @@ class Acquirer:
             # the random indices are not distributed evenly amongst clusters
 
             d_cid_heap = {
-                cid: ([], math.ceil(self.batch_size * cluster_size/U.size))
+                cid: ([], math.ceil(batch_size * cluster_size/U.size))
                 for cid, cluster_size in cluster_sizes.items()
             }
 
