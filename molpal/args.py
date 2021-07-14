@@ -54,7 +54,8 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--chkpt-freq', type=int,
                         nargs='?', default=0, const=-1,
                         help='The number of iterations that should pass without writing a checkpoint. A value of 0 (or below) means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. Not specifying this flag will result in checkpointing every iteration. Specifying the flag with no value will result in no checkpointing at all.')
-
+    parser.add_argument('--checkpoint-file',
+                        help='the checkpoint file containing the state of a previous molpal run.')
     parser.add_argument('--previous-scores',
                         help='the path to a file containing the scores from a previous run of molpal to load in as preliminary dataset.')
     parser.add_argument('--scores-csvs', nargs='+',
