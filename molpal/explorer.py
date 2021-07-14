@@ -137,6 +137,7 @@ class Explorer:
                  previous_scores: Optional[str] = None,
                  scores_csvs: Union[str, List[str], None] = None,
                  verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
+                 checkpoint_file: Optional[str] = None,
                  **kwargs):
         args = locals()
         
@@ -181,8 +182,8 @@ class Explorer:
         self.updated_model = None
         self.recent_avgs = deque(maxlen=window_size)
         self.top_k_avg = None
-        self.Y_pred = None
-        self.Y_var = None
+        self.Y_pred = np.array([])
+        self.Y_var = np.array([])
 
         if isinstance(scores_csvs, str):
             self.scores_csvs = pickle.load(open(scores_csvs, 'rb'))
@@ -203,6 +204,9 @@ class Explorer:
         args.pop('config', None)
         args.pop('verbose')
         self.write_config(args)
+
+        if checkpoint_file:
+            self.load(checkpoint_file)
 
     @property
     def k(self) -> int:
@@ -288,6 +292,7 @@ class Explorer:
             print('Starting Exploration ...')
             self.explore_initial()
         else:
+            print(f'Current average of top {self.k}: {self.top_k_avg:0.3f}')
             print(f'Resuming Exploration at iter {self.iter}...')
             self.explore_batch()
 
@@ -339,11 +344,11 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
 
+        self.iter += 1
+
         if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
-
-        self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
@@ -378,7 +383,7 @@ class Explorer:
             xs=self.pool.smis(), y_means=self.Y_pred, y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes, t=self.iter,
+            cluster_sizes=self.pool.cluster_sizes, t=(self.iter-1),
         )
 
         new_scores = self.objective.calc(inputs)
@@ -391,11 +396,13 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
+        self.iter += 1
+
         if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        self.iter += 1
+        # self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores)/len(valid_scores)
@@ -559,12 +566,22 @@ class Explorer:
         if self.verbose > 0:
             print('Done!')
 
-    def checkpoint(self) -> str:
+    def checkpoint(self, path: Optional[str] = None) -> str:
         """write a checkpoint file for the explorer's current state and return
-        the corresponding filepath"""
-        chkpt_dir = Path(
-            f'{self.root}/{self.name}/chkpts/iter_{self.iter}'
-        )
+        the corresponding filepath
+        
+        Parameters
+        ----------
+        path : Optional[str], default=None
+            the directory to under which all checkpoint files should be written
+        
+        Returns
+        -------
+        str
+            the path of the JSON file containing all state information
+        """
+        path = path or f'{self.root}/{self.name}/chkpts/iter_{self.iter}'
+        chkpt_dir = Path(path)
         chkpt_dir.mkdir(parents=True, exist_ok=True)
         
         scores_pkl = chkpt_dir / 'scores.pkl'
@@ -581,13 +598,13 @@ class Explorer:
 
         state = {
             'iter': self.iter,
-            'scores': str(scores_pkl),
-            'failures': str(failures_pkl),
-            'new_scores': str(new_scores_pkl),
+            'scores': str(scores_pkl.absolute()),
+            'failures': str(failures_pkl.absolute()),
+            'new_scores': str(new_scores_pkl.absolute()),
             'updated_model': self.updated_model,
             'recent_avgs': list(self.recent_avgs),
             'top_k_avg': self.top_k_avg,
-            'preds': str(preds_npz),
+            'preds': str(preds_npz.absolute()),
             'model': self.model.save(chkpt_dir / 'model')
         }
 
@@ -622,7 +639,7 @@ class Explorer:
         
     #     return str(preds_path), str(vars_path)
 
-    def load(self, chkpt_file: str) -> None:
+    def load(self, chkpt_file: str):
         """Load in the state of a previous Explorer's checkpoint"""
 
         if self.verbose > 0:
@@ -678,9 +695,7 @@ class Explorer:
         config_file = p_output / 'config.ini'
         with open(config_file, 'w') as fid:
             for k, v in args.items():
-                if v is None:
-                    continue
-                if v == False:
+                if v is None or v == False:
                     continue
                 fid.write(f'{k.replace("_", "-")} = {v}\n')
 
@@ -712,7 +727,7 @@ class Explorer:
                 self.scores[x] = y
                 self.new_scores[x] = y
 
-    def _update_model(self) -> None:
+    def _update_model(self):
         """Update the prior distribution to generate a posterior distribution
 
         Side effects
@@ -726,7 +741,6 @@ class Explorer:
             must be updated as well
         """
         if len(self.new_scores) == 0:
-            # only update model if there are new data
             self.updated_model = False
             return
 
@@ -742,7 +756,7 @@ class Explorer:
         self.new_scores = {}
         self.updated_model = True
 
-    def _update_predictions(self) -> None:
+    def _update_predictions(self):
         """Update the predictions over the pool with the new model
 
         Side effects
@@ -757,9 +771,10 @@ class Explorer:
             sets self.updated_model to False, indicating that the predictions 
             are now up-to-date with the current model
         """
-        if not self.updated_model and self.Y_pred:
-            # don't update predictions if the model has not been updated 
-            # and the predictions are already set
+        if not self.updated_model and self.Y_pred.size > 0:
+            if self.verbose > 1:
+                print('Model has not been updated since the last time ',
+                     'predictions were set. Skipping update!')
             return
 
         self.Y_pred, self.Y_var = self.model.apply(
@@ -779,7 +794,7 @@ class Explorer:
                 + f'but {self.model.type_} only provides: '
                 + f'{self.model.provides}')
 
-    def _read_scores(self, scores_csv: str) -> Dict:
+    def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""
         scores = {}
         failures = {}
