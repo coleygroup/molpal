@@ -414,11 +414,13 @@ class Explorer:
         if self.write_intermediate:
             self.write_scores(include_failed=True)
         
+        self.iter += 1
+
         if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        self.iter += 1
+        # self.iter += 1
 
         # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
         #     self.checkpoint()
