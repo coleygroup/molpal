@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
-from numpy import ndarray
+# from pytorch_lightning.callbacks.progress import ProgressBar
 import ray
 from ray.util.sgd import TorchTrainer
 import pytorch_lightning as pl
@@ -17,6 +17,7 @@ from tqdm import tqdm, trange
 
 from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
                                  MoleculeDataLoader)
+from .chemprop.data.scaler import StandardScaler
 from .chemprop.data.utils import split_data
 from . import chemprop
 
@@ -118,18 +119,7 @@ class MPNN:
         if model_seed is not None:
             torch.manual_seed(model_seed)
         
-    @property
-    def device(self):
-        return self.__device
-
-    @device.setter
-    def device(self, device):
-        self.__device = device
-
-    def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
-        """Train the model on the inputs SMILES with the given targets"""
-        train_data, val_data = self.make_datasets(smis, targets)
-        config = {
+        self.train_config = {
             'model': self.model,
             'dataset_type': self.dataset_type,
             'uncertainty_method': self.uncertainty_method,
@@ -140,6 +130,11 @@ class MPNN:
             'final_lr': self.final_lr,
             'metric': self.metric,
         }
+
+    def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
+        """Train the model on the inputs SMILES with the given targets"""
+        train_data, val_data = self.make_datasets(smis, targets)
+        
         if self.ddp:
             ngpu = int(ray.cluster_resources().get('GPU', 0))
             if ngpu > 0:
@@ -148,36 +143,37 @@ class MPNN:
                 num_workers = ray.cluster_resources()['CPU'] // self.ncpu
             
             train_data, val_data = self.make_datasets(smis, targets)
-            config['steps_per_epoch'] = (
+            self.train_config['steps_per_epoch'] = (
                 len(train_data) // (self.batch_size * num_workers)
             )
-            config['train_loader'] = MoleculeDataLoader(
+            self.train_config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data, batch_size=self.batch_size * num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
-            config['val_loader'] = MoleculeDataLoader(
+            self.train_config['val_loader'] = MoleculeDataLoader(
                 dataset=val_data, batch_size=self.batch_size * num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
-                num_workers=num_workers, config=config,
+                num_workers=num_workers, config=self.train_config,
                 use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
-            pbar = trange(self.epochs, desc='Training', unit='epoch')
-            for i in pbar:
+            bar = trange(self.epochs, desc='Training', unit='epoch')
+            for i in bar:
                 train_loss = trainer.train()['train_loss']
                 val_res = trainer.validate()
                 val_loss = val_res['val_loss']
                 lr = val_res['lr']
-                pbar.set_postfix_str(
-                    f'loss={train_loss:0.3f}, '
+                bar.set_postfix_str(
+                    f'train_loss={train_loss:0.3f}, '
                     f'val_loss={val_loss:0.3f} '
                     f'lr={lr}'
                 )
                 print(f'Epoch {i}: lr={lr}', flush=True)
+            bar.close()
 
             self.model = trainer.get_model()
             return True
@@ -190,16 +186,18 @@ class MPNN:
             dataset=val_data, batch_size=self.batch_size,
             num_workers=self.ncpu, pin_memory=self.use_gpu
         )
-        model = mpnn.LitMPNN(config)
-        early_stop_callback = EarlyStopping(
-            monitor='val_loss', patience=10, verbose=True, mode='min'
-        )
+        lit_model = mpnn.LitMPNN(self.train_config)
+        
+        callbacks = [
+            EarlyStopping('val_loss', patience=10, verbose=True, mode='min'),
+            mpnn.callbacks.EpochAndStepProgressBar()
+        ]
         trainer = pl.Trainer(
-            max_epochs=self.epochs, callbacks=[early_stop_callback],
+            max_epochs=self.epochs, callbacks=callbacks,
             gpus=1 if self.use_gpu else 0, precision=self.precision,
-            progress_bar_refresh_rate=100
+            weights_summary=None
         )
-        trainer.fit(model, train_dataloader, val_dataloader)
+        trainer.fit(lit_model, train_dataloader, val_dataloader)
         
         return True
 
@@ -219,7 +217,7 @@ class MPNN:
 
         return train_data, val_data
 
-    def predict(self, smis: Iterable[str]) -> ndarray:
+    def predict(self, smis: Iterable[str]) -> np.ndarray:
         """Generate predictions for the inputs xs
         
         Parameters
@@ -247,15 +245,6 @@ class MPNN:
         ]
         return np.concatenate(preds_chunks)
 
-        # test_data = MoleculeDataset([MoleculeDatapoint(smiles=[smi]) for smi in smis])
-        # data_loader = MoleculeDataLoader(
-        #     dataset=test_data,
-        #     batch_size=self.batch_size,
-        #     num_workers=self.ncpu
-        # )
-
-        # return mpnn.predict(self.model, data_loader, scaler=self.scaler)
-
     def save(self, path) -> str:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
@@ -266,9 +255,9 @@ class MPNN:
         state_path = f'{path}/state.json'
         try:
             state = {
-                'stds': self.scaler.stds.tolist(),
+                'model_path': model_path,
                 'means': self.scaler.means.tolist(),
-                'model_path': model_path
+                'stds': self.scaler.stds.tolist()
             }
         except AttributeError:
             state = {
@@ -279,7 +268,16 @@ class MPNN:
         return state_path
     
     def load(self, path):
-        self.model.load(path)
+        state = json.load(open(path, 'r'))
+
+        self.model.load_state_dict(torch.load(state['model_path']))
+        try:
+            self.scaler.means = state['means']
+            self.scaler.stds = state['stds']
+        except AttributeError:
+            self.scaler = StandardScaler(state['means'], state['stds'])
+        except KeyError:
+            pass
 
 class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
@@ -311,7 +309,7 @@ class MPNModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         preds = self.model.predict(xs)
         return preds[:, 0] # assume single-task
 
@@ -358,15 +356,16 @@ class MPNDropoutModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         predss = self._get_predictions(xs)
         return np.mean(predss, axis=1)
 
-    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                             np.ndarray]:
         predss = self._get_predictions(xs)
         return np.mean(predss, axis=1), np.var(predss, axis=1)
 
-    def _get_predictions(self, xs: Sequence[str]) -> ndarray:
+    def _get_predictions(self, xs: Sequence[str]) -> np.ndarray:
         predss = np.zeros((len(xs), self.dropout_size))
         for j in tqdm(range(self.dropout_size),
                       desc='dropout prediction'):
@@ -410,15 +409,17 @@ class MPNTwoOutputModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         means, _ = self._get_predictions(xs)
         return means
 
-    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                             np.ndarray]:
         means, variances = self._get_predictions(xs)
         return means, variances
 
-    def _get_predictions(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def _get_predictions(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                           np.ndarray]:
         """Get both the means and the variances for the xs"""
         preds = self.model.predict(xs)
         # assume single task prediction now
