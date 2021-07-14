@@ -1,3 +1,4 @@
+import datetime
 import os
 import signal
 import sys
@@ -53,7 +54,11 @@ def main():
     try:
         explorer.run()
     except BaseException:
-        state_file = explorer.checkpoint()
+        chkpts_dir = f'{params["root"]}/{params["name"]}/chkpts'
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        state_file = explorer.checkpoint(
+            f'{chkpts_dir}/iter_{explorer.iter}_{timestamp}'
+        )
         print(f'Exception raised! Intemediate state saved to "{state_file}"')
         raise
     stop = time()
