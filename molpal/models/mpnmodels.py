@@ -2,12 +2,11 @@
 their underlying model"""
 from functools import partial
 import json
-import os
+import logging
 from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
-# from pytorch_lightning.callbacks.progress import ProgressBar
 import ray
 from ray.util.sgd import TorchTrainer
 import pytorch_lightning as pl
@@ -23,6 +22,8 @@ from . import chemprop
 
 from molpal.models.base import Model
 from molpal.models import mpnn, utils
+
+logging.getLogger('lightning').setLevel(logging.FATAL)
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -116,6 +117,7 @@ class MPNN:
         
         self._predict = _predict
 
+        self.seed = model_seed
         if model_seed is not None:
             torch.manual_seed(model_seed)
         
@@ -210,7 +212,9 @@ class MPNN:
             MoleculeDatapoint(smiles=[x], targets=[y])
             for x, y in zip(xs, ys)
         ])
-        train_data, val_data, _ = split_data(data=data, sizes=(0.8, 0.2, 0.0))
+        train_data, val_data, _ = split_data(
+            data=data, sizes=(0.8, 0.2, 0.0), seed=self.seed
+        )
 
         self.scaler = train_data.normalize_targets()    
         val_data.scale_targets(self.scaler)
