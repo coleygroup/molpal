@@ -15,47 +15,6 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
-# @ray.remote
-# def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
-#                  radius: int = 2,
-#                  length: int = 2048) -> List[Optional[np.ndarray]]:
-#     fps = [featurize(smi, fingerprint, radius, length) for smi in smis]
-#     return fps
-
-# def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
-#                 radius: int = 2,
-#                 length: int = 2048) -> List[Optional[np.ndarray]]:
-#     """
-#     Caculate the Morgan fingerprint of each molecule in smis
-
-#     Parameters
-#     ----------
-#     smis : Iterable[str]
-#         the SMILES strings of the molecules
-#     radius : int, default=2
-#         the radius of the fingerprint
-#     length : int, default=2048
-#         the number of bits in the fingerprint
-
-#     Returns
-#     -------
-#     List
-#         a list of the corresponding morgan fingerprints in bit vector form
-#     """
-#     chunksize = int(ray.cluster_resources()['CPU'] * 64)
-#     refs = [
-#         _smis_to_fps.remote(smis_chunk, fingerprint, radius, length)
-#         for smis_chunk in batches(smis, chunksize)
-#     ]
-#     fps_chunks = [
-#         ray.get(r)
-#         for r in tqdm(refs, desc='Calculating fingerprints',
-#                       unit='chunk', leave=False)
-#     ]
-#     fps = list(chain(*fps_chunks))
-
-#     return fps
-
 def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
                         featurizer: Featurizer = Featurizer(),
                         name: str = 'fps.h5',
@@ -90,10 +49,6 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
     """
     fps_h5 = str((Path(path) / name).with_suffix('.h5'))
 
-    # fingerprint = featurizer.fingerprint
-    # radius = featurizer.radius
-    # length = featurizer.length
-
     ncpu = int(ray.cluster_resources()['CPU'])
     with h5py.File(fps_h5, 'w') as h5f:
         CHUNKSIZE = 512
@@ -118,7 +73,6 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
                     invalid_idxs.add(i+offset)
                     offset += 1
                     continue
-                    # fp = next(fps)
 
                 fps_dset[i] = fp
                 i += 1
