@@ -84,25 +84,26 @@ def add_encoder_args(parser: ArgumentParser) -> None:
 def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--pool', default='eager',
                         help='the type of MoleculePool to use')
-
-    parser.add_argument('--library', required=True, metavar='LIBRARY_FILEPATH',
-                        help='the file containing members of the MoleculePool')
+    parser.add_argument('-l', '--libraries', '--library',
+                        required=True, nargs='+',
+                        help='the CSVs containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
-                        help='whether there is no title line in the library file')
+                        help='whether there is no title line in the library files')
     parser.add_argument('--delimiter', default=',',
-                        help='the column separator in the library file')
+                        help='the column separator in the library files')
     parser.add_argument('--smiles-col', default=0, type=int,
-                        help='the column containing the SMILES string in the library file')
+                        help='the column containing the SMILES string in the library files')
     parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
-                        help='an hdf5 file containing the precalculated feature representations of the molecules')
+                        help='an HDF5 file containing the precalculated feature representation of each molecule in the pool')
     parser.add_argument('--cluster', action='store_true', default=False,
                         help='whether to cluster the MoleculePool')
     parser.add_argument('--cache', action='store_true', default=False,
                         help='whether to store the full MoleculePool in memory')
     parser.add_argument('--validated', action='store_true', default=False,
                         help='DEPRECATED. whether the pool has been manually validated and invalid SMILES strings have been removed.')
-    parser.add_argument('--invalid-lines', type=int, nargs='*',
-                        help='the line numbers in the library files containing invalid SMILES strings')
+    parser.add_argument('--invalid-idxs', '--invalid-lines',
+                        type=int, nargs='*',
+                        help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
 
 #####################################
 #       ACQUISITION ARGUMENTS       #
@@ -199,6 +200,8 @@ def add_model_args(parser: ArgumentParser) -> None:
     parser.add_argument('--retrain-from-scratch',
                         action='store_true', default=False,
                         help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
+    parser.add_argument('--model-seed', type=int,
+                        help='the random seed to use for model initialization. Not specifying will result in random model initializations each time the model is trained.')
     
     # RF args
     parser.add_argument('--n-estimators', type=int, default=100,

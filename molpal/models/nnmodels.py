@@ -10,7 +10,7 @@ from typing import (Callable, Iterable, List, NoReturn,
                     Optional, Sequence, Tuple, TypeVar)
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
-logging.getLogger('tensorflow').setLevel(logging.FATAL)
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 import numpy as np
 from numpy import ndarray
