@@ -1,19 +1,15 @@
 """This module contains Model implementations that utilize the sklearn models 
 as their underlying model"""
-
 import logging
-from molpal.molpal.acquirer.metrics import random
 from pathlib import Path
 import pickle
 from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
 
 import joblib
 import numpy as np
-from numpy import ndarray
 from ray.util.joblib import register_ray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
-from tqdm import tqdm
 
 from molpal.featurizer import feature_matrix
 from molpal.models.base import Model
@@ -34,7 +30,7 @@ class RFModel(Model):
     
     Parameters
     ----------
-    test_batch_size : Optional[int] (Default = 10000)
+    test_batch_size : Optional[int] (Default = 65536)
         the size into which testing data should be batched
     """
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
@@ -61,8 +57,7 @@ class RFModel(Model):
         return 'rf'
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
-              featurizer: Callable[[T], ndarray], retrain: bool = True):
-        # retrain means nothing for this model- internally it always retrains
+              featurizer: Callable[[T], np.ndarray], retrain: bool = True):
         X = feature_matrix(xs, featurizer)
         Y = np.array(ys)
 
@@ -72,15 +67,15 @@ class RFModel(Model):
 
         errors = Y_pred - Y
         logging.info(f'  training MAE: {np.mean(np.abs(errors)):.2f},'
-                     f'MSE: {np.mean(np.power(errors, 2)):.2f}')
+                     f'MSE: {np.mean(errors**2):.2f}')
         return True
 
-    def get_means(self, xs: Sequence) -> ndarray:
+    def get_means(self, xs: Sequence) -> np.ndarray:
         X = np.vstack(xs)
         with joblib.parallel_backend('ray'):
             return self.model.predict(X)
 
-    def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         X = np.vstack(xs)
         preds = np.zeros((len(X), len(self.model.estimators_)))
 
@@ -91,17 +86,16 @@ class RFModel(Model):
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
     def save(self, path) -> str:
-        model_path = f'{path}/model.pkl'
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+        model_path = str(path / 'model.pkl')
         pickle.dump(self.model, open(model_path, 'wb'))
 
         return model_path
     
     def load(self, path):
         self.model = pickle.load(open(path, 'rb'))
-
-# def predict(xs, model):
-#     X = np.vstack(xs)
-#     return model.predict(X)
 
 class GPModel(Model):
     """Gaussian process model
@@ -155,19 +149,22 @@ class GPModel(Model):
         ))
         return True
 
-    def get_means(self, xs: Sequence) -> ndarray:
+    def get_means(self, xs: Sequence) -> np.ndarray:
         X = np.vstack(xs)
         
         return self.model.predict(X)
 
-    def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         X = np.vstack(xs)
         Y_mean_pred, Y_sd_pred = self.model.predict(X, return_std=True)
 
         return Y_mean_pred, Y_sd_pred**2
     
     def save(self, path) -> str:
-        model_path = f'{path}/model.pkl'
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        
+        model_path = str(path / 'model.pkl')
         pickle.dump(self.model, open(model_path, 'wb'))
 
         return model_path

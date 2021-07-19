@@ -1,6 +1,7 @@
 """This module contains the Explorer class, which is an abstraction
 for batch Bayesian optimization."""
 from collections import deque
+from collections.abc import Iterable
 import csv
 import heapq
 import json
@@ -200,7 +201,7 @@ class Explorer:
         args.pop('self')
         args.update(**args.pop('kwargs'))
         args['fps'] = self.pool.fps_
-        args['invalid_lines'] = list(self.pool.invalid_lines)
+        args['invalid_idxs'] = list(self.pool.invalid_idxs)
         args.pop('config', None)
         args.pop('verbose')
         self.write_config(args)
@@ -691,12 +692,15 @@ class Explorer:
         for k, v in list(args.items()):
             if v is None:
                 args.pop(k)
-
+        
         config_file = p_output / 'config.ini'
         with open(config_file, 'w') as fid:
             for k, v in args.items():
                 if v is None or v == False:
                     continue
+                if isinstance(v, Iterable) and not isinstance(v, str):
+                    v = map(str, v)
+                    v = '[' + ', '.join(v) + ']'
                 fid.write(f'{k.replace("_", "-")} = {v}\n')
 
         return str(config_file)

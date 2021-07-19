@@ -39,7 +39,7 @@ class EpochAndStepProgressBar(ProgressBarBase):
             return
         
         loss = trainer.progress_bar_dict['loss']
-        self.step_bar.set_postfix_str(f'loss={loss:0.3f}')
+        self.step_bar.set_postfix_str(f'loss={loss}')
         self.step_bar.update()
 
     def on_validation_epoch_start(self, trainer, pl_module):
@@ -84,7 +84,7 @@ class EpochAndStepProgressBar(ProgressBarBase):
     def on_sanity_check_end(self, trainer, pl_module):
         super().on_sanity_check_end(trainer, pl_module)
 
-        print('Done!', file=sys.stderr)
+        print('Done!', file=sys.stderr, end='\r')
 
     # def _update_bar(self, bar: Optional[tqdm], trainer, pl_module, outputs,
     #                 batch, batch_idx, dataloader_idx):
