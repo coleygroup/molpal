@@ -3,6 +3,7 @@ from collections import Counter
 from functools import partial
 import gzip
 from itertools import islice, repeat
+import re
 from pathlib import Path
 from typing import (
     Iterable, Iterator, List, Optional, Sequence, Tuple, Type, Union
@@ -21,6 +22,8 @@ from molpal.pools import fingerprints
 RDLogger.DisableLog('rdApp.*')
 
 Mol = Tuple[str, np.ndarray, Optional[int]]
+
+CXSMILES_PATTERN = re.compile(r'\s\|.*\|')
 
 class MoleculePool(Sequence[Mol]):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
@@ -99,6 +102,7 @@ class MoleculePool(Sequence[Mol]):
     """
     def __init__(self, libraries: Iterable[str], title_line: bool = True,
                  delimiter: str = ',', smiles_col: int = 0,
+                 cxsmiles: bool = False,
                  fps: Optional[str] = None,
                  featurizer: Featurizer = Featurizer(),
                  cache: bool = False,
@@ -109,6 +113,7 @@ class MoleculePool(Sequence[Mol]):
         self.title_line = title_line
         self.delimiter = delimiter
         self.smiles_col = smiles_col
+        self.cxsmiles = cxsmiles
         self.verbose = verbose
 
         self.fps_ = fps
@@ -321,24 +326,51 @@ class MoleculePool(Sequence[Mol]):
                 yield smi
         else:
             for library in self.libraries:
-                if Path(library).suffix == '.gz':
-                    open_ = partial(gzip.open, mode='rt')
+                if self.cxsmiles:
+                    for smi in self._read_libary(library):
+                        yield CXSMILES_PATTERN.split(smi)[0]
                 else:
-                    open_ = open
+                    for smi in self._read_libary(library):
+                        yield smi
+                # if Path(library).suffix == '.gz':
+                #     open_ = partial(gzip.open, mode='rt')
+                # else:
+                #     open_ = open
 
-                with open_(library) as fid:
-                    reader = csv.reader(fid, delimiter=self.delimiter)
-                    if self.title_line:
-                        next(reader)
+                # with open_(library) as fid:
+                #     reader = csv.reader(fid, delimiter=self.delimiter)
+                #     if self.title_line:
+                #         next(reader)
 
-                    if self.invalid_idxs:
-                        for i, row in enumerate(reader):
-                            if i in self.invalid_idxs:
-                                continue
-                            yield row[self.smiles_col]
-                    else:
-                        for row in reader:
-                            yield row[self.smiles_col]
+                #     if self.invalid_idxs:
+                #         for i, row in enumerate(reader):
+                #             if i in self.invalid_idxs:
+                #                 continue
+                #             yield row[self.smiles_col]
+                #     else:
+                #         for row in reader:
+                #             yield row[self.smiles_col]
+
+    def _read_libary(self, library) -> Iterator[str]:
+        if Path(library).suffix == '.gz':
+                    open_ = partial(gzip.open, mode='rt')
+        else:
+            open_ = open
+
+        with open_(library) as fid:
+            reader = csv.reader(fid, delimiter=self.delimiter)
+            if self.title_line:
+                next(reader)
+
+            if self.invalid_idxs:
+                for i, row in enumerate(reader):
+                    if i in self.invalid_idxs:
+                        continue
+                    yield row[self.smiles_col]
+            else:
+                for row in reader:
+                    yield row[self.smiles_col]
+
 
     def fps(self) -> Iterator[np.ndarray]:
         """Return a generator over pool molecules' feature representations
@@ -433,8 +465,7 @@ class MoleculePool(Sequence[Mol]):
 
         # return self.fps_, self.invalid_idxs self.size, self.chunk_size
 
-    def _validate_and_cache_smis(self, cache: bool = False,
-                                 validated: bool = False) -> int:
+    def _validate_and_cache_smis(self, cache: bool = False) -> int:
         """Validate all the SMILES strings in the pool and return the length
         of the validated pool
 
@@ -484,19 +515,19 @@ class MoleculePool(Sequence[Mol]):
 
         else:
             if self.verbose > 0:
-                print('Validating SMILES strings ...', end=' ')
+                print('Validating SMILES strings ...', end=' ', flush=True)
 
             valid_smis = validate_smis(self.smis())
             invalid_idxs = set()
             if cache:
                 self.smis_ = []
-                for i, smi in enumerate(valid_smis):
+                for i, smi in tqdm(enumerate(valid_smis), desc='Validating'):
                     if smi is None:
                         invalid_idxs.add(i)
                     else:
                         self.smis_.append(smi)
             else:
-                for i, smi in enumerate(valid_smis):
+                for i, smi in tqdm(enumerate(valid_smis), desc='Validating'):
                     if smi is None:
                         invalid_idxs.add(i)
 
