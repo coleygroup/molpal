@@ -93,6 +93,8 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         help='the column separator in the library files')
     parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library files')
+    parser.add_argument('--cxsmiles', default=False, action='store_true',
+                        help='whether the file uses CXSMILES strings')
     parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
                         help='an HDF5 file containing the precalculated feature representation of each molecule in the pool')
     parser.add_argument('--cluster', action='store_true', default=False,
