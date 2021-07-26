@@ -94,8 +94,10 @@ class MoleculePool(Sequence[Mol]):
         whether to cluster the library
     ncluster : int, default=100
         the number of clusters to form. Only used if cluster is True
-    path : Optional[str]
-        the path under which the HDF5 file should be written
+    fps_path : Optional[str], default=None
+        the path under which the HDF5 file should be written. By default,
+        will write the fingerprints HDF5 file under the same directory as the
+        first library file
     verbose : int , default=0
     **kwargs
         additional and unused keyword arguments
@@ -108,7 +110,7 @@ class MoleculePool(Sequence[Mol]):
                  cache: bool = False,
                  invalid_idxs: Optional[Iterable[int]] = None,
                  cluster: bool = False, ncluster: int = 100,
-                 path: Optional[str] = None, verbose: int = 0, **kwargs):
+                 fps_path: Optional[str] = None, verbose: int = 0, **kwargs):
         self.libraries = [l for l in libraries]
         self.title_line = title_line
         self.delimiter = delimiter
@@ -123,7 +125,7 @@ class MoleculePool(Sequence[Mol]):
             self.invalid_idxs = None
         self.size = None
         self.chunk_size = None
-        self._encode_mols(featurizer, path)
+        self._encode_mols(featurizer, fps_path)
         
         self.smis_ = None
         self._validate_and_cache_smis(cache)
@@ -142,24 +144,23 @@ class MoleculePool(Sequence[Mol]):
     def __iter__(self) -> Iterator[Mol]:
         """Return an iterator over the molecule pool.
 
-        Not recommended for use in open constructs.
-        I.e., don't explicitly call this method unless you plan to exhaust the 
-        full iterator.
+        NOTE: Not recommended for use in open constructs. I.e., don't 
+        explicitly call this method unless you plan to exhaust the full iterator.
         """
-        self._mol_generator = zip(
+        return zip(
             self.smis(),
             self.fps(),
             self.cluster_ids() or repeat(None)
         )
-        return self
+        # return self
 
-    def __next__(self) -> Mol:
-        """Iterate to the next molecule in the pool. Only usable after
-        calling iter()"""
-        if self._mol_generator:
-            return next(self._mol_generator)
+    # def __next__(self) -> Mol:
+    #     """Iterate to the next molecule in the pool. Only usable after
+    #     calling iter()"""
+    #     if self._mol_generator:
+    #         return next(self._mol_generator)
 
-        raise StopIteration
+    #     raise StopIteration
 
     def __contains__(self, smi: str) -> bool:
         for smi_ in self.smis():
