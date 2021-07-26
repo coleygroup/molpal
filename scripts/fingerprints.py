@@ -17,7 +17,7 @@ from tqdm import tqdm
 try:
     if 'redis_password' in os.environ:
         ray.init(
-            address=os.environ["ip_head"],#'auto',
+            address=os.environ["ip_head"],
             _node_ip_address=os.environ["ip_head"].split(":")[0], 
             _redis_password=os.environ['redis_password']
         )
@@ -25,6 +25,22 @@ try:
         ray.init(address='auto')
 except ConnectionError:
     ray.init(num_cpus=len(os.sched_getaffinity(0)))
+
+def get_smis(libaries: Iterable[str], title_line: bool = True,
+             delimiter: str = ',', smiles_col: int = 0) -> Iterator[str]:
+    for library in libaries:
+        if Path(library).suffix == '.gz':
+            open_ = partial(gzip.open, mode='rt')
+        else:
+            open_ = open
+
+        with open_(library) as fid:
+            reader = csv.reader(fid, delimiter=delimiter)
+            if title_line:
+                next(reader)
+
+            for row in reader:
+                yield row[smiles_col]
 
 def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
     """Consume an iterable in batches of size chunk_size"""
@@ -190,9 +206,8 @@ def main():
                         help='the radius or path length to use for fingerprints')
     parser.add_argument('--length', type=int, default=2048,
                         help='the length of the fingerprint')
-
-    parser.add_argument('--library', required=True, metavar='LIBRARY_FILEPATH',
-                        help='the file containing members of the MoleculePool')
+    parser.add_argument('-l', '--libraries', required=True, nargs='+',
+                        help='the files containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
                         help='whether there is no title line in the library file')
     parser.add_argument('--total-size', type=int,
@@ -214,38 +229,26 @@ def main():
         pass
     else:
         filepath.with_suffix('.h5')
-        
-    if Path(args.library).suffix == '.gz':
-        open_ = partial(gzip.open, mode='rt')
-    else:
-        open_ = open
 
     print('Precalculating feature matrix ...', end=' ')
-    with open_(args.library) as fid:
-        reader = csv.reader(fid, delimiter=args.delimiter)
-        if args.total_size is None:
-            total_size = sum(1 for _ in fid)
-            fid.seek(0)
-        else:
-            total_size = args.total_size
-            
-        if args.title_line:
-            total_size -= 1; next(reader)
 
-        smis = (row[args.smiles_col] for row in reader)
-        fps, invalid_lines = fps_hdf5(
-            smis, total_size, args.fingerprint,
-            args.radius, args.length, filepath
-        )
+    smis = get_smis(args.libraries, args.title_line,
+                    args.delimiter, args.smiles_col)
+    total_size = sum(1 for _ in smis)
+    
+    smis = get_smis(args.libraries, args.title_line,
+                    args.delimiter, args.smiles_col)
+    fps, invalid_lines = fps_hdf5(
+        smis, total_size, args.fingerprint,
+        args.radius, args.length, filepath
+    )
 
     print('Done!')
     print(f'Feature matrix was saved to "{fps}"', flush=True)
 
-    if len(invalid_lines) == 0:
-        print('Detected no invalid lines! When using this fingerprints file,',
-              'you should add "--invalid-lines" to the command line or',
-              '"invalid-lines=[] to the configuration file to speed up',
-              'pool construction')
+    print('When using this fingerprints file, you should add '
+          f'"--invalid-lines" {invalid_lines} to the command line '
+          'or the configuration file to speed up pool construction')
 
 if __name__ == "__main__":
     main()
