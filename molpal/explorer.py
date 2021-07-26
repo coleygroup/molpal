@@ -416,11 +416,9 @@ class Explorer:
         
         self.iter += 1
 
-        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
-            self.checkpoint()
-            self.previous_chkpt_iter = self.iter
-
-        # self.iter += 1
+        # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+        #     self.checkpoint()
+        #     self.previous_chkpt_iter = self.iter
 
         # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
         #     self.checkpoint()
