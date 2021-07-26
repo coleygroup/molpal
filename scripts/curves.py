@@ -201,6 +201,7 @@ def reward_curve(
             if missed_scores[score] == 0:
                 del missed_scores[score]
         reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+
     elif reward == 'smis':
         true_top_k_smis = {smi for smi, _ in true_top_k}
         all_hits_in_order = np.array([
