@@ -61,9 +61,16 @@ def gather_experiment_predss(experiment) -> List[np.ndarray]:
     chkpt_iter_dirs = sorted(
         chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
     )[1:]
-
-    predss = [np.load(chkpt_iter_dir / 'preds.npz')['Y_mean']
-              for chkpt_iter_dir in chkpt_iter_dirs]
+    try:    # new way
+        preds_npzs = [np.load(chkpt_iter_dir / 'preds.npz')
+                      for chkpt_iter_dir in chkpt_iter_dirs]
+        predss, varss = zip(*[
+            (preds_npz['Y_pred'], preds_npz['Y_var'])
+            for preds_npz in preds_npzs
+        ])
+    except FileNotFoundError: # old way
+        predss = [np.load(chkpt_iter_dir / 'preds.npy')
+                  for chkpt_iter_dir in chkpt_iter_dirs]
 
     return predss
 
@@ -143,7 +150,8 @@ if __name__ == "__main__":
                 bins=np.linspace(0, 2, args.bins),
                 histtype='step', alpha=0.7, label=f'Iter {i+1}'
             )
-            axs[i].hist2d(Y_true[mask], R, bins=2*args.bins, density=True)
+            axs[i].hist2d(Y_true[mask], R, bins=2*args.bins,
+                          range=((5, 12.5), (0, 2.5)),density=True)
             axs[i].set_title(f'Iter {i+1}')
 
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
