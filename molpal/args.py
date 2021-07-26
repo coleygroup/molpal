@@ -260,11 +260,8 @@ def cleanup_args(args: Namespace):
         args.scores_csvs = args.scores_csvs[0]
 
     args.title_line = not args.no_title_line
-    # if args.invalid_lines is not None:
-    #     args.invalid_lines = set(args.invalid_lines)
 
     args_to_remove = {'no_title_line'}
-
 
     if args.metric != 'ei' or args.metric != 'pi':
         args_to_remove.add('xi')

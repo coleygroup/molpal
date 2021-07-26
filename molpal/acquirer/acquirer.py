@@ -189,7 +189,7 @@ class Acquirer:
 
     def acquire_batch(self, xs: Iterable[T],
                       y_means: Iterable[float], y_vars: Iterable[float],
-                      explored: Optional[Mapping] = None,
+                      explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
                       t: Optional[int] = None, **kwargs) -> List[T]:
@@ -205,6 +205,9 @@ class Acquirer:
             the variances of the predicted input values
         explored : Mapping[T, float] (Default = {})
             the set of explored inputs and their associated scores
+        k : int, default=1
+            the number of top-scoring compounds we are searching for. By
+            default, assume we're looking for only the top-1 compound
         cluster_ids : Optional[Iterable[int]] (Default = None)
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
@@ -220,10 +223,13 @@ class Acquirer:
             a list of selected inputs
         """
         if explored:
-            try:
-                current_max = max(y for y in explored.values() if y is not None)
-            except ValueError:
-                current_max = float('-inf')
+            ys = list(explored.values())
+            Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
+            current_max = np.partition(Y, -k)[-k]
+            # try:
+            #     current_max = max(y for y in explored.values() if y is not None)
+            # except ValueError:
+            #     current_max = float('-inf')
         else:
             explored = {}
             current_max = float('-inf')
