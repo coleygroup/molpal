@@ -53,9 +53,10 @@ class MoleculeModel(nn.Module):
                  ffn_num_layers: int = 2):
         super().__init__()
 
-        # self.uncertainty_method = uncertainty_method
         self.uncertainty = uncertainty
         self.classification = dataset_type == 'classification'
+
+        self.output_size = num_tasks
 
         if self.classification:
             if self.uncertainty != 'evidential':
@@ -170,8 +171,6 @@ class MoleculeModel(nn.Module):
                 z[:, 2::4] = alphas
                 z[:, 3::4] = betas
 
-                # z = torch.stack((means, lambdas, alphas, betas),
-                #                 dim = 2).view(z.size())
         # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
         if self.classification and not self.training:
             z = self.sigmoid(z)

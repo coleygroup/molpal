@@ -5,7 +5,7 @@ from itertools import chain
 import math
 import random
 from timeit import default_timer
-from typing import (Callable, Dict, Iterable, List, Mapping, 
+from typing import (Dict, Iterable, List, Mapping, 
                     Optional, Set, TypeVar, Union)
 
 import numpy as np
@@ -47,11 +47,12 @@ class Acquirer:
     Parameters
     ----------
     size : int
-    init_size : Union[int, float] (Default = 0.02)
+    init_size : Union[int, float] (Default = 0.01)
         the number of ligands or fraction of the pool to acquire initially.
-    batch_size : Union[int, float] (Default = 0.02)
-        the number of ligands or fraction of the pool to acquire
-        in each batch
+    batch_sizes : Iterable[Union[int, float]] (Default = [0.01])
+        the number of inputs or fraction of the pool to acquire in each
+        successive batch. Will successively use each value in the list after
+        each call to acquire_batch(), repeating the final value as necessary.
     b : float, default=2
         the number of batches to take when generating the initial candidate set.
         I.e., the initial candidate set will be of size b*self.batch_size.
@@ -75,7 +76,6 @@ class Acquirer:
         between cluster centroids. A higher threshold will gurantee greater 
         diversity in the final candidate set, but setting it too high might 
         result in fewer than batch_size candidates being selected.
- 
     metric : str (Default = 'greedy')
     epsilon : float (Default = 0.)
     temp_i : Optional[float] (Default = None)
@@ -92,25 +92,25 @@ class Acquirer:
     """
     def __init__(self, size: int,
                  init_size: Union[int, float] = 0.01,
-                 batch_size: Union[int, float] = 0.01,
+                 batch_sizes: Iterable[Union[int, float]] = [0.01],
                  b: float = 2., prune_mode: str = 'best',
                  prune_threshold: float = 0.35,
                  metric: str = 'greedy',
-                 epsilon: float = 0., beta: float = 2, xi: float = 0.01,
+                 epsilon: float = 0., beta: int = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
                  temp_i: Optional[float] = None, temp_f: Optional[float] = 1.,
                  seed: Optional[int] = None, verbose: int = 0, **kwargs):
         self.size = size
         self.init_size = init_size
-        self.batch_size = batch_size
+        self.batch_sizes = batch_sizes
         
         self.prune_mode = prune_mode
         if self.prune_mode != 'best':
             if b < 1:
                 raise ValueError(f'Arg "b" must be greater than 1!')
-            self.prune_set_size = int(b * self.batch_size)
+            self.b = b
         else:
-            self.prune_set_size = self.batch_size
+            self.b = 1
         self.prune_threshold = prune_threshold
 
         self.metric = metric
@@ -129,7 +129,6 @@ class Acquirer:
 
         self.seed = seed
         metrics.set_seed(seed)
-
         self.verbose = verbose
 
     def __len__(self) -> int:
@@ -150,29 +149,31 @@ class Acquirer:
     
     @init_size.setter
     def init_size(self, init_size: Union[int, float]):
-        if isinstance(init_size, float) and (init_size < 0 or init_size > 1):
-            raise ValueError(f'init_size(={init_size} must be in [0, 1]')
+        if isinstance(init_size, float):
+            if init_size < 0 or init_size > 1:
+                raise ValueError(f'init_size(={init_size} must be in [0, 1]')
+            init_size = math.ceil(self.size * init_size)
         if init_size < 0:
             raise ValueError(f'init_size(={init_size}) must be positive')
 
         self.__init_size = init_size
 
     @property
-    def batch_size(self) -> int:
-        """the number of inputs to acquire in each batch"""
-        if isinstance(self.__batch_size, float):
-            return math.ceil(self.size * self.__batch_size)
-
-        return self.__batch_size
+    def batch_sizes(self) -> List[int]:
+        """the number of inputs to acquire in exploration batch"""
+        return self.__batch_sizes
     
-    @batch_size.setter
-    def batch_size(self, batch_size: Union[int, float]):
-        if isinstance(batch_size, float) and (batch_size < 0 or batch_size > 1):
-            raise ValueError(f'batch_size(={batch_size} must be in [0, 1]')
-        if batch_size < 0:
-            raise ValueError(f'batch_size(={batch_size} must be positive')
+    @batch_sizes.setter
+    def batch_sizes(self, batch_sizes: Iterable[Union[int, float]]):
+        self.__batch_sizes = [bs for bs in batch_sizes]
 
-        self.__batch_size = batch_size
+        for i, bs in enumerate(self.__batch_sizes):
+            if isinstance(bs, float):
+                if bs < 0 or bs > 1:
+                    raise ValueError(f'batch_size(={bs} must be in [0, 1]')
+                self.__batch_sizes[i] = math.ceil(self.size * bs)
+            if bs < 0:
+                raise ValueError(f'batch_size(={bs} must be positive')
 
     def acquire_initial(self, xs: Iterable[T],
                         cluster_ids: Optional[Iterable[int]] = None,
@@ -222,17 +223,17 @@ class Acquirer:
             heaps = [heap for heap, _ in d_cid_heap.values()]
             heap = list(chain(*heaps))
 
-        if self.verbose > 0:
-            print(f'  Selected {len(heap)} initial samples')
+        # if self.verbose > 1:
+        #     print(f'  Selected {len(heap)} initial samples')
 
         return [x for _, x in heap]
 
     def acquire_batch(self, xs: Iterable[T],
                       y_means: Iterable[float], y_vars: Iterable[float],
-                      explored: Optional[Mapping] = None,
+                      explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
-                      epoch: Optional[int] = None, **kwargs) -> List[T]:
+                      t: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
 
         Parameters
@@ -245,12 +246,15 @@ class Acquirer:
             the variances of the predicted input values
         explored : Mapping[T, float] (Default = {})
             the set of explored inputs and their associated scores
+        k : int, default=1
+            the number of top-scoring compounds we are searching for. By
+            default, assume we're looking for only the top-1 compound
         cluster_ids : Optional[Iterable[int]] (Default = None)
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
-        epoch : Optional[int] (Default = None)
-            the current epoch of batch acquisition
+        t : Optional[int] (Default = None)
+            the current iteration of batch acquisition
         is_random : bool (Default = False)
             are the y_means generated through stochastic methods?
 
@@ -260,22 +264,30 @@ class Acquirer:
             a list of selected inputs
         """
         if explored:
-            try:
-                current_max = max(y for y in explored.values() if y is not None)
-            except ValueError:
-                # all None values case
-                current_max = float('-inf')
+            ys = list(explored.values())
+            Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
+            current_max = np.partition(Y, -k)[-k]
+            # try:
+            #     current_max = max(y for y in explored.values() if y is not None)
+            # except ValueError:
+            #     current_max = float('-inf')
         else:
             explored = {}
             current_max = float('-inf')
 
+        try:
+            batch_size = self.batch_sizes[t]
+        except IndexError:
+            batch_size = self.batch_sizes[-1]
+        prune_set_size = batch_size * self.b
         begin = default_timer()
 
         Y_mean = np.array(y_means)
         Y_var = np.array(y_vars)
 
-        if self.verbose > 1:
-            print('Calculating acquisition utilities ...', end=' ')
+        # if self.verbose > 2:
+        #     pass
+        #     print('Calculating acquisition utilities ...', end=' ')
 
         U = metrics.calc(
             self.metric, Y_mean=Y_mean, Y_var=Y_var, current_max=current_max, 
@@ -285,37 +297,37 @@ class Acquirer:
 
         idxs = np.random.choice(
             np.arange(U.size), replace=False,
-            size=int(self.batch_size * self.epsilon)
+            size=int(batch_size * self.epsilon)
         )
         U[idxs] = np.inf
 
-        if self.verbose > 1:
-            print('Done!')
-        if self.verbose > 2:
-            total = default_timer() - begin
-            mins, secs = divmod(int(total), 60)
-            print(f'      Utility calculation took {mins}m {secs}s')
+        # if self.verbose > 2:
+        #     pass
+        #     print('Done!')
+        # if self.verbose > 3:
+        #     total = default_timer() - begin
+        #     mins, secs = divmod(int(total), 60)
+        #     # print(f'      Utility calculation took {mins}m {secs}s')
 
         if cluster_ids is None and cluster_sizes is None:
-            # unclustered acquisition maintains one heap that pushes
-            # inputs on based on their utility
             heap = []
             for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
                 if x in explored:
                     continue
 
-                if len(heap) < self.prune_set_size:
+                if len(heap) < prune_set_size:
                     heapq.heappush(heap, (u, x))
                 else:
                     heapq.heappushpop(heap, (u, x))
         else:
+            raise NotImplementedError(
+                'Clustered acquisition is currently broken. '
+                'Don\'t attempt to use it!'
+            )
             # this is broken for e-greedy/pi/etc. approaches
             # the random indices are not distributed evenly amongst clusters
-
-            # clustered acquisition maintains o independent heaps that
-            # operate similarly to the above
             d_cid_heap = {
-                cid: ([], math.ceil(self.batch_size * cluster_size/U.size))
+                cid: ([], math.ceil(batch_size * cluster_size/U.size))
                 for cid, cluster_size in cluster_sizes.items()
             }
 
@@ -336,7 +348,7 @@ class Acquirer:
 
             if self.temp_i and self.temp_f:
                 d_cid_heap = self._scale_heaps(
-                    d_cid_heap, global_pred_max, epoch,
+                    d_cid_heap, global_pred_max, t,
                     self.temp_i, self.temp_f
                 )
 
@@ -344,23 +356,24 @@ class Acquirer:
             heap = list(chain(*heaps))
 
         if self.verbose > 1:
-            print(f'Selected {len(heap)} new samples')
-        if self.verbose > 2:
-            total = default_timer() - begin
-            mins, secs = divmod(int(total), 60)
-            print(f'      Batch acquisition took {mins}m {secs}s')
+            print(f'  Selected {len(heap)} new samples')
+        # if self.verbose > 3:
+        #     total = default_timer() - begin
+        #     mins, secs = divmod(int(total), 60)
+        #     print(f'      Batch acquisition took {mins}m {secs}s')
 
-        return self.prune(heap)
+        return self._prune(heap, batch_size)
         # return [x for _, x in heap]
 
-    def prune(self, heap):
-        if len(heap) <= self.batch_size:
+    def _prune(self, heap, batch_size):
+        if len(heap) <= batch_size:
             _, xs = zip(*heap)
             return xs
 
         heap = sorted(heap, key=lambda ux: ux[0], reverse=True)
         _, xs = zip(*heap)
-        if self.prune_mode == 'maxmin' or self.prune_mode == 'leader':
+
+        if self.prune_mode in ('maxmin', 'leader'):
             mols = [Chem.MolFromSmiles(x) for x in xs]
             fps = [
                 rdMolDescriptors.GetMorganFingerprintAsBitVect(
@@ -385,20 +398,21 @@ class Acquirer:
             xs = list(xs)
             random.shuffle(xs)
             xs = xs[:self.batch_size]
+
         else:
             xs = xs[:self.batch_size]
 
         return xs
 
     def _scale_heaps(self, d_cid_heap: Dict[int, List],
-                     pred_global_max: float, epoch: int,
+                     pred_global_max: float, t: int,
                      temp_i: float, temp_f: float):
         """Scale each heap's size based on a decay factor
 
         The decay factor is calculated by an exponential decay based on the
         difference between a given heap's local maximum and the predicted
         global maximum then scaled by the current temperature. The temperature
-        is in turn an exponential decay based on the current epoch starting at 
+        is also an exponential decay based on the current iteration starting at 
         the initial temperature and approaching the final temperature.
 
         Parameters
@@ -408,7 +422,7 @@ class Acquirer:
             acquire from that cluster
         pred_global_max : float
             the predicted maximum value of the objective function
-        epoch : int
+        t : int
             the current iteration of acquisition
         temp_i : float
             the initial temperature of the system
@@ -420,13 +434,12 @@ class Acquirer:
         d_cid_heap
             the original mapping scaled down by the calculated decay factor
         """
-        temp = self._calc_temp(epoch, temp_i, temp_f)
+        temp = self._calc_temp(t, temp_i, temp_f)
 
         for cid, (heap, heap_size) in d_cid_heap.items():
             if len(heap) == 0:
                 continue
 
-            # get the largest non-infinity value
             pred_local_max = max(
                 heap, key=lambda yx: -1 if math.isinf(yx[0]) else yx[0]
             )
@@ -440,9 +453,9 @@ class Acquirer:
         return d_cid_heap
 
     @classmethod
-    def _calc_temp(cls, epoch: int, temp_i, temp_f) -> float:
+    def _calc_temp(cls, t: int, temp_i, temp_f) -> float:
         """Calculate the temperature of the system"""
-        return temp_i * math.exp(-epoch/0.75) + temp_f
+        return temp_i * math.exp(-t / 0.75) + temp_f
 
     @classmethod
     def _calc_decay(cls, global_max: float, local_max: float,

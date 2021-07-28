@@ -2,9 +2,9 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-from typing import Collection, Dict, Iterable, Optional
+from typing import Collection, Dict, Optional
 
-import numpy as np
+from configargparse import ArgumentParser
 from tqdm import tqdm
 
 from molpal.objectives.base import Objective
@@ -34,31 +34,32 @@ class LookupObjective(Objective):
     **kwargs
         unused and addditional keyword arguments
     """
-    def __init__(self, lookup_path: str,
-                 lookup_sep: str = ',', lookup_title_line: bool = True,
-                 lookup_smiles_col: int = 0, lookup_data_col: int = 1,
+    def __init__(self, config: str,
                  **kwargs):
-        if Path(lookup_path).suffix == '.gz':
+        path, sep, title_line, smiles_col, score_col, minimize = (
+            parse_config(config))
+
+        if Path(path).suffix == '.gz':
             open_ = partial(gzip.open, mode='rt')
         else:
             open_ = open
         
         self.data = {}
-        with open_(lookup_path) as fid:
-            reader = csv.reader(fid, delimiter=lookup_sep)
-            if lookup_title_line:
+        with open_(path) as fid:
+            reader = csv.reader(fid, delimiter=sep)
+            if title_line:
                 next(fid)
 
             for row in tqdm(reader, desc='Building oracle'):
                 # assume all data is a float value right now
-                key = row[lookup_smiles_col]
-                val = row[lookup_data_col]
+                key = row[smiles_col]
+                val = row[score_col]
                 try:
                     self.data[key] = float(val)
                 except ValueError:
                     pass
 
-        super().__init__(**kwargs)
+        super().__init__(minimize=minimize)
 
     def calc(self, smis: Collection[str],
              *args, **kwargs) -> Dict[str, Optional[float]]:
@@ -66,29 +67,19 @@ class LookupObjective(Objective):
             smi: self.c * self.data[smi] if smi in self.data else None
             for smi in smis
         }
-    
-    def residuals(self, smis: Iterable[str], Y_pred: np.ndarray) -> np.ndarray:
-        """
-        return the residuals of the predictions
-
-        Parameters
-        ----------
-        smis : Iterable[str]
-            the SMILES strings corresponding to each prediction
-        Y_pred : np.ndarr
-            the predicted means
-
-        Returns
-        -------
-        np.ndarray
-            the residuals for each prediction. SMILES strings with no 
-            corresponding objective function value will have a residual of 0
-        """
-        Y_true = np.array([self.data.get(smi) for smi in smis], dtype=float)
-        mask = np.isnan(Y_true)
-
-        Y_true[mask] = 0
-        R = Y_true - Y_pred
-        R[mask] = 0
-        return R
         
+def parse_config(config: str):
+    parser = ArgumentParser()
+    parser.add_argument('config', is_config_file=True)
+    parser.add_argument('--path', required=True)
+    parser.add_argument('--sep', default=',')
+    parser.add_argument('--no-title-line', action='store_true', default=False)
+    parser.add_argument('--smiles-col', type=int, default=0)
+    parser.add_argument('--score-col', type=int, default=1)
+    parser.add_argument('--minimize', action='store_true', default=False)
+
+    params = vars(parser.parse_args(config))
+    return (
+        params['path'], params['sep'], not params['no_title_line'],
+        params['smiles_col'], params['score_col'], params['minimize']
+    )

@@ -1,4 +1,3 @@
-from re import X
 from typing import Iterable, Optional
 
 import numpy as np
@@ -40,9 +39,13 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
 
     Returns
     -------
-    predictions : np.ndarray
-        an NxM array where N is the number of inputs for which to produce 
-        predictions and M is the number of prediction tasks
+    preds : np.ndarray
+        an array containing the predictions for each input SMILES string. Array
+        is of shape (N, M), where N is number of SMILES strings and M is the
+        number of tasks to predict for. If only single-task prediction, then
+        array will be be of shape (N,). If predicting uncertainty, array is of
+        shape (N, 2M), where the mean predicted values are indices [:, 0::2] and
+        the predicted variances are indices [:, 1::2]
     """
     device = 'cuda' if use_gpu else 'cpu'
     model.to(device)
@@ -74,104 +77,86 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
             pred_batches.append(pred_batch)#.data.cpu().numpy())
 
         preds = torch.cat(pred_batches)
-    # preds = np.concatenate(pred_batches)
     preds = preds.cpu().numpy()
 
-    if uncertainty == 'mve':
-        means = preds[:, 0::2]
-        variances = preds[:, 1::2]
+    if uncertainty in ('mve', 'evidential'):
+        if uncertainty == 'evidential':
+            means = preds[:, 0::4]
+            lambdas = preds[:, 1::4]
+            alphas = preds[:, 2::4]
+            betas = preds[:, 3::4]
+
+            # NOTE: inverse-evidence (ie. 1/evidence) is also a measure of
+            # confidence. we can use this or the Var[X] defined by NIG.
+            inverse_evidences = 1. / ((alphas-1) * lambdas)
+            variances = inverse_evidences * betas
+            
+            preds = np.empty((len(preds), 2))
+            preds[:, 0::2] = means
+            preds[:, 1::2] = variances
 
         if scaler:
-            means = scaler.inverse_transform(means)
-            variances = scaler.stds**2 * variances
+            preds[:, 0::2] *= scaler.stds
+            preds[:, 0::2] += scaler.means
+            preds[:, 1::2] *= scaler.stds**2
 
-        return means, variances
-
-    elif uncertainty == 'evidential':
-        means = preds[:, 0::4]
-        lambdas = preds[:, 1::4]
-        alphas = preds[:, 2::4]
-        betas = preds[:, 3::4]
-
-        # NOTE: inverse-evidence (ie. 1/evidence) is also a measure of
-        # confidence. we can use this or the Var[X] defined by NIG.
-        inverse_evidences = 1. / ((alphas-1) * lambdas)
-        variances = inverse_evidences * betas
-
-        if scaler:
-            means = scaler.inverse_transform(means)
-            variances = scaler.stds**2 * variances
-
-        return means, variances
+        return preds
 
     if scaler:
-        preds = scaler.inverse_transform(preds)
+        preds *= scaler.stds
+        preds += scaler.means
+        # preds = scaler.inverse_transform(preds)
 
     return preds
 
-# @ray.remote(num_cpus=ncpu)
-# def predict(model, smis, batch_size, ncpu, scaler, use_gpu: bool):
-#     model.device = 'cpu'
+# def _predict(model: nn.Module, data_loader: Iterable, uncertainty: bool,
+#             disable: bool = False,
+#             scaler: Optional[StandardScaler] = None) -> np.ndarray:
+#     """Predict the output values of a dataset
 
-#     test_data = MoleculeDataset(
-#         [MoleculeDatapoint(smiles=[smi]) for smi in smis]
-#     )
-#     data_loader = MoleculeDataLoader(
-#         dataset=test_data, batch_size=batch_size, num_workers=ncpu
-#     )
-#     return _predict(
-#         model, data_loader, self.uncertainty,
-#         disable=True, scaler=scaler
-#     )
+#     Parameters
+#     ----------
+#     model : nn.Module
+#         the model to use
+#     data_loader : MoleculeDataLoader
+#         an iterable of MoleculeDatasets
+#     uncertainty : bool
+#         whether the model predicts its own uncertainty
+#     disable : bool (Default = False)
+#         whether to disable the progress bar
+#     scaler : Optional[StandardScaler] (Default = None)
+#         A StandardScaler object fit on the training targets
 
-def _predict(model: nn.Module, data_loader: Iterable, uncertainty: bool,
-            disable: bool = False,
-            scaler: Optional[StandardScaler] = None) -> np.ndarray:
-    """Predict the output values of a dataset
+#     Returns
+#     -------
+#     predictions : np.ndarray
+#         an NxM array where N is the number of inputs for which to produce 
+#         predictions and M is the number of prediction tasks
+#     """
+#     model.eval()
 
-    Parameters
-    ----------
-    model : nn.Module
-        the model to use
-    data_loader : MoleculeDataLoader
-        an iterable of MoleculeDatasets
-    uncertainty : bool
-        whether the model predicts its own uncertainty
-    disable : bool (Default = False)
-        whether to disable the progress bar
-    scaler : Optional[StandardScaler] (Default = None)
-        A StandardScaler object fit on the training targets
+#     pred_batches = []
+#     with torch.no_grad():
+#         for batch in tqdm(data_loader, desc='Inference', unit='batch',
+#                           leave=False, disable=disable):
+#             batch_graph = batch.batch_graph()
+#             pred_batch = model(batch_graph)
+#             pred_batches.append(pred_batch.data.cpu().numpy())
+#     preds = np.concatenate(pred_batches)
 
-    Returns
-    -------
-    predictions : np.ndarray
-        an NxM array where N is the number of inputs for which to produce 
-        predictions and M is the number of prediction tasks
-    """
-    model.eval()
+#     if uncertainty:
+#         means = preds[:, 0::2]
+#         variances = preds[:, 1::2]
 
-    pred_batches = []
-    with torch.no_grad():
-        for batch in tqdm(data_loader, desc='Inference', unit='batch',
-                          leave=False, disable=disable):
-            batch_graph = batch.batch_graph()
-            pred_batch = model(batch_graph)
-            pred_batches.append(pred_batch.data.cpu().numpy())
-    preds = np.concatenate(pred_batches)
+#         if scaler:
+#             means = scaler.inverse_transform(means)
+#             variances = scaler.stds**2 * variances
 
-    if uncertainty:
-        means = preds[:, 0::2]
-        variances = preds[:, 1::2]
+#         return means, variances
 
-        if scaler:
-            means = scaler.inverse_transform(means)
-            variances = scaler.stds**2 * variances
+#     # Inverse scale if regression
+#     if scaler:
+#         preds = scaler.inverse_transform(preds)
 
-        return means, variances
-
-    # Inverse scale if regression
-    if scaler:
-        preds = scaler.inverse_transform(preds)
-
-    return preds
+#     return preds
     

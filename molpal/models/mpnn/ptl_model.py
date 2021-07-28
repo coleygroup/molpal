@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Optional, Tuple
 
 import pytorch_lightning as pl
@@ -11,23 +12,15 @@ from ..chemprop.data import MoleculeDataset
 from ..chemprop.nn_utils import NoamLR
 from .. import chemprop
 
+logging.getLogger('lightning').setLevel(logging.FATAL)
+
 class LitMPNN(pl.LightningModule):
     """A message-passing neural network base class"""
-    def __init__(self, config: Optional[Dict] = None,
-                #  model: nn.Module,
-                #  uncertainty_method: Optional[str] = None,
-                #  dataset_type: str = 'regression',
-                #  warmup_epochs: float = 2.0,
-                #  init_lr: float = 1e-4,
-                #  max_lr: float = 1e-3,
-                #  final_lr: float = 1e-4,
-                #  metric: str = 'rmse'
-                ):
+    def __init__(self, config: Optional[Dict] = None):
         super().__init__()
         config = config or dict()
 
         dataset_type = config.get('dataset_type', 'regression')
-
         self.mpnn = config.get('model', mpnn.MoleculeModel())
         self.uncertainty = config.get('uncertainty')
 
@@ -41,7 +34,6 @@ class LitMPNN(pl.LightningModule):
         self.criterion = mpnn.utils.get_loss_func(
             dataset_type, self.uncertainty
         )
-        # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.metric = {
             'mse': lambda X, Y: F.mse_loss(X, Y, reduction='none'),
             'rmse': lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction='none'))
@@ -73,19 +65,27 @@ class LitMPNN(pl.LightningModule):
             pred_vars = preds[:, 1::2]
 
             loss = self.criterion(pred_means, pred_vars, targets)
+
         elif self.uncertainty == 'evidential':
             means = preds[:, 0::4]
             lambdas = preds[:, 1::4]
             alphas = preds[:, 2::4]
             betas = preds[:, 3::4]
 
-            loss = self.criterion(means, lambdas, alphas, betas, targets)
+            C = 0.2
+            loss = self.criterion(means, lambdas, alphas, betas, targets, C)
+
         else:
             loss = self.criterion(preds, targets) * class_weights * mask
 
         loss = loss.sum() / mask.sum()
         return loss
     
+    def training_epoch_end(self, outputs):
+        losses = [d['loss'] for d in outputs]
+        train_loss = torch.stack(losses, dim=0).mean()
+        self.log('train_loss', train_loss)
+
     def validation_step(self, batch: Tuple, batch_idx) -> List[float]:
         componentss, targets = batch
 
@@ -96,18 +96,19 @@ class LitMPNN(pl.LightningModule):
             preds = preds[:, 0::4]
 
         targets = torch.tensor(targets, device=self.device)
-
         return self.metric(preds, targets)
 
     def validation_epoch_end(self, outputs):
         val_loss = torch.cat(outputs).mean()
-        self.log('val_loss', val_loss, prog_bar=True)
+        self.log('val_loss', val_loss)
+
 
     def configure_optimizers(self) -> List:
-        opt = Adam(
-            self.mpnn.parameters(), self.init_lr,
-            weight_decay=0.2 if self.uncertainty == 'evidential' else 0.
-        )
+        opt = Adam([{
+            'params': self.mpnn.parameters(),
+            'lr': self.init_lr,
+            'weight_decay': 0
+        }])
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],

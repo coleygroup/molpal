@@ -45,7 +45,7 @@ def get_needs(metric: str) -> Set[str]:
 def calc(metric: str, Y_mean: np.ndarray, Y_var: np.ndarray,
          current_max: float, threshold: float,
          beta: float, xi: float, stochastic: bool) -> np.ndarray:
-    """Call corresponding metric function with the proper args"""
+    """Call the corresponding metric function with the proper args"""
     if metric == 'random':
         return random(Y_mean)
     if metric == 'threshold':

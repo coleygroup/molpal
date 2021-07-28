@@ -2,11 +2,11 @@
 their underlying model"""
 from functools import partial
 import json
-import os
+import logging
+from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
-from numpy import ndarray
 import ray
 from ray.util.sgd import TorchTrainer
 import pytorch_lightning as pl
@@ -16,11 +16,14 @@ from tqdm import tqdm, trange
 
 from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
                                  MoleculeDataLoader)
+from .chemprop.data.scaler import StandardScaler
 from .chemprop.data.utils import split_data
 from . import chemprop
 
 from molpal.models.base import Model
 from molpal.models import mpnn, utils
+
+logging.getLogger('lightning').setLevel(logging.FATAL)
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -83,7 +86,8 @@ class MPNN:
                  epochs: int = 50, warmup_epochs: float = 2.0,
                  init_lr: float = 1e-4, max_lr: float = 1e-3,
                  final_lr: float = 1e-4, ncpu: int = 1,
-                 ddp: bool = False, precision: int = 32):
+                 ddp: bool = False, precision: int = 32,
+                 model_seed: Optional[int] = None):
         self.ncpu = ncpu
         self.ddp = ddp
         if precision not in (16, 32):
@@ -114,8 +118,7 @@ class MPNN:
         self.final_lr = final_lr
         self.metric = metric
 
-        self.loss_func = mpnn.utils.get_loss_func(
-            dataset_type, uncertainty)
+        self.loss_func = mpnn.utils.get_loss_func(dataset_type, uncertainty)
         self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
@@ -126,6 +129,22 @@ class MPNN:
             _predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
         
         self._predict = _predict
+
+        self.seed = model_seed
+        if model_seed is not None:
+            torch.manual_seed(model_seed)
+
+        self.train_config = {
+            'model': self.model,
+            'dataset_type': self.dataset_type,
+            'uncertainty': self.uncertainty,
+            'warmup_epochs': self.warmup_epochs,
+            'max_epochs': self.epochs,
+            'init_lr': self.init_lr,
+            'max_lr': self.max_lr,
+            'final_lr': self.final_lr,
+            'metric': self.metric,
+        }
 
     @property
     def device(self):
@@ -138,17 +157,7 @@ class MPNN:
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
-        config = {
-            'model': self.model,
-            'dataset_type': self.dataset_type,
-            'uncertainty': self.uncertainty,
-            'warmup_epochs': self.warmup_epochs,
-            'max_epochs': self.epochs,
-            'init_lr': self.init_lr,
-            'max_lr': self.max_lr,
-            'final_lr': self.final_lr,
-            'metric': self.metric,
-        }
+        
         if self.ddp:
             ngpu = int(ray.cluster_resources().get('GPU', 0))
             if ngpu > 0:
@@ -156,37 +165,38 @@ class MPNN:
             else:
                 num_workers = ray.cluster_resources()['CPU'] // self.ncpu
             
-            train_data, val_data = self.make_datasets(smis, targets)
-            config['steps_per_epoch'] = (
+            # train_data, val_data = self.make_datasets(smis, targets)
+            self.train_config['steps_per_epoch'] = (
                 len(train_data) // (self.batch_size * num_workers)
             )
-            config['train_loader'] = MoleculeDataLoader(
+            self.train_config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data, batch_size=self.batch_size * num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
-            config['val_loader'] = MoleculeDataLoader(
+            self.train_config['val_loader'] = MoleculeDataLoader(
                 dataset=val_data, batch_size=self.batch_size * num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
-                num_workers=num_workers, config=config,
+                num_workers=num_workers, config=self.train_config,
                 use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
-            pbar = trange(self.epochs, desc='Training', unit='epoch')
-            for i in pbar:
+            bar = trange(self.epochs, desc='Training', unit='epoch')
+            for i in bar:
                 train_loss = trainer.train()['train_loss']
                 val_res = trainer.validate()
                 val_loss = val_res['val_loss']
                 lr = val_res['lr']
-                pbar.set_postfix_str(
-                    f'loss={train_loss:0.3f}, '
+                bar.set_postfix_str(
+                    f'train_loss={train_loss:0.3f}, '
                     f'val_loss={val_loss:0.3f} '
                     f'lr={lr}'
                 )
                 print(f'Epoch {i}: lr={lr}', flush=True)
+            bar.close()
 
             self.model = trainer.get_model()
             return True
@@ -199,17 +209,20 @@ class MPNN:
             dataset=val_data, batch_size=self.batch_size,
             num_workers=self.ncpu, pin_memory=self.use_gpu
         )
-        model = mpnn.LitMPNN(config)
-        early_stop_callback = EarlyStopping(
-            monitor='val_loss', patience=10, verbose=True, mode='min'
-        )
-        trainer = pl.Trainer(
-            max_epochs=self.epochs, callbacks=[early_stop_callback],
-            gpus=1 if self.use_gpu else 0, precision=self.precision,
-            progress_bar_refresh_rate=100
-        )
-        trainer.fit(model, train_dataloader, val_dataloader)
+        lit_model = mpnn.LitMPNN(self.train_config)
         
+        callbacks = [
+            EarlyStopping('val_loss', patience=10, verbose=True, mode='min'),
+            mpnn.callbacks.EpochAndStepProgressBar()
+        ]
+
+        trainer = pl.Trainer(
+            max_epochs=self.epochs, callbacks=callbacks,
+            gpus=1 if self.use_gpu else 0, precision=self.precision,
+            weights_summary=None
+        )
+        trainer.fit(lit_model, train_dataloader, val_dataloader)
+
         return True
 
     def make_datasets(
@@ -221,15 +234,28 @@ class MPNN:
             MoleculeDatapoint(smiles=[x], targets=[y])
             for x, y in zip(xs, ys)
         ])
-        train_data, val_data, _ = split_data(data=data, sizes=(0.8, 0.2, 0.0))
+        train_data, val_data, _ = split_data(
+            data=data, sizes=(0.8, 0.2, 0.0), seed=self.seed
+        )
 
         self.scaler = train_data.normalize_targets()    
         val_data.scale_targets(self.scaler)
 
         return train_data, val_data
 
-    def predict(self, smis: Iterable[str]) -> ndarray:
-        """Generate predictions for the inputs xs"""
+    def predict(self, smis: Iterable[str]) -> np.ndarray:
+        """Generate predictions for the inputs xs
+        
+        Parameters
+        ----------
+        smis : Iterable[str]
+            the SMILES strings for which to generate predictions
+        
+        Returns
+        -------
+        np.ndarray
+            the array of predictions with shape NxO, where N is the number of
+            inputs and O is the number of tasks."""
         smis_batches = utils.batches(smis, 20000)
 
         model = ray.put(self.model)
@@ -243,46 +269,52 @@ class MPNN:
         preds_chunks = [
             ray.get(r) for r in tqdm(refs, desc='Prediction', leave=False)
         ]
-        preds_chunks = np.column_stack(preds_chunks)
-
-        return preds_chunks
-
-        # test_data = MoleculeDataset([MoleculeDatapoint(smiles=[smi]) for smi in smis])
-        # data_loader = MoleculeDataLoader(
-        #     dataset=test_data,
-        #     batch_size=self.batch_size,
-        #     num_workers=self.ncpu
-        # )
-
-        # return mpnn.predict(self.model, data_loader, scaler=self.scaler)
+        return np.concatenate(preds_chunks)
 
     def save(self, path) -> str:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
         model_path = f'{path}/model.pt'
         torch.save(self.model.state_dict(), model_path)
 
         state_path = f'{path}/state.json'
-        state = {
-            'stds': self.scaler.stds.tolist(),
-            'means': self.scaler.means.tolist(),
-            'model_path': model_path
-        }
-        json.dump(state, open(state_path, 'w'))
+        try:
+            state = {
+                'model_path': model_path,
+                'means': self.scaler.means.tolist(),
+                'stds': self.scaler.stds.tolist()
+            }
+        except AttributeError:
+            state = {
+                'model_path': model_path
+            }
+        json.dump(state, open(state_path, 'w'), indent=4)
 
         return state_path
     
     def load(self, path):
-        self.model.load(path)
+        state = json.load(open(path, 'r'))
+
+        self.model.load_state_dict(torch.load(state['model_path']))
+        try:
+            self.scaler.means = state['means']
+            self.scaler.stds = state['stds']
+        except AttributeError:
+            self.scaler = StandardScaler(state['means'], state['stds'])
+        except KeyError:
+            pass
 
 class MPNModel(Model):
     """Message-passing model that learns feature representations of inputs and
     passes these inputs to a feed-forward neural network to predict means"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32, 
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, ncpu=ncpu, ddp=ddp, precision=precision
+            MPNN, ncpu=ncpu, ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
@@ -303,9 +335,9 @@ class MPNModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         preds = self.model.predict(xs)
-        return preds
+        return preds[:, 0] # assume single-task
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
         raise TypeError('MPNModel cannot predict variance!')
@@ -322,12 +354,13 @@ class MPNDropoutModel(Model):
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  dropout: float = 0.2, dropout_size: int = 10,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32,
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
+
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, uncertainty='dropout', dropout=dropout, 
-            ncpu=ncpu, ddp=ddp, precision=precision
+            MPNN, uncertainty_method='dropout', dropout=dropout, 
+            ncpu=ncpu, ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
@@ -350,19 +383,20 @@ class MPNDropoutModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         predss = self._get_predictions(xs)
         return np.mean(predss, axis=1)
 
-    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                             np.ndarray]:
         predss = self._get_predictions(xs)
         return np.mean(predss, axis=1), np.var(predss, axis=1)
 
-    def _get_predictions(self, xs: Sequence[str]) -> ndarray:
+    def _get_predictions(self, xs: Sequence[str]) -> np.ndarray:
         predss = np.zeros((len(xs), self.dropout_size))
         for j in tqdm(range(self.dropout_size),
                       desc='dropout prediction'):
-            predss[:, j] = self.model.predict(xs)
+            predss[:, j] = self.model.predict(xs)[:, 0] # assume single-task
         return predss
 
     def save(self, path) -> str:
@@ -376,12 +410,12 @@ class MPNTwoOutputModel(Model):
     through mean-variance estimation"""
     def __init__(self, test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32,
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
             MPNN, uncertainty='mve', ncpu=ncpu,
-            ddp=ddp, precision=precision
+            ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
@@ -402,17 +436,22 @@ class MPNTwoOutputModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         means, _ = self._get_predictions(xs)
-        return means.flatten()
+        return means
 
-    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                             np.ndarray]:
         means, variances = self._get_predictions(xs)
-        return means.flatten(), variances.flatten()
+        return means, variances
 
-    def _get_predictions(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def _get_predictions(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                           np.ndarray]:
         """Get both the means and the variances for the xs"""
-        means, variances = self.model.predict(xs)
+        preds = self.model.predict(xs)
+        # assume single task prediction now
+        # means, variances = preds[:, 0::2], preds[:, 1::2]
+        means, variances = preds[:, 0], preds[:, 1] # 
         return means, variances
 
     def save(self, path) -> str:
@@ -426,12 +465,12 @@ class MPNUncertaintyModel(Model):
     def __init__(self, uncertainty: str = 'mve',
                  test_batch_size: Optional[int] = 1000000,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32,
-                 **kwargs):
+                 model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
             MPNN, uncertainty=uncertainty, ncpu=ncpu,
-            ddp=ddp, precision=precision
+            ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
 
@@ -452,17 +491,21 @@ class MPNUncertaintyModel(Model):
 
         return self.model.train(xs, ys)
 
-    def get_means(self, xs: Sequence[str]) -> ndarray:
+    def get_means(self, xs: Sequence[str]) -> np.ndarray:
         means, _ = self._get_predictions(xs)
-        return means.flatten()
+        return means
 
-    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
+    def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                             np.ndarray]:
         means, variances = self._get_predictions(xs)
-        return means.flatten(), variances.flatten()
+        return means, variances
 
-    def _get_predictions(self, xs: Sequence[str]) -> Tuple[ndarray, ndarray]:
-        """Get both the means and the variances for the xs"""
-        means, variances = self.model.predict(xs)
+    def _get_predictions(self, xs: Sequence[str]) -> Tuple[np.ndarray,
+                                                           np.ndarray]:
+        preds = self.model.predict(xs)
+        # assume single task prediction now
+        # means, variances = preds[:, 0::2], preds[:, 1::2]
+        means, variances = preds[:, 0], preds[:, 1] # 
         return means, variances
 
     def save(self, path) -> str:

@@ -18,7 +18,7 @@ class RandomModel(Model):
         the seed for the random number generator
     """
     def __init__(self, seed: Optional[int] = None, **kwargs):
-        self.rg = np.random.default_rng(seed)
+        self.rng = np.random.default_rng(seed)
 
         super().__init__(**kwargs)
 
@@ -34,7 +34,7 @@ class RandomModel(Model):
         return True
 
     def get_means(self, xs: Sequence) -> np.ndarray:
-        return self.rg.random(len(xs))
+        return self.rng.random(len(xs))
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
-        return self.rg.random(len(xs)), self.rg.random(len(xs))
+        return self.rng.random(len(xs)), self.rng.random(len(xs))

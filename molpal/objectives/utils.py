@@ -2,7 +2,6 @@ from itertools import chain, product
 from pathlib import Path
 import tempfile
 from typing import List, Tuple, TypeVar
-
 T = TypeVar('T')
 U = TypeVar('U')
 
