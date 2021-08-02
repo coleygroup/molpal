@@ -17,9 +17,12 @@
 *.batch
 *.hdf5
 *.npy
+*.npz
 *.h5
 *.png
 *.pdf
+*.json
+*.ini
 
 .vscode/
 .DS_Store
