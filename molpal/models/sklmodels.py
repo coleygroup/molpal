@@ -7,6 +7,7 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
 
 import joblib
 import numpy as np
+import ray
 from ray.util.joblib import register_ray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
@@ -19,26 +20,33 @@ T = TypeVar('T')
 register_ray()
 
 class RFModel(Model):
-    """A Random Forest model ensemble for estimating mean and variance
+    """A Random Forest model for estimating mean and variance
 
-    Attributes (instance)
+    Attributes
     ----------
-    n_jobs : int
-        the number of jobs to parallelize training and prediction over
     model : RandomForestRegressor
         the underlying model on which to train and perform inference
     
     Parameters
     ----------
-    test_batch_size : Optional[int] (Default = 65536)
+    n_estimators : int, default=100
+        the number of trees in the forest
+    max_depth : Optional[int], default=8
+        the maximum depth of each decision tree
+    min_samples_leaf : int, default=1
+        the minimum samples required to assign a decision node as a leaf
+    model_seed : Optional[int], default=None
+        the random seed to use for model initialization
+    test_batch_size : Optional[int], default=32768)
         the size into which testing data should be batched
     """
+
     def __init__(self, n_estimators: int = 100, max_depth: Optional[int] = 8,
                  min_samples_leaf: int = 1,
-                 test_batch_size: Optional[int] = 65536,
+                 test_batch_size: Optional[int] = 32768,
                  model_seed: Optional[int] = None,
                  **kwargs):
-        test_batch_size = test_batch_size or 65536
+        test_batch_size = test_batch_size or 32768
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators, max_depth=max_depth,
@@ -77,13 +85,17 @@ class RFModel(Model):
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         X = np.vstack(xs)
-        preds = np.zeros((len(X), len(self.model.estimators_)))
+        predss = np.zeros((len(X), len(self.model.estimators_)))
 
-        with joblib.parallel_backend('ray'):
-            for j, submodel in enumerate(self.model.estimators_):
-                preds[:, j] = submodel.predict(xs)
+        # this code is not nearly as fast as just calling model.predict()
+        xs = ray.put(xs)
+        trees = [ray.put(tree) for tree in self.model.estimators_]
+        # trees = self.model.estimators_
+        refs = [_predict.remote(tree, xs) for tree in trees]
+        for j, ref in enumerate(refs):
+            predss[:, j] = ray.get(ref)
 
-        return np.mean(preds, axis=1), np.var(preds, axis=1)
+        return np.mean(predss, axis=1), np.var(predss, axis=1)
 
     def save(self, path) -> str:
         path = Path(path)
@@ -96,6 +108,10 @@ class RFModel(Model):
     
     def load(self, path):
         self.model = pickle.load(open(path, 'rb'))
+
+@ray.remote
+def _predict(tree, xs):
+    return tree.predict(xs)
 
 class GPModel(Model):
     """Gaussian process model

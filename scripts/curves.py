@@ -1,9 +1,10 @@
+import sys
+sys.path.append('../molpal')
+
 from argparse import ArgumentParser
 from collections import Counter
-import csv
-from functools import partial
-import gzip
 import heapq
+from itertools import repeat
 from pathlib import Path
 import sys
 from typing import Dict, Iterable, List, Tuple
@@ -11,85 +12,16 @@ from typing import Dict, Iterable, List, Tuple
 from matplotlib import pyplot as plt
 from matplotlib import ticker
 import numpy as np
-from scipy.stats import norm
 import seaborn as sns
 from tqdm import tqdm
 
-sys.path.append('..')
 from molpal.acquirer import metrics
-
-REPS = 1
+from utils import (
+    extract_smis, build_true_dict, chunk, read_scores,
+    style_axis, abbreviate_k_or_M
+)
 
 sns.set_theme(style='white', context='paper')
-
-palette = []
-for cmap in ('Purples', 'Reds', 'Greens', 'Blues', 'Oranges'):
-    palette.extend(sns.color_palette(cmap, REPS))
-
-sns.set_palette(palette)
-
-#-----------------------------------------------------------------------------#
-
-def extract_smis(library, smiles_col=0, title_line=True) -> List:
-    if Path(library).suffix == '.gz':
-        open_ = partial(gzip.open, mode='rt')
-    else:
-        open_ = open
-    
-    with open_(library) as fid:
-        reader = csv.reader(fid)
-        if title_line:
-            next(reader)
-
-        smis = []
-        for row in reader:
-            try:
-                smis.append(row[smiles_col])
-            except ValueError:
-                continue
-
-    return smis
-
-def build_true_dict(true_csv, smiles_col: int = 0, score_col: int = 1,
-                    title_line: bool = True,
-                    maximize: bool = False) -> Dict[str, float]:
-    if Path(true_csv).suffix == '.gz':
-        open_ = partial(gzip.open, mode='rt')
-    else:
-        open_ = open
-    
-    c = 1 if maximize else -1
-
-    with open_(true_csv) as fid:
-        reader = csv.reader(fid)
-        if title_line:
-            next(reader)
-
-        d_smi_score = {}
-        for row in reader:
-            try:
-                d_smi_score[row[smiles_col]] = c * float(row[score_col])
-            except ValueError:
-                continue
-
-    return d_smi_score
-
-def read_scores(scores_csv: str) -> Tuple[Dict, Dict]:
-    """read the scores contained in the file located at scores_csv"""
-    scores = {}
-    failures = {}
-    with open(scores_csv) as fid:
-        reader = csv.reader(fid)
-        next(reader)
-        for row in reader:
-            try:
-                scores[row[0]] = float(row[1])
-            except:
-                failures[row[0]] = None
-    
-    return scores, failures
-
-#-----------------------------------------------------------------------------#
 
 def gather_experiment_predss(experiment) -> Tuple[List, List]:
     chkpts_dir = Path(experiment) / 'chkpts'
@@ -97,8 +29,7 @@ def gather_experiment_predss(experiment) -> Tuple[List, List]:
     chkpt_iter_dirs = sorted(
         chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
     )[1:]
-    try:
-        # new way
+    try:                         # new way
         preds_npzs = [np.load(chkpt_iter_dir / 'preds.npz')
                       for chkpt_iter_dir in chkpt_iter_dirs]
         predss, varss = zip(*[
@@ -107,8 +38,7 @@ def gather_experiment_predss(experiment) -> Tuple[List, List]:
         ])
 
         return predss, varss
-    except FileNotFoundError:
-        # old way
+    except FileNotFoundError:   # old way
         predss = [np.load(chkpt_iter_dir / 'preds.npy')
                   for chkpt_iter_dir in chkpt_iter_dirs]
 
@@ -122,6 +52,7 @@ def calculate_utilties(
     Us = []
     explored = {}
 
+    # import pdb; pdb.set_trace()
     for Y_pred, Y_var, new_points in zip(Y_preds, Y_vars, new_points_by_epoch):
         explored.update(new_points)
         ys = list(explored.values())
@@ -129,8 +60,8 @@ def calculate_utilties(
         current_max = np.partition(Y, -k)[-k]
 
         Us.append(metrics.calc(
-            metric, Y_mean=Y_pred, Y_var=Y_var,
-            current_max=current_max, beta=beta, xi=xi,
+            metric, Y_pred, Y_var,
+            current_max, 0., beta, xi, False
         ))
 
     return Us
@@ -263,48 +194,39 @@ def reward_curve(
 
 #-----------------------------------------------------------------------------#
 
-def style_axis(ax):
-    ax.set_xlabel(f'Molecules sampled')
-    ax.set_xlim(left=0)
-    # ax.set_ylim(bottom=0)#, top=100)
-    ax.xaxis.set_major_locator(ticker.MaxNLocator(7))
-    ax.xaxis.set_tick_params(rotation=30)
-    ax.grid(True)
-
-def abbreviate_k_or_M(x: float, pos) -> str:
-    if x >= 1e6:
-        return f'{x*1e-6:0.1f}M'
-    if x >= 1e3:
-        return f'{x*1e-3:0.1f}k'
-
-    return f'{x:0.0f}'
-
-#-----------------------------------------------------------------------------#
-
-def plot_reward_curve(reward_curves: Iterable[np.ndarray],
-                      metrics: Iterable[str], bs: int, title: str):
+def plot_reward_curves(yss: Iterable[Iterable[np.ndarray]],
+                       labels: Iterable[str], bs: int, title: str):
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(4, 4))
     fmt = '-'
 
-    y_max = 0
-    for Y, metric in zip(reward_curves, metrics):
-        y_max = max(y_max, max(Y))
-        X = np.arange(len(Y)) + 1
-        ax.plot(X, Y, fmt, label=metric, alpha=0.9)
+    y_min, y_max = 0, 0
+    for ys, label in zip(yss, labels):
+        Y = np.stack(ys)
+        y_mean = Y.mean(axis=0)
+        y_sd = Y.std(axis=0)
 
-    n_iters = len(X) // bs
-    ax.vlines([bs * (i+1) for i in range(n_iters)], 0, y_max,
+        y_max = max(y_max, max(y_mean))
+        y_min = max(y_min, max(y_mean))
+
+        x = np.arange(len(y_mean)) + 1
+        ax.plot(x, y_mean, fmt, label=label, alpha=0.9)
+        if len(Y) >= 3:
+            ax.fill_between(x, y_mean-y_sd, y_mean+y_sd, alpha=0.3)
+
+    n_iters = len(x) // bs
+    ax.vlines([bs * (i+1) for i in range(n_iters)], y_min, y_max,
               color='r', ls='dashed', lw=0.5)
     formatter = ticker.FuncFormatter(abbreviate_k_or_M)
     ax.xaxis.set_major_formatter(formatter)
     style_axis(ax)
     ax.set_ylabel(title)
-    
-    # ax.legend(loc='upper left', title='Metric')
+    ax.legend(loc='lower right')
 
     fig.tight_layout()
 
     return fig
+
+#-----------------------------------------------------------------------------#
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -319,20 +241,24 @@ if __name__ == "__main__":
     parser.add_argument('--no-title-line', action='store_true', default=False)
     parser.add_argument('--maximize', action='store_true', default=False,
                         help='whether the objective for which you are calculating performance should be maximized.')
-    parser.add_argument('-m', '--metrics', nargs='+',
+    parser.add_argument('-m', '--metrics', nargs='+', default=repeat('greedy'),
                         help='the respective acquisition metric used for each experiment')
     parser.add_argument('-k', type=int,
                         help='')
     parser.add_argument('-N', type=int,
-                        help='the number of top scores from which to calculate performance')
+                        help='the number of top scores from which to calculate the reward')
     parser.add_argument('-r', '--reward',
                         choices=('scores', 'smis', 'top-k-ave', 'total-ave'),
                         help='the type of reward to calculate')
     parser.add_argument('--split', type=float, default=0.004,
                         help='the split size to plot when using model-metrics mode')
-    parser.add_argument('--names', nargs='+')
-    parser.add_argument('--labels', nargs='+')
-    
+    parser.add_argument('--reps', type=int, nargs='+',
+                        help='the number of reps for each configuration. I.e., you passed in the arguments: --expts e1_a e1_b e1_c e2_a e2_b where there are three reps of the first configuration and two reps of the seecond. In this case, you should pass in: --reps 3 2. By default, the program assumed each experiment is a unique configuration.')
+    parser.add_argument('--labels', nargs='+',
+                        help='the label of each trace on the plot. Will use the metric labels if not specified. NOTE: the labels correspond the number of different configurations. I.e., if you pass in the args: --expts e1_a e1_b e1_c --reps 3, you only need to specify one label: --labels l1')
+    parser.add_argument('--name',
+                        help='the filepath to which the plot should be saved')
+
     args = parser.parse_args()
     args.title_line = not args.no_title_line
 
@@ -357,7 +283,8 @@ if __name__ == "__main__":
             all_points_in_order, true_top_k, args.reward
         ))
 
-    
+    reward_curvess = chunk(reward_curves, args.reps or [])
+
     bs = int(args.split * len(smis))
     title = {
         'smis': f'Percentage of Top-{args.N} SMILES Found',
@@ -366,8 +293,8 @@ if __name__ == "__main__":
         'total-ave': f'Total average'
     }[args.reward]
 
-    fig = plot_reward_curve(
-        reward_curves, args.metrics, bs, title
-    ).savefig(args.names[0])
+    fig = plot_reward_curves(
+        reward_curvess, args.labels or args.metrics, bs, title
+    ).savefig(args.name)
 
     exit()

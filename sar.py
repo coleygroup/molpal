@@ -239,21 +239,22 @@ def distance_hist(
 
     return H, np.log10(H, where=H > 0)
 
-def compute_centroids(fps: Sequence, threshold: float = 0.65) -> Tuple:
+def compute_centroids(fps: Sequence, similarity: float = 0.35) -> Tuple:
+    distance = 1. - similarity
     lp = rdSimDivPickers.LeaderPicker()
-    idxs = list(lp.LazyBitVectorPick(fps, len(fps), threshold))
+    idxs = list(lp.LazyBitVectorPick(fps, len(fps), distance))
     return idxs, [fps[i] for i in idxs]
 
 def cluster_mols(fps: Sequence,
-                 threshold: float = 0.65) -> List[int]:
-    idxs, centroids = compute_centroids(fps, threshold)
+                 similarity: float = 0.35) -> List[int]:
+    idxs, centroids = compute_centroids(fps, similarity)
 
     cluster_ids = []
     for fp in fps:
-        T_d = 1. - np.array(DataStructs.BulkTanimotoSimilarity(fp, centroids))
+        T_cs = np.array(DataStructs.BulkTanimotoSimilarity(fp, centroids))
         # T_cs = np.array(T_cs)
 
-        i = np.argmin(T_d)
+        i = np.argmax(T_cs)
         cid = idxs[i]
         cluster_ids.append(cid)
     
@@ -290,7 +291,7 @@ def main():
     parser.add_argument('--bins', type=int, default=50)
     parser.add_argument('--log', action='store_true', default=False)
     parser.add_argument('--two-d', action='store_true', default=False)
-    parser.add_argument('-t', '--threshold', type=float, default=0.65)
+    parser.add_argument('--similarity', type=float, default=0.35)
     parser.add_argument('--min-dist', type=float, default=0.1)
 
     args = parser.parse_args()
@@ -390,7 +391,7 @@ def main():
         exit()
 
     elif args.mode == 'cluster':
-        cids = cluster_mols(fps, args.threshold)
+        cids = cluster_mols(fps, args.similarity)
         d_cid_size = Counter(cids)
 
         sizes = list(d_cid_size.values())
@@ -398,7 +399,7 @@ def main():
         bins = np.arange(1, max(sizes)+1)
 
         fig, axs = plt.subplots(2, 1, sharex=True)
-        fig.suptitle(f'Cluster sizes in {args.name} {top} (t={args.threshold})')
+        fig.suptitle(f'Cluster sizes in {args.name} {top} (s={args.similarity})')
 
         axs[0].hist(sizes, bins=bins)
 
@@ -412,8 +413,13 @@ def main():
             ax.grid(True, which='both', axis='x',)
 
         plt.tight_layout()
-        t = f'{args.threshold}'.lstrip('0.')
+        t = f'{args.similarity}'.lstrip('0.')
         fig.savefig(f'{fig_dir}/{top}_t{t}.png')
+
+        print(sum(sizes))
+
+        name = input('Figure name: ')
+        fig.savefig(f'figures/poster/{name}.pdf')
 
         exit()
 
@@ -445,7 +451,7 @@ def main():
         exit()
 
     elif args.mode == 'cluster+umap':
-        cids = cluster_mols(fps, args.threshold)
+        cids = cluster_mols(fps, args.similarity)
         U = reduce_fps(fps, args.length, args.k, args.min_dist)
 
         d_cid_size = Counter(cids)
@@ -465,13 +471,13 @@ def main():
 
         plt.tight_layout()
 
-        t = f'{args.threshold}'.lstrip('0.')
-        fig.savefig(f'{fig_dir}/{top}_{args.k}NN_t{t}.png')
+        t = f'{args.similarity}'.lstrip('0.')
+        fig.savefig(f'{fig_dir}/{top}_{args.k}NN_t{t}.pdf')
     
         exit()
 
     elif args.mode == 'cluster+viz':
-        cids = cluster_mols(fps, args.threshold)
+        cids = cluster_mols(fps, args.similarity)
         d_cid_size = Counter(cids)
 
         smis_all, scores_all = list(zip(*d_smi_score.items()))
@@ -502,8 +508,8 @@ def main():
             # print(legends)
             plot = Draw.MolsToGridImage(mols_, legends=legends)
 
-            t = f'{args.threshold}'.lstrip('0.')
-            plot.save(f'{fig_dir}/t{t}_minsize{SIZE}_{j}.png')
+            t = f'{args.similarity}'.lstrip('0.')
+            plot.save(f'{fig_dir}/s{t}_minsize{SIZE}_{j}.pdf')
             
             j += 1
             sizes.append(len(mols_))

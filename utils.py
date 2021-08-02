@@ -16,7 +16,7 @@ U = TypeVar('U')
 
 if not ray.is_initialized():
     try:
-        ray.init('auto')
+        ray.init(address='auto')
     except ConnectionError:
         ray.init(num_cpus=len(os.sched_getaffinity(0)))
 

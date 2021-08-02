@@ -53,8 +53,8 @@ def main():
     try:
         explorer.run()
     except BaseException:
-        state_file = explorer.save()
-        print(f'Exception raised! Intemediate state saved to "{state_file}"')
+        # state_file = explorer.save()
+        # print(f'Exception raised! Intemediate state saved to "{state_file}"')
         raise
     stop = time()
 

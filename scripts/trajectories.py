@@ -2,13 +2,10 @@ from argparse import ArgumentParser
 from collections import Counter, defaultdict
 import csv
 from itertools import islice
-import math
 from operator import itemgetter
 from pathlib import Path
 import pickle
-import pprint
-from timeit import default_timer
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Iterable, List, Set, Tuple
 
 from matplotlib import pyplot as plt
 from matplotlib import ticker
@@ -18,19 +15,6 @@ import seaborn as sns
 from tqdm import tqdm
 
 sns.set_theme(style='white', context='paper')
-
-METRICS = ['greedy', 'ucb', 'ts', 'ei', 'pi']
-METRIC_NAMES = {'greedy': 'greedy', 'ucb': 'UCB', 'ts': 'TS',
-                'ei': 'EI', 'pi': 'PI'}
-METRIC_COLORS = dict(zip(METRICS, sns.color_palette('bright')))
-
-MODELS = ['rf', 'nn', 'mpn']
-MODEL_COLORS = dict(zip(MODELS, sns.color_palette('dark')))
-
-SPLITS = [0.004, 0.002, 0.001]
-
-DASHES = ['dash', 'dot', 'dashdot']
-MARKERS = ['circle', 'square', 'diamond']
 
 def recursive_conversion(nested_dict):
     if not isinstance(nested_dict, defaultdict):
@@ -121,18 +105,16 @@ def gather_run_results(
         found = read_data(it_data, N, maximize)
         d_it_results[it] = calculate_rewards(found, true_data)
 
-    return [d_it_results[it] for it in sorted(d_it_results.keys())]
+    return [(d_it_results[it]) for it in sorted(d_it_results.keys())]
 
 def gather_metric_results(metric, true_data, N, maximize: bool = False):
-    resultss = [
+    rep_results = np.array([
         gather_run_results(rep, true_data, N, maximize)
         for rep in tqdm(metric.iterdir(), 'Reps', None, False)
-    ]
-    resultss = [results for results in resultss if len(results) == 6]
-    resultss = np.array(resultss)
+    ])
 
-    means = np.mean(resultss, axis=0)
-    sds = np.sqrt(np.var(resultss, axis=0))
+    means = np.mean(rep_results, axis=0)
+    sds = np.sqrt(np.var(rep_results, axis=0))
 
     return {
         'avg': list(zip(means[:, 0].tolist(), sds[:, 0].tolist())),
@@ -185,10 +167,23 @@ def gather_all_rewards(parent_dir, true_data, N: int,
 #------------------------------------------------------------------------------#
 ################################################################################
 
+METRICS = ['greedy', 'ucb', 'ts', 'ei', 'pi']
+METRIC_NAMES = {'greedy': 'greedy', 'ucb': 'UCB', 'ts': 'TS',
+                'ei': 'EI', 'pi': 'PI'}
+METRIC_COLORS = dict(zip(METRICS, sns.color_palette('bright')))
+
+MODELS = ['rf', 'nn', 'mpn']
+MODEL_COLORS = dict(zip(MODELS, sns.color_palette('dark')))
+
+SPLITS = [0.004, 0.002, 0.001]
+
+DASHES = ['dash', 'dot', 'dashdot']
+MARKERS = ['circle', 'square', 'diamond']
+
 def style_axis(ax):
     ax.set_xlabel(f'Molecules explored')
     ax.set_xlim(left=0)
-    # ax.set_ylim(bottom=0, top=100)
+    ax.set_ylim(bottom=0, top=100)
     ax.xaxis.set_major_locator(ticker.MaxNLocator(7))
     ax.xaxis.set_tick_params(rotation=30)
     ax.grid(True)
@@ -216,9 +211,6 @@ def plot_model_metrics(
         
     for i, (model, ax) in enumerate(zip(MODELS, axs)):
         for metric in METRICS:
-            if metric not in results['retrain'][split][model]:
-                continue
-
             if metric == 'greedy':
                 metric_ = metric
             elif metric == 'thompson':
@@ -286,9 +278,6 @@ def plot_split_models(
         xs = [int(size*split * i) for i in range(1, 7)]
 
         for model in MODELS:
-            if model not in results['retrain'][split]:
-                continue
-            
             if model == 'random':
                 continue
 
@@ -322,14 +311,9 @@ def plot_split_models(
 
 def plot_split_metrics(
         results, size: int, N: int,
-        model: str = 'mpn', reward='scores', split = None
+        model: str = 'rf', reward='scores'
     ):
-    if split:
-        fig, ax = plt.subplots(1, 1, sharey=True, figsize=(4/1.5 * 1, 4))
-        axs = [ax]
-        SPLITS = [split]
-    else:
-        fig, axs = plt.subplots(1, 3, sharey=True, figsize=(4/1.5 * 3, 4))
+    fig, axs = plt.subplots(1, 3, sharey=True, figsize=(4/1.5 * 3, 4))
 
     fmt = 'o-'
     ms = 5
@@ -360,9 +344,6 @@ def plot_split_metrics(
                 xs, ys, yerr=y_sds, color=METRIC_COLORS[metric],
                 fmt=fmt, ms=ms, mec='black', capsize=capsize,
                 label=metric_
-            )
-            ax.annotate(
-                f'{ys[-1]:0.1f}', (xs[-1],ys[-1])
             )
         
         add_random_trace(ax, results, split, reward, xs, fmt, ms, capsize)
@@ -460,6 +441,42 @@ def plot_single_batch(
     fig.tight_layout()
     return fig
 
+def plot_singles(
+        results, size: int, N: int, split: float,
+        model: str = 'mpn', metric: str = 'greedy', reward='scores'
+    ):
+    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(4, 4))
+
+    colors = sns.color_palette('Greens', len(results['retrain']))
+    ms = 5
+    capsize = 2
+    
+    for i, split_ in enumerate(results['retrain']):
+        xs = [int(size*split_), int(size*split_)+int(size*split)]
+
+        ys, y_sds = zip(*results['retrain'][split_][model][metric][reward])
+        ys = [y*100 for y in ys]
+        y_sds = [y*100 for y in y_sds]
+
+        if len(xs) != len(ys):
+            continue
+
+        ax.errorbar(
+            xs, ys, yerr=y_sds, fmt='o-', color=colors[i], 
+            ms=ms, mec='black', capsize=capsize, label=split_
+        )
+
+    ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
+    ax.legend(loc='upper left', title='Init fraction')
+
+    style_axis(ax)
+
+    formatter = ticker.FuncFormatter(abbreviate_k_or_M)
+    ax.xaxis.set_major_formatter(formatter)
+
+    fig.tight_layout()
+    return fig
+
 def plot_convergence(
         results, size: int, N: int, metric: str = 'greedy', reward='scores'
     ):
@@ -471,9 +488,6 @@ def plot_convergence(
     split = 0.001        
 
     for model in MODELS:
-        if model not in results['retrain'][split]:
-            continue
-
         ys, y_sds = zip(*results['retrain'][split][model][metric][reward])
         ys = [y*100 for y in ys]
         y_sds = [y*100 for y in y_sds]
@@ -496,30 +510,18 @@ def plot_convergence(
     fig.tight_layout()
     return fig
 
-################################################################################
-#------------------------------------------------------------------------------#
-################################################################################
-
 def write_csv(rewards, split):
     results_df = []
-    for training in rewards:
-        for model in rewards[training][split]:
-            if model == 'random':
-                scores = rewards[training][split][model]['scores'][-1]
-                smis = rewards[training][split][model]['smis'][-1]
-                avg = rewards[training][split][model]['avg'][-1]
 
-                random_results = {
-                    'Training': training,
-                    'Model': 'random',
-                    'Metric': 'random',
-                    'Scores ($\pm$ s.d.)': f'{100*scores[0]:0.1f} ({100*scores[1]:0.1f})',
-                    'SMILES ($\pm$ s.d.)': f'{100*smis[0]:0.1f} ({100*smis[1]:0.1f})',
-                    'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
-                }
+    for training in ('online', 'retrain'):
+        for model in MODELS:
+            if model not in rewards[training][split]:
                 continue
 
-            for metric in rewards[training][split][model]:
+            for metric in METRICS:
+                if metric not in rewards[training][split][model]:
+                    continue
+
                 if metric == 'greedy':
                     metric_ = metric
                 elif metric == 'thompson':
@@ -540,17 +542,38 @@ def write_csv(rewards, split):
                     'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
                 })
 
-    try:
+    if 'random' in rewards['online'][split]:
+        scores = rewards['online'][split]['random']['scores'][-1]
+        smis = rewards['online'][split]['random']['smis'][-1]
+        avg = rewards['online'][split]['random']['avg'][-1]
+
+        random_results = {
+            'Training': 'random',
+            'Model': 'random',
+            'Metric': 'random',
+            'Scores ($\pm$ s.d.)': f'{100*scores[0]:0.1f} ({100*scores[1]:0.1f})',
+            'SMILES ($\pm$ s.d.)': f'{100*smis[0]:0.1f} ({100*smis[1]:0.1f})',
+            'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
+        }
         results_df.append(random_results)
-    except UnboundLocalError:
-        pass
+    elif 'random' in rewards['retrain'][split]:
+        scores = rewards['retrain'][split]['random']['scores'][-1]
+        smis = rewards['retrain'][split]['random']['smis'][-1]
+        avg = rewards['retrain'][split]['random']['avg'][-1]
+
+        random_results = {
+            'Training': 'random',
+            'Model': 'random',
+            'Metric': 'random',
+            'Scores ($\pm$ s.d.)': f'{100*scores[0]:0.1f} ({100*scores[1]:0.1f})',
+            'SMILES ($\pm$ s.d.)': f'{100*smis[0]:0.1f} ({100*smis[1]:0.1f})',
+            'Average ($\pm$ s.d.)': f'{100*avg[0]:0.2f} ({100*avg[1]:0.2f})'
+        }
+        results_df.append(random_results)
 
     df = pd.DataFrame(results_df).set_index(['Training', 'Model', 'Metric'])
-    return df
 
-################################################################################
-#------------------------------------------------------------------------------#
-################################################################################
+    return df
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -566,11 +589,16 @@ if __name__ == "__main__":
     parser.add_argument('--score-col', type=int, default=1)
     parser.add_argument('-N', type=int,
                         help='the number of top scores from which to calculate perforamnce')
-    parser.add_argument('--split', type=float,
-                        help='the split size for which to generate the set of plots')
+    parser.add_argument('--split', type=float, default=0.004,
+                        help='the split size to plot when using model-metrics mode')
+    parser.add_argument('--model', default='mpn',
+                        help='the model class to plot when using split-metrics mode')
+    parser.add_argument('--metric', default='greedy',
+                        help='the metric to plot when use split-models mode')
     parser.add_argument('--mode', required=True,
                         choices=('model-metrics', 'split-models', 
-                                 'split-metrics', 'si', 'single-batch', 'convergence', 'csv', 'errors', 
+                                 'split-metrics', 'si', 'single-batch', 'singles',
+                                 'convergence', 'csv', 'errors', 
                                  'diversity', 'intersection'),
                         help='what figure to generate. For "x-y" modes, this corresponds to the figure structure, where there will be a separate panel for each "x" and in each panel there will be traces corresponding to each independent "y". E.g., "model-metrics" makes a figure with three sepearate panels, one for each model and inside each panel a trace for each metric. "si" will make the trajectory plots present in the SI.')
     # parser.add_argument('--name', default='.')
@@ -596,7 +624,7 @@ if __name__ == "__main__":
         true_data = true_data[:args.N]
 
     if args.mode in ('model-metrics', 'split-models',
-                     'split-metrics', 'si',
+                     'split-metrics', 'si', 'singles',
                      'single-batch', 'convergence', 'csv'):
         results = gather_all_rewards(
             args.parent_dir, true_data, args.N, args.overwrite, args.maximize
@@ -608,30 +636,30 @@ if __name__ == "__main__":
         )
 
         name = input('Figure name: ')
-        fig.savefig(f'figures/updates/{name}.pdf')
+        fig.savefig(f'paper/figures/{name}.pdf')
 
     elif args.mode == 'split-models':
         fig = plot_split_models(
-            results, size, args.N, 'greedy', 'scores'
+            results, size, args.N, args.metric, 'scores'
         )
 
         name = input('Figure name: ')
-        fig.savefig(f'figures/updates/{name}.pdf')
+        fig.savefig(f'paper/figures/{name}.pdf')
     
     elif args.mode == 'split-metrics':
         fig = plot_split_metrics(
-            results, size, args.N, 'mpn', 'scores', args.split
+            results, size, args.N, args.model, 'scores'
         )
 
         name = input('Figure name: ')
-        fig.savefig(f'figures/updates/{name}.pdf')
+        fig.savefig(f'paper/figures/{name}.pdf')
 
     elif args.mode == 'si':
         fig = plot_model_metrics(
             results, size, args.N, args.split, 'scores', True
         )
         name = input('Figure name: ')
-        fig.savefig(f'figures/updates/{name}.pdf')
+        fig.savefig(f'paper/figures/{name}.pdf')
 
     elif args.mode == 'csv':
         df = write_csv(results, args.split)
@@ -652,6 +680,18 @@ if __name__ == "__main__":
         name = input('Figure name: ')
         fig.savefig(f'paper/figures/{name}.pdf')
     
+    elif args.mode == 'singles':
+        # single_batch_results = gather_all_rewards(
+        #     args.parent_dir_sb, true_data, args.N,
+        #     args.overwrite, args.maximize
+        # )
+        fig = plot_singles(
+            results, size, args.N, args.split, 'mpn', 'greedy', 'scores'
+        )
+
+        name = input('Figure name: ')
+        fig.savefig(f'paper/figures/{name}.pdf')
+
     elif args.mode == 'convergence':
         fig = plot_convergence(results, size, args.N, 'greedy', 'scores')
 

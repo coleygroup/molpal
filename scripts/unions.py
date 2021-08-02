@@ -167,46 +167,6 @@ def abbreviate_k_or_M(x: float, pos) -> str:
 
     return f'{x:0.0f}'
 
-def plot_unions(results, size, metric: str = 'greedy'):
-    fig, axs = plt.subplots(1, 3, sharey=True, figsize=(4/1.5 * 3, 4))
-
-    fmt = 'o-'
-    ms = 5
-
-    for i, (split, ax) in enumerate(zip(SPLITS, axs)):
-        xs = [int(size*split * i) for i in range(1, 7)]
-
-        add_bounds(ax, xs)
-        add_random(ax, xs, results, split, fmt, ms)
-
-        for model in MODELS:
-            if model not in results['retrain'][split]:
-                continue
-            ys = results['retrain'][split][model][metric]
-            ax.plot(
-                xs, ys, fmt, color=MODEL_COLORS[model],
-                label=model.upper(), ms=ms, mec='black'
-            )
-
-        ax.set_title(f'{split*100:0.1f}%')
-        if i == 0:
-            ax.set_ylabel(f'Total Number of Unique SMILES')
-            ax.legend(loc=(0.077, 0.62), title='Model')
-
-        ax.set_xlabel(f'Molecules explored')
-        ax.set_xlim(left=0)
-        ax.xaxis.set_major_locator(ticker.MaxNLocator(7))
-        ax.xaxis.set_tick_params(rotation=30)
-
-        formatter = ticker.FuncFormatter(abbreviate_k_or_M)
-        ax.xaxis.set_major_formatter(formatter)
-        ax.yaxis.set_major_formatter(formatter)
-
-        ax.grid(True)
-    
-    fig.tight_layout()
-    return fig
-
 def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
     fig, axs = plt.subplots(1, 2, figsize=(4/1.5 * 2, 4))
 
@@ -223,8 +183,6 @@ def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
         size = sizes[i]
 
         xs = [int(size*split * i) for i in range(1, 7)]
-        add_bounds(ax, xs)
-        add_random(ax, xs, results, split, fmt, ms)
 
         for model in MODELS:
             if model not in results['retrain'][split]:
@@ -235,10 +193,13 @@ def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
                 label=model.upper(), ms=ms, mec='black'
             )
         
+        add_bounds(ax, xs)
+        add_random(ax, xs, results, split, fmt, ms)
+        
         ax.set_title(titles[i])
         if i == 0:
             ax.set_ylabel(f'Total Number of Unique SMILES')
-            ax.legend(loc=(0.077, 0.62), title='Model')
+            ax.legend(loc='upper left', title='Model')
 
         ax.set_xlabel(f'Molecules explored')
         ax.set_xlim(left=0)
@@ -246,6 +207,84 @@ def plot_unions_10k50k(results_10k, results_50k, metric: str = 'greedy'):
         ax.xaxis.set_tick_params(rotation=30)
 
         ax.grid(True)
+    
+    fig.tight_layout()
+    return fig
+
+def plot_unions_HTS(results, size, metric: str = 'greedy'):
+    fig, axs = plt.subplots(1, 3, sharey=True, figsize=(4/1.5 * 3, 4))
+
+    fmt = 'o-'
+    ms = 5
+
+    for i, (split, ax) in enumerate(zip(SPLITS, axs)):
+        xs = [int(size*split * i) for i in range(1, 7)]
+
+        for model in MODELS:
+            if model not in results['retrain'][split]:
+                continue
+            ys = results['retrain'][split][model][metric]
+            ax.plot(
+                xs, ys, fmt, color=MODEL_COLORS[model],
+                label=model.upper(), ms=ms, mec='black'
+            )
+
+        add_bounds(ax, xs)
+        add_random(ax, xs, results, split, fmt, ms)
+
+        ax.set_title(f'{split*100:0.1f}%')
+        if i == 0:
+            ax.set_ylabel(f'Total Number of Unique SMILES')
+            ax.legend(loc='upper left', title='Model')
+
+        ax.set_xlabel(f'Molecules explored')
+        ax.set_xlim(left=0)
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(7))
+        ax.xaxis.set_tick_params(rotation=30)
+
+        formatter = ticker.FuncFormatter(abbreviate_k_or_M)
+        ax.xaxis.set_major_formatter(formatter)
+        ax.yaxis.set_major_formatter(formatter)
+
+        ax.grid(True)
+    
+    fig.tight_layout()
+    return fig
+
+def plot_unions_single(results, size,
+                       split: float = 0.004, metric: str = 'greedy'):
+    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(4/1.5, 4))
+
+    fmt = 'o-'
+    ms = 5
+
+    xs = [int(size*split * i) for i in range(1, 7)]
+
+    for model in MODELS:
+        if model not in results['retrain'][split]:
+            continue
+        ys = results['retrain'][split][model][metric]
+        ax.plot(
+            xs, ys, fmt, color=MODEL_COLORS[model],
+            label=model.upper(), ms=ms, mec='black'
+        )
+
+    add_bounds(ax, xs)
+    add_random(ax, xs, results, split, fmt, ms)
+
+    ax.set_ylabel(f'Total Number of Unique SMILES')
+    ax.legend(loc='upper left', title='Model')
+
+    ax.set_xlabel(f'Molecules explored')
+    ax.set_xlim(left=0)
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(7))
+    ax.xaxis.set_tick_params(rotation=30)
+
+    formatter = ticker.FuncFormatter(abbreviate_k_or_M)
+    ax.xaxis.set_major_formatter(formatter)
+    ax.yaxis.set_major_formatter(formatter)
+
+    ax.grid(True)
     
     fig.tight_layout()
     return fig
@@ -279,8 +318,10 @@ if __name__ == "__main__":
     parser.add_argument('--parent-dir-50k',
                         help='the parent directory of the 50k data to make the union plot of the 10k and 50k data')
     parser.add_argument('--mode', required=True,
-                        choices=('HTS', '10k50k'),
+                        choices=('10k50k', 'HTS', 'HTS-single'),
                         help='what union figure to generate')
+    parser.add_argument('--split', type=float, default=0.004,
+                        help='which metric to plot union data for')
     parser.add_argument('--metric', choices=METRICS, default='greedy',
                         help='which metric to plot union data for')
     # parser.add_argument('--name', default='.')
@@ -295,17 +336,24 @@ if __name__ == "__main__":
         true_data = pickle.load(open(args.true_pkl, 'rb'))
     size = args.size or len(true_data)
 
-    if args.mode == 'HTS':
-        results = gather_smis_unions(args.parent_dir, args.overwrite)
-        fig = plot_unions(results, size, args.metric)
+    if args.mode == '10k50k':
+        results_10k = gather_smis_unions(args.parent_dir_10k, args.overwrite)
+        results_50k = gather_smis_unions(args.parent_dir_50k, args.overwrite)
+        fig = plot_unions_10k50k(results_10k, results_50k, args.metric)
 
         name = input('Figure name: ')
         fig.savefig(f'paper/figures/{name}.pdf')
 
-    elif args.mode == '10k50k':
-        results_10k = gather_smis_unions(args.parent_dir_10k, args.overwrite)
-        results_50k = gather_smis_unions(args.parent_dir_50k, args.overwrite)
-        fig = plot_unions_10k50k(results_10k, results_50k, args.metric)
+    elif args.mode == 'HTS':
+        results = gather_smis_unions(args.parent_dir, args.overwrite)
+        fig = plot_unions_HTS(results, size, args.metric)
+
+        name = input('Figure name: ')
+        fig.savefig(f'paper/figures/{name}.pdf')
+    
+    elif args.mode == 'HTS-single':
+        results = gather_smis_unions(args.parent_dir, args.overwrite)
+        fig = plot_unions_single(results, size, args.split, args.metric)
 
         name = input('Figure name: ')
         fig.savefig(f'paper/figures/{name}.pdf')

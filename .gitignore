@@ -21,7 +21,16 @@
 *.ipynb
 *.batch
 *.png
-
+*.pkl
+*.json
+*/chkpts/*
+*.sh
+*.npy
+*.ini
+*~
+*.pdf
+*.png
 
 .DS_Store*
 .ipynb_checkpoints*
+lightning_logs
