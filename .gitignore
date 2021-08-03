@@ -28,3 +28,4 @@ config_local
 scripts/distance.py
 fps_umap.py
 molpal_umap.py
+lightning_logs
