@@ -43,11 +43,12 @@ class Acquirer:
     Parameters
     ----------
     size : int
-    init_size : Union[int, float] (Default = 0.02)
+    init_size : Union[int, float] (Default = 0.01)
         the number of ligands or fraction of the pool to acquire initially.
-    batch_size : Union[int, float] (Default = 0.02)
-        the number of ligands or fraction of the pool to acquire
-        in each batch
+    batch_sizes : Iterable[Union[int, float]] (Default = [0.01])
+        the number of inputs or fraction of the pool to acquire in each
+        successive batch. Will successively use each value in the list after
+        each call to acquire_batch(), repeating the final value as necessary.
     metric : str (Default = 'greedy')
     epsilon : float (Default = 0.)
     temp_i : Optional[float] (Default = None)
@@ -63,7 +64,7 @@ class Acquirer:
     """
     def __init__(self, size: int,
                  init_size: Union[int, float] = 0.01,
-                 batch_size: Union[int, float] = 0.01,
+                 batch_sizes: Iterable[Union[int, float]] = [0.01],
                  metric: str = 'greedy',
                  epsilon: float = 0., beta: int = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
@@ -71,7 +72,8 @@ class Acquirer:
                  seed: Optional[int] = None, verbose: int = 0, **kwargs):
         self.size = size
         self.init_size = init_size
-        self.batch_size = batch_size
+        self.batch_sizes = batch_sizes
+        # self.batch_size = next(self.batch_sizes)
 
         self.metric = metric
         self.stochastic_preds = False
@@ -101,37 +103,36 @@ class Acquirer:
     
     @property
     def init_size(self) -> int:
-        """int : the number of inputs to acquire initially"""
-        if isinstance(self.__init_size, float):
-            return math.ceil(self.size * self.__init_size)
-
+        """the number of inputs to acquire initially"""
         return self.__init_size
     
     @init_size.setter
     def init_size(self, init_size: Union[int, float]):
-        if isinstance(init_size, float) and (init_size < 0 or init_size > 1):
-            raise ValueError(f'init_size(={init_size} must be in [0, 1]')
+        if isinstance(init_size, float):
+            if init_size < 0 or init_size > 1:
+                raise ValueError(f'init_size(={init_size} must be in [0, 1]')
+            init_size = math.ceil(self.size * init_size)
         if init_size < 0:
             raise ValueError(f'init_size(={init_size}) must be positive')
 
         self.__init_size = init_size
 
     @property
-    def batch_size(self) -> int:
-        """int : the number of inputs to acquire in each batch"""
-        if isinstance(self.__batch_size, float):
-            return math.ceil(self.size * self.__batch_size)
-
-        return self.__batch_size
+    def batch_sizes(self) -> List[int]:
+        """the number of inputs to acquire in exploration batch"""
+        return self.__batch_sizes
     
-    @batch_size.setter
-    def batch_size(self, batch_size: Union[int, float]):
-        if isinstance(batch_size, float) and (batch_size < 0 or batch_size > 1):
-            raise ValueError(f'batch_size(={batch_size} must be in [0, 1]')
-        if batch_size < 0:
-            raise ValueError(f'batch_size(={batch_size} must be positive')
+    @batch_sizes.setter
+    def batch_sizes(self, batch_sizes: Iterable[Union[int, float]]):
+        self.__batch_sizes = [bs for bs in batch_sizes]
 
-        self.__batch_size = batch_size
+        for i, bs in enumerate(self.__batch_sizes):
+            if isinstance(bs, float):
+                if bs < 0 or bs > 1:
+                    raise ValueError(f'batch_size(={bs} must be in [0, 1]')
+                self.__batch_sizes[i] = math.ceil(self.size * bs)
+            if bs < 0:
+                raise ValueError(f'batch_size(={bs} must be positive')
 
     def acquire_initial(self, xs: Iterable[T],
                         cluster_ids: Optional[Iterable[int]] = None,
@@ -188,10 +189,10 @@ class Acquirer:
 
     def acquire_batch(self, xs: Iterable[T],
                       y_means: Iterable[float], y_vars: Iterable[float],
-                      explored: Optional[Mapping] = None,
+                      explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
-                      epoch: Optional[int] = None, **kwargs) -> List[T]:
+                      t: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
 
         Parameters
@@ -204,12 +205,15 @@ class Acquirer:
             the variances of the predicted input values
         explored : Mapping[T, float] (Default = {})
             the set of explored inputs and their associated scores
+        k : int, default=1
+            the number of top-scoring compounds we are searching for. By
+            default, assume we're looking for only the top-1 compound
         cluster_ids : Optional[Iterable[int]] (Default = None)
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
-        epoch : Optional[int] (Default = None)
-            the current epoch of batch acquisition
+        t : Optional[int] (Default = None)
+            the current iteration of batch acquisition
         is_random : bool (Default = False)
             are the y_means generated through stochastic methods?
 
@@ -219,14 +223,21 @@ class Acquirer:
             a list of selected inputs
         """
         if explored:
-            try:
-                current_max = max(y for y in explored.values() if y is not None)
-            except ValueError:
-                # all None values case
-                current_max = float('-inf')
+            ys = list(explored.values())
+            Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
+            current_max = np.partition(Y, -k)[-k]
+            # try:
+            #     current_max = max(y for y in explored.values() if y is not None)
+            # except ValueError:
+            #     current_max = float('-inf')
         else:
             explored = {}
             current_max = float('-inf')
+
+        try:
+            batch_size = self.batch_sizes[t]
+        except IndexError:
+            batch_size = self.batch_sizes[-1]
 
         begin = default_timer()
 
@@ -244,7 +255,7 @@ class Acquirer:
 
         idxs = np.random.choice(
             np.arange(U.size), replace=False,
-            size=int(self.batch_size * self.epsilon)
+            size=int(batch_size * self.epsilon)
         )
         U[idxs] = np.inf
 
@@ -256,14 +267,12 @@ class Acquirer:
             print(f'      Utility calculation took {mins}m {secs}s')
         
         if cluster_ids is None and cluster_sizes is None:
-            # unclustered acquisition maintains one heap that pushes
-            # inputs on based on their utility
             heap = []
             for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
                 if x in explored:
                     continue
 
-                if len(heap) < self.batch_size:
+                if len(heap) < batch_size:
                     heapq.heappush(heap, (u, x))
                 else:
                     heapq.heappushpop(heap, (u, x))
@@ -271,10 +280,8 @@ class Acquirer:
             # this is broken for e-greedy/pi/etc. approaches
             # the random indices are not distributed evenly amongst clusters
 
-            # clustered acquisition maintains o independent heaps that
-            # operate similarly to the above
             d_cid_heap = {
-                cid: ([], math.ceil(self.batch_size * cluster_size/U.size))
+                cid: ([], math.ceil(batch_size * cluster_size/U.size))
                 for cid, cluster_size in cluster_sizes.items()
             }
 
@@ -295,7 +302,7 @@ class Acquirer:
 
             if self.temp_i and self.temp_f:
                 d_cid_heap = self._scale_heaps(
-                    d_cid_heap, global_pred_max, epoch,
+                    d_cid_heap, global_pred_max, t,
                     self.temp_i, self.temp_f
                 )
 
@@ -312,14 +319,14 @@ class Acquirer:
         return [x for _, x in heap]
 
     def _scale_heaps(self, d_cid_heap: Dict[int, List],
-                     pred_global_max: float, epoch: int,
+                     pred_global_max: float, t: int,
                      temp_i: float, temp_f: float):
         """Scale each heap's size based on a decay factor
 
         The decay factor is calculated by an exponential decay based on the
         difference between a given heap's local maximum and the predicted
         global maximum then scaled by the current temperature. The temperature
-        is in turn an exponential decay based on the current epoch starting at 
+        is also an exponential decay based on the current iteration starting at 
         the initial temperature and approaching the final temperature.
 
         Parameters
@@ -329,7 +336,7 @@ class Acquirer:
             acquire from that cluster
         pred_global_max : float
             the predicted maximum value of the objective function
-        epoch : int
+        t : int
             the current iteration of acquisition
         temp_i : float
             the initial temperature of the system
@@ -341,13 +348,12 @@ class Acquirer:
         d_cid_heap
             the original mapping scaled down by the calculated decay factor
         """
-        temp = self._calc_temp(epoch, temp_i, temp_f)
+        temp = self._calc_temp(t, temp_i, temp_f)
 
         for cid, (heap, heap_size) in d_cid_heap.items():
             if len(heap) == 0:
                 continue
 
-            # get the largest non-infinity value
             pred_local_max = max(
                 heap, key=lambda yx: -1 if math.isinf(yx[0]) else yx[0]
             )
@@ -361,9 +367,9 @@ class Acquirer:
         return d_cid_heap
 
     @classmethod
-    def _calc_temp(cls, epoch: int, temp_i, temp_f) -> float:
+    def _calc_temp(cls, t: int, temp_i, temp_f) -> float:
         """Calculate the temperature of the system"""
-        return temp_i * math.exp(-epoch/0.75) + temp_f
+        return temp_i * math.exp(-t/0.75) + temp_f
 
     @classmethod
     def _calc_decay(cls, global_max: float, local_max: float,

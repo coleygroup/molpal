@@ -17,9 +17,12 @@
 *.batch
 *.hdf5
 *.npy
+*.npz
 *.h5
 *.png
 *.pdf
+*.json
+*.ini
 
 .vscode/
 .DS_Store
@@ -28,3 +31,4 @@ config_local
 scripts/distance.py
 fps_umap.py
 molpal_umap.py
+lightning_logs

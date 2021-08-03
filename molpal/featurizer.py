@@ -1,6 +1,7 @@
 """This module contains the Encoder ABC and various implementations thereof.
 Encoders transform input representations into (un)compressed representations
 for use with clustering and model training/prediction."""
+
 from dataclasses import dataclass
 from itertools import chain, islice
 import math
