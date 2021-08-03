@@ -89,14 +89,15 @@ def get_new_points_by_epoch(experiment) -> List[Dict]:
     return new_points_by_epoch
 
 def get_all_points_in_order(experiment: str, metric: str,
-                            d_smi_idx: Dict) -> Tuple[int, List]:
+                            d_smi_idx: Dict, k: int) -> Tuple[int, List]:
     """Get all points acquired during a MolPAL run in the order in which they
     were acquired as well as the initialization batch size"""
     new_points_by_epoch = get_new_points_by_epoch(experiment)
     init_size = len(new_points_by_epoch[0])
 
+    # import pdb; pdb.set_trace()
     Y_preds, Y_vars = gather_experiment_predss(experiment)
-    Us = calculate_utilties(metric, Y_preds, Y_vars, new_points_by_epoch)
+    Us = calculate_utilties(metric, Y_preds, Y_vars, new_points_by_epoch, k)
 
     all_points_in_order = []
     all_points_in_order.extend(new_points_by_epoch[0].items())
@@ -276,7 +277,7 @@ if __name__ == "__main__":
     init_sizes = []
     for experiment, metric in zip(args.experiments, args.metrics):
         init_size, all_points_in_order = get_all_points_in_order(
-            experiment, metric, d_smi_idx
+            experiment, metric, d_smi_idx, args.k
         )
         init_sizes.append(init_size)
         reward_curves.append(reward_curve(

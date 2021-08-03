@@ -34,3 +34,5 @@
 .DS_Store*
 .ipynb_checkpoints*
 lightning_logs
+old_analyze_sar.py
+.gitignore

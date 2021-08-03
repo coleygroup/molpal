@@ -227,7 +227,7 @@ if __name__ == "__main__":
     init_sizes = []
     for experiment, metric in zip(args.experiments, args.metrics):
         init_size, all_points_in_order = get_all_points_in_order(
-            experiment, metric, d_smi_idx
+            experiment, metric, d_smi_idx, args.k
         )
         init_sizes.append(init_size)
         reward_curves.append(reward_curve(
