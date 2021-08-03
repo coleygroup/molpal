@@ -1,13 +1,8 @@
+import atexit
 import csv
-from functools import partial
-import gzip
-from pathlib import Path
-import shelve
-import tempfile
-from typing import Dict, List, Optional, Tuple, TypeVar
+from typing import Dict, List, Optional, TypeVar
 
 from molpal.objectives.base import Objective
-from molpal.objectives import utils
 
 from pyscreener import args as pyscreener_args
 from pyscreener import docking
@@ -34,48 +29,27 @@ class DockingObjective(Objective):
     config : Optional[str] (Default = None)
         the path to a pyscreener config file containing the options for docking
         calculations.
-        NOTE: unused right now
     verbose : int (Default = 0)
     **kwargs
         additional and unused keyword arguments
     """
-    def __init__(self, objective_config: str,
-                 input_map_file: Optional[str] = None,
+    def __init__(self, objective_config: str, path: str = '.',
+                #  input_map_file: Optional[str] = None,
                  verbose: int = 0, minimize: bool = True, **kwargs):
         # self.input_map_file = input_map_file
         
         params = {
             'software': 'vina', 'size': (10., 10., 10.),
-            'score_mode': 'best', 'ncpu': 1, 'path': '.', 'verbose': verbose
+            'score_mode': 'best', 'ncpu': 1, 'path': path, 'verbose': verbose
         }
 
         params.update(vars(pyscreener_args.gen_args(
             f'--config {objective_config}'
         )))
 
-        # if software is not None:
-        #     docking_params['software'] = software
-        # if receptor is not None:
-        #     docking_params['receptors'] = [receptor]
-        # if box_center is not None:
-        #     docking_params['center'] = box_center
-        # if box_size is not None:
-        #     docking_params['size'] = box_size
-        # if docked_ligand_file is not None:
-        #     docking_params['docked_ligand_file'] = docked_ligand_file
-        # if score_mode is not None:
-        #     docking_params['score_mode'] = score_mode
-        # if ncpu is not None:
-        #     docking_params['ncpu'] = ncpu
-        # docking_params['verbose'] = max(docking_params['verbose'], verbose)
-
-        # if name:
-        #     path = Path(tempfile.gettempdir()) / name
-        # else:
-        #     path = Path(tempfile.gettempdir()) / 'molpal_docking'
-
         self.docking_screener = docking.screener(**params)
 
+        atexit.register(self.cleanup)
         super().__init__(minimize=minimize)
 
     def calc(self, smis: List[str],
@@ -103,43 +77,19 @@ class DockingObjective(Objective):
 
         # if extra_smis:
         #     ligands.extend(docking.prepare_ligand(extra_smis, path=in_path))
-        scores = self.docking_screener(smis)
+        scores, full_results = self.docking_screener.dock(
+            smis, full_results=True
+        )
+        self.full_results.extend(full_results)
 
         return {
             smi: self.c * score if score else None
             for smi, score in scores.items()
         }
-
-    # def _build_input_map(self, input_map_file) -> str:
-    #     """Build the input map dictionary
-
-    #     the input map dictionary is stored on disk using a Shelf object which
-    #     is stored in a temporary file.
-
-    #     NOTE: Ideally, the temporary file corresponding to the shelf would only
-    #           live for the lifetime of the DockingObjective that owns it.
-    #           Unfortunately, there seems no elegant way to do that and, as a 
-    #           result, the temporary file will persist until the OS cleans it up
-
-    #     Parameter
-    #     ---------
-    #     input_map_file : str
-    #         a flat csv containing the SMILES string in the 0th column and any
-    #         associated input files in the following columns
-    #     """
-    #     p_input_map_file = Path(input_map_file)
-    #     if p_input_map_file.suffix == '.gz':
-    #         open_ = partial(gzip.open, mode='rt')
-    #     else:
-    #         open_ = open
-
-    #     input_map = utils.get_temp_file()
-
-    #     with open_(input_map_file) as fid, \
-    #         shelve.open(input_map) as d_smi_inputs:
-    #         reader = csv.reader(fid)
-            
-    #         for smi, *ligands in reader:
-    #             d_smi_inputs[smi] = ligands
-
-    #     return input_map
+    
+    def cleanup(self):
+        self.docking_screener.collect_files()
+        with open(self.docking_screener.path / 'extended.csv', 'w') as fid:
+            writer = csv.writer(fid)
+            writer.writerow(['smiles', 'name', 'node_id', 'score'])
+            writer.writerows(result.values() for result in self.full_results)

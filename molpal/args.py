@@ -250,9 +250,9 @@ def add_stopping_args(parser: ArgumentParser) -> None:
                         help='the minimum acceptable difference between the moving average of the top-k scores and the current average the top-k score in order to continue exploration')
     parser.add_argument('--max-iters', type=int, default=10,
                         help='the maximum number of iterations to explore for')
-    parser.add_argument('--max-explore', 
+    parser.add_argument('--budget', 
                         type=restricted_float_or_int, default=1.0,
-                        help='the maximum number of inputs to explore')
+                        help='the maximum budget expressed as the number of allowed objective evaluations')
 
 def cleanup_args(args: Namespace):
     """Remove unnecessary attributes and change some arguments"""
