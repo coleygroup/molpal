@@ -173,7 +173,7 @@ class MPNN:
                 bar.set_postfix_str(
                     f'train_loss={train_loss:0.3f}, '
                     f'val_loss={val_loss:0.3f} '
-                    f'lr={lr}'
+                    # f'lr={lr}'
                 )
                 print(f'Epoch {i}: lr={lr}', flush=True)
             bar.close()
