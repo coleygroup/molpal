@@ -34,13 +34,13 @@ class LookupObjective(Objective):
     **kwargs
         unused and addditional keyword arguments
     """
-    def __init__(self, config: str,
+    def __init__(self, objective_config: str,
                 #  lookup_path: str,
                 #  lookup_sep: str = ',', lookup_title_line: bool = True,
                 #  lookup_smiles_col: int = 0, lookup_data_col: int = 1,
                  **kwargs):
         path, sep, title_line, smiles_col, score_col, minimize = (
-            parse_config(config))
+            parse_config(objective_config))
 
         if Path(path).suffix == '.gz':
             open_ = partial(gzip.open, mode='rt')
