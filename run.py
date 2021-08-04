@@ -1,3 +1,4 @@
+import datetime
 import os
 import signal
 import sys
@@ -31,7 +32,7 @@ def main():
     try:
         if 'redis_password' in os.environ:
             ray.init(
-                address=os.environ["ip_head"],#'auto',
+                address=os.environ["ip_head"],
                 _node_ip_address=os.environ["ip_head"].split(":")[0], 
                 _redis_password=os.environ['redis_password']
             )
@@ -53,7 +54,11 @@ def main():
     try:
         explorer.run()
     except BaseException:
-        state_file = explorer.save()
+        chkpts_dir = f'{params["root"]}/{params["name"]}/chkpts'
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        state_file = explorer.checkpoint(
+            f'{chkpts_dir}/iter_{explorer.iter}_{timestamp}'
+        )
         print(f'Exception raised! Intemediate state saved to "{state_file}"')
         raise
     stop = time()

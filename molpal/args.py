@@ -25,7 +25,7 @@ def gen_args(args: Optional[str] = None) -> Namespace:
 
     args = parser.parse_args(args)
 
-    modify_objective_args(args)
+    # modify_objective_args(args)
     cleanup_args(args)
 
     return args
@@ -42,28 +42,20 @@ def add_general_args(parser: ArgumentParser) -> None:
                         help='the random seed to use for initialization.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='the level of output this program should print')
-    parser.add_argument('-nw', '-nj', '-np', '--num-workers', '--njobs', 
-                        default=1, type=int,
-                        help='the total number of workers/jobs/processes/nodes to paralllelize computation over. Only used when distributed=False. In this case, njobs*ncpu should be equal to the total number of cores available')
-    parser.add_argument('-nc', '--ncpu', '--cpus', default=MAX_CPU, type=int, 
-                        help='the number of cores to available to each worker/job/process/node. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
-    parser.add_argument('--distributed', action='store_true', default=False,
-                        help='whether the calculations will be distributed over an MPI setup')
+    parser.add_argument('-nc', '--ncpu', '--cpus', default=1, type=int, 
+                        help='the number of cores to available to each GPU for dataloading purposes. If performing docking, this is also the number of cores multithreaded docking programs will utilize.')
 
     parser.add_argument('--write-intermediate', 
                         action='store_true', default=False,
                         help='whether to write a summary file with all of the explored inputs and their associated scores after each round of exploration')
     parser.add_argument('--write-final', action='store_true', default=False,
                         help='whether to write a summary file with all of the explored inputs and their associated scores')
-    parser.add_argument('-m', '--top-m', type=restricted_float_or_int, 
-                        default=1., dest='m',
-                        help='the number of top inputs expressed either as a number or as a fraction of the pool to write, if necessary')
 
-    parser.add_argument('--save-preds', action='store_true', default=False,
-                        help='whether to write the full prediction data to a file each time the predictions are updated')
-    parser.add_argument('--save-state', action='store_true', default=False,
-                        help='whether to save the state of the explorer before each batch')
-
+    parser.add_argument('--chkpt-freq', type=int,
+                        nargs='?', default=0, const=-1,
+                        help='The number of iterations that should pass without writing a checkpoint. A value of 0 (or below) means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. Not specifying this flag will result in checkpointing every iteration. Specifying the flag with no value will result in no checkpointing at all.')
+    parser.add_argument('--checkpoint-file',
+                        help='the checkpoint file containing the state of a previous molpal run.')
     parser.add_argument('--previous-scores',
                         help='the path to a file containing the scores from a previous run of molpal to load in as preliminary dataset.')
     parser.add_argument('--scores-csvs', nargs='+',
@@ -92,23 +84,28 @@ def add_encoder_args(parser: ArgumentParser) -> None:
 def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--pool', default='eager',
                         help='the type of MoleculePool to use')
-
-    parser.add_argument('--library', required=True, metavar='LIBRARY_FILEPATH',
-                        help='the file containing members of the MoleculePool')
+    parser.add_argument('-l', '--libraries', '--library',
+                        required=True, nargs='+',
+                        help='the CSVs containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
-                        help='whether there is no title line in the library file')
+                        help='whether there is no title line in the library files')
     parser.add_argument('--delimiter', default=',',
-                        help='the column separator in the library file')
+                        help='the column separator in the library files')
     parser.add_argument('--smiles-col', default=0, type=int,
-                        help='the column containing the SMILES string in the library file')
+                        help='the column containing the SMILES string in the library files')
+    parser.add_argument('--cxsmiles', default=False, action='store_true',
+                        help='whether the file uses CXSMILES strings')
     parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
-                        help='an hdf5 file containing the precalculated feature representations of the molecules')
+                        help='an HDF5 file containing the precalculated feature representation of each molecule in the pool')
     parser.add_argument('--cluster', action='store_true', default=False,
                         help='whether to cluster the MoleculePool')
     parser.add_argument('--cache', action='store_true', default=False,
                         help='whether to store the full MoleculePool in memory')
     parser.add_argument('--validated', action='store_true', default=False,
-                        help='whether the pool has been manually validated and invalid SMILES strings have been removed.')
+                        help='DEPRECATED. whether the pool has been manually validated and invalid SMILES strings have been removed.')
+    parser.add_argument('--invalid-idxs', '--invalid-lines',
+                        type=int, nargs='*',
+                        help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
 
 #####################################
 #       ACQUISITION ARGUMENTS       #
@@ -119,12 +116,12 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                                  'ucb', 'ei', 'pi', 'thompson'},
                         help='the acquisition metric to use')
 
-    parser.add_argument('--init-size', 
+    parser.add_argument('--init-size',
                         type=restricted_float_or_int, default=0.01,
-                        help='the number of ligands or fraction of total library to initially dock')
-    parser.add_argument('--batch-size',
-                        type=restricted_float_or_int, default=0.01,
-                        help='the number of ligands or fraction of total library for each batch of exploration')
+                        help='the number of ligands or fraction of total library to initially sample')
+    parser.add_argument('--batch-sizes',
+                        type=restricted_float_or_int, default=[0.01], nargs='+',
+                        help='the number of ligands or fraction of total library to sample for each successive batch of exploration. Will proceed through the values provided and repeat the final value as neccessary. I.e., passing --batch-sizes 10 20 30 will acquire 10 inputs in the first exploration iteration, 20 in the second, and 30 for all remaining exploration batches')
     parser.add_argument('--epsilon', type=float, default=0.,
                         help='the fraction of each batch that should be acquired randomly')
 
@@ -147,51 +144,51 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('-o', '--objective', required=True,
                         choices={'lookup', 'docking'},
                         help='the objective function to use')
-    parser.add_argument('--minimize', action='store_true', default=False,
-                        help='whether to minimize the objective function')
+    # parser.add_argument('--minimize', action='store_true', default=False,
+    #                     help='whether to minimize the objective function')
     parser.add_argument('--objective-config',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 
     # DockingObjective args
-    parser.add_argument('--software', default='vina',
-                        choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
-                        help='the name of the docking program to use')
-    parser.add_argument('--receptor',
-                        help='the filename of the receptor')
-    parser.add_argument('--box-center', type=float, nargs=3,
-                        metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
-                        help='the x-, y-, and z-coordinates of the center of the docking box')
-    parser.add_argument('--box-size', type=int, nargs=3,
-                        metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
-                        help='the x-, y-, and z-dimensions of the docking box')
-    parser.add_argument('--docked-ligand-file',
-                        help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
-    parser.add_argument('--score-mode', default='best',
-                        help='the method by which to calculate an overall score from multiple scored conformations')
+    # parser.add_argument('--software', default='vina',
+    #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
+    #                     help='the name of the docking program to use')
+    # parser.add_argument('--receptor',
+    #                     help='the filename of the receptor')
+    # parser.add_argument('--box-center', type=float, nargs=3,
+    #                     metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
+    #                     help='the x-, y-, and z-coordinates of the center of the docking box')
+    # parser.add_argument('--box-size', type=int, nargs=3,
+    #                     metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
+    #                     help='the x-, y-, and z-dimensions of the docking box')
+    # parser.add_argument('--docked-ligand-file',
+    #                     help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
+    # parser.add_argument('--score-mode', default='best',
+    #                     help='the method by which to calculate an overall score from multiple scored conformations')
 
-    # LookupObjective args
-    parser.add_argument('--lookup-path',
-                        help='filepath pointing to a file containing lookup scoring data')
-    parser.add_argument('--no-lookup-title-line', action='store_true',
-                        default=False,
-                        help='whether there is a title line in the data lookup file')
-    parser.add_argument('--lookup-sep', default=',',
-                        help='the column separator in the data lookup file')
-    parser.add_argument('--lookup-smiles-col', default=0, type=int,
-                        help='the column containing the SMILES strings in the data lookup file')
-    parser.add_argument('--lookup-data-col', default=1, type=int,
-                        help='the column containing the score data in the data lookup file')
+    # # LookupObjective args
+    # parser.add_argument('--lookup-path',
+    #                     help='filepath pointing to a file containing lookup scoring data')
+    # parser.add_argument('--no-lookup-title-line', action='store_true',
+    #                     default=False,
+    #                     help='whether there is a title line in the data lookup file')
+    # parser.add_argument('--lookup-sep', default=',',
+    #                     help='the column separator in the data lookup file')
+    # parser.add_argument('--lookup-smiles-col', default=0, type=int,
+    #                     help='the column containing the SMILES strings in the data lookup file')
+    # parser.add_argument('--lookup-data-col', default=1, type=int,
+    #                     help='the column containing the score data in the data lookup file')
 
-def modify_objective_args(args: Namespace) -> None:
-    if args.objective == 'lookup':
-        modify_LookupObjective_args(args)
+# def modify_objective_args(args: Namespace) -> None:
+#     if args.objective == 'lookup':
+#         modify_LookupObjective_args(args)
 
-def modify_LookupObjective_args(args: Namespace) -> None:
-    args.lookup_title_line = not args.no_lookup_title_line
-    delattr(args, 'no_lookup_title_line')
+# def modify_LookupObjective_args(args: Namespace) -> None:
+#     args.lookup_title_line = not args.no_lookup_title_line
+#     delattr(args, 'no_lookup_title_line')
 
-    if args.name is None:
-        args.name = Path(args.library).stem
+#     if args.name is None:
+#         args.name = Path(args.library).stem
 
 ###############################
 #       MODEL ARGUMENTS       #
@@ -205,6 +202,8 @@ def add_model_args(parser: ArgumentParser) -> None:
     parser.add_argument('--retrain-from-scratch',
                         action='store_true', default=False,
                         help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
+    parser.add_argument('--model-seed', type=int,
+                        help='the random seed to use for model initialization. Not specifying will result in random model initializations each time the model is trained.')
     
     # RF args
     parser.add_argument('--n-estimators', type=int, default=100,
@@ -249,29 +248,20 @@ def add_stopping_args(parser: ArgumentParser) -> None:
                         help='the window size to use for calculation of the moving average of the top-k scores')
     parser.add_argument('--delta', type=restricted_float, default=0.01,
                         help='the minimum acceptable difference between the moving average of the top-k scores and the current average the top-k score in order to continue exploration')
-    parser.add_argument('--max-epochs', type=int, default=50,
-                        help='the maximum number of epochs to explore for')
-    parser.add_argument('--max-explore', 
+    parser.add_argument('--max-iters', type=int, default=10,
+                        help='the maximum number of iterations to explore for')
+    parser.add_argument('--budget', 
                         type=restricted_float_or_int, default=1.0,
-                        help='the maximum number of inputs to explore')
+                        help='the maximum budget expressed as the number of allowed objective evaluations')
 
-def cleanup_args(args: Namespace) -> None:
+def cleanup_args(args: Namespace):
     """Remove unnecessary attributes and change some arguments"""
     if isinstance(args.scores_csvs, list) and len(args.scores_csvs)==1:
         args.scores_csvs = args.scores_csvs[0]
-    args.title_line = not args.no_title_line
-    
-    args_to_remove = {'no_title_line'}
 
-    if args.objective == 'docking':
-        args_to_remove |= {
-            'lookup_path', 'no_lookup_title_line', 'lookup_smiles_col',
-            'lookup_data_col', 'lookup_sep'
-        }
-    elif args.objective == 'lookup':
-        args_to_remove |= {
-            'software', 'receptor', 'box_center', 'box_size', 'score_mode',
-        }
+    args.title_line = not args.no_title_line
+
+    args_to_remove = {'no_title_line'}
 
     if args.metric != 'ei' or args.metric != 'pi':
         args_to_remove.add('xi')

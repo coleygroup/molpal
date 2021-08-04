@@ -1,10 +1,10 @@
 from concurrent.futures import ProcessPoolExecutor
 from itertools import islice
-from typing import Iterator, Sequence, Type
+from typing import Iterator, Sequence, Tuple, Type
 
 import numpy as np
 
-from molpal.encoder import Featurizer
+from molpal.featurizer import Featurizer
 from molpal.pools.base import MoleculePool, Mol
 
 class LazyMoleculePool(MoleculePool):
@@ -73,7 +73,8 @@ class LazyMoleculePool(MoleculePool):
                                      smis_chunk, chunksize=job_chunk_size)
                 yield fps_chunk
 
-    def _encode_mols(self, featurizer: Featurizer, ncpu: int, **kwargs) -> None:
+    def _encode_mols(self, featurizer: Featurizer, ncpu: int,
+                     **kwargs) -> Tuple[None, None]:
         """
         Side effects
         ------------
@@ -82,8 +83,11 @@ class LazyMoleculePool(MoleculePool):
         (sets) self.ncpu : int
             the number of jobs to parallelize fingerprint buffering over
         """
+        self.fps_ = None
         self.featurizer = featurizer
         self.ncpu = ncpu
+
+        return None, None
 
     def _cluster_mols(self, *args, **kwargs) -> None:
         """A LazyMoleculePool can't cluster molecules

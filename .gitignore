@@ -17,9 +17,12 @@
 *.batch
 *.hdf5
 *.npy
+*.npz
 *.h5
 *.png
 *.pdf
+*.json
+*.ini
 
 .vscode/
 .DS_Store
@@ -28,4 +31,8 @@ config_local
 scripts/distance.py
 fps_umap.py
 molpal_umap.py
+<<<<<<< HEAD
 lightning_logs
+=======
+lightning_logs
+>>>>>>> cd85753044e0f80bd7bb2729c089522ee8ac2f28
