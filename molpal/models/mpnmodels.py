@@ -131,6 +131,7 @@ class MPNN:
             'max_lr': self.max_lr,
             'final_lr': self.final_lr,
             'metric': self.metric,
+            'use_gpu': self.use_gpu
         }
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
