@@ -16,32 +16,39 @@ T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 
 class MPNNOperator(TrainingOperator):
-    def setup(self, config):
+    def setup(self, config: Dict):
+        model = config['model']
+        dataset_type = config.get('dataset_type', 'regression')
+        uncertainty_method = config.get('uncertainty_method', 'none')
+
+        self.uncertainty = uncertainty_method in {'mve'}
+
         warmup_epochs = config.get('warmup_epochs', 2.)
         steps_per_epoch = config['steps_per_epoch']
-        max_epochs = config['max_epochs']
+        max_epochs = config.get('max_epochs', 50)
         num_lrs = 1
         init_lr = config.get('init_lr', 1e-4)
         max_lr = config.get('max_lr', 1e-3)
         final_lr = config.get('final_lr', 1e-4)
-        uncertainty_method = config.get('uncertainty_method', 'none')
 
-        model = config['model']
         optimizer = Adam([{
-            'params': model.parameters(), 'lr': init_lr, 'weight_decay': 0
+            'params': model.parameters(),
+            'lr': init_lr,
+            'weight_decay': 0
         }])
-        # optimizer = Adam(model.parameters(), init_lr, weight_decay=0)
         scheduler = NoamLR(
-            optimizer=optimizer, warmup_epochs=[warmup_epochs],
+            optimizer=optimizer,
+            warmup_epochs=[warmup_epochs],
             total_epochs=[max_epochs] * num_lrs,
             steps_per_epoch=steps_per_epoch,
-            init_lr=[init_lr], max_lr=[max_lr], final_lr=[final_lr]
-        )
-        criterion = mpnn.utils.get_loss_func(
-            config['dataset_type'], uncertainty_method
+            init_lr=[init_lr],
+            max_lr=[max_lr],
+            final_lr=[final_lr]
         )
 
-        self.uncertainty = uncertainty_method in {'mve'}
+        criterion = mpnn.utils.get_loss_func(
+            dataset_type, uncertainty_method
+        )
 
         self.metric = {
             'mse': lambda X, Y: F.mse_loss(X, Y, reduction='none'),
@@ -51,9 +58,9 @@ class MPNNOperator(TrainingOperator):
         train_loader = config['train_loader']
         val_loader = config['val_loader']
 
-        self.n_iter = 0
-        self.best_val_score = float('-inf')
-        self.best_state_dict = model.state_dict()
+        # self.n_iter = 0
+        # self.best_val_score = float('-inf')
+        # self.best_state_dict = model.state_dict()
 
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(
