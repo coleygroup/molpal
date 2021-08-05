@@ -1,13 +1,11 @@
-from typing import Dict, Iterable, List, Sequence, Tuple, TypeVar
+from typing import Dict, List, TypeVar
 
 from ray.util.sgd.torch import TrainingOperator
 import torch
 from torch.nn import functional as F
 from torch.optim import Adam
 
-from ..chemprop.data.data import MoleculeDatapoint, MoleculeDataset
-from ..chemprop.data.scaler import StandardScaler
-from ..chemprop.data.utils import split_data
+from ..chemprop.data.data import MoleculeDataset
 from ..chemprop.nn_utils import NoamLR
 
 from molpal.models import mpnn
@@ -19,9 +17,9 @@ class MPNNOperator(TrainingOperator):
     def setup(self, config: Dict):
         model = config['model']
         dataset_type = config.get('dataset_type', 'regression')
-        uncertainty_method = config.get('uncertainty_method', 'none')
+        self.uncertainty = config.get('uncertainty_method', 'none')
 
-        self.uncertainty = uncertainty_method in {'mve'}
+        # self.uncertainty = uncertainty_method in {'mve'}
 
         warmup_epochs = config.get('warmup_epochs', 2.)
         steps_per_epoch = config['steps_per_epoch']
@@ -47,7 +45,7 @@ class MPNNOperator(TrainingOperator):
         )
 
         criterion = mpnn.utils.get_loss_func(
-            dataset_type, uncertainty_method
+            dataset_type, self.uncertainty
         )
 
         self.metric = {
@@ -57,10 +55,6 @@ class MPNNOperator(TrainingOperator):
 
         train_loader = config['train_loader']
         val_loader = config['val_loader']
-
-        # self.n_iter = 0
-        # self.best_val_score = float('-inf')
-        # self.best_state_dict = model.state_dict()
 
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(
@@ -77,7 +71,6 @@ class MPNNOperator(TrainingOperator):
         model = self.model
         optimizer = self.optimizer
         criterion = self.criterion
-        scheduler = self.scheduler
         
         optimizer.zero_grad()
 
@@ -107,7 +100,7 @@ class MPNNOperator(TrainingOperator):
         #         for target_index in range(preds.size(1))
         #     ], dim=1) * class_weights * mask)
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             pred_means = preds[:, 0::2]
             pred_vars = preds[:, 1::2]
 
