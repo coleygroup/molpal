@@ -108,7 +108,7 @@ class MPNN:
         if ngpu > 0:
             self.use_gpu = True
             self._predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
-            self.num_works = ngpu
+            self.num_workers = ngpu
         else:
             self.use_gpu = False
             self._predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
@@ -148,12 +148,12 @@ class MPNN:
             )
             self.train_config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data,
-                batch_size=self.batch_size * self.num_workers,
+                batch_size=self.batch_size,# * self.num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
             self.train_config['val_loader'] = MoleculeDataLoader(
                 dataset=val_data,
-                batch_size=self.batch_size * self.num_workers,
+                batch_size=self.batch_size,# * self.num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
