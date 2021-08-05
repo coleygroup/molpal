@@ -38,20 +38,6 @@ class MPNN:
 
     Attributes
     ----------
-    model : MoleculeModel
-        the underlying chemprop model on which to train and make predictions
-    train_args : Namespace
-        the arguments used for model training
-    loss_func : Callable
-        the loss function used in model training
-    metric_func : str
-        the metric function used in model evaluation
-    device : str {'cpu', 'cuda'}
-        the device on which training/evaluation/prediction is performed
-    batch_size : int
-        the size of each batch during training to update gradients
-    epochs : int
-        the number of epochs over which to train
     ncpu : int
         the number of cores over which to parallelize input batch preparation
     ddp : bool
@@ -60,6 +46,37 @@ class MPNN:
     precision : int
         the precision with which to train the model represented in the number 
         of bits
+    model : MoleculeModel
+        the underlying chemprop model on which to train and make predictions
+    uncertainty : Optional[str], default=None
+        the uncertainty quantifiacation method the model uses. None if it
+        does not use any uncertainty quantifiacation
+    loss_func : Callable
+        the loss function used in model training
+    batch_size : int
+        the size of each minibatch during training
+    epochs : int
+        the number of epochs over which to train
+    dataset_type : str
+        the type of dataset. Choices: ('regression')
+        TODO: add support for classification
+    num_tasks : int
+        the number of training tasks
+    use_gpu : bool
+        whether the GPU will be used.
+        NOTE: If a GPU is detected, it will be used. If this is undesired, set 
+        the CUDA_VISIBLE_DEVICES environment variable to be empty
+    num_workers : int
+        the number of workers to distribute model training over. Equal to the
+        number of GPUs detected, or if none are available, the ratio of total
+        CPUs on detected on the ray cluster over the number of CPUs to dedicate
+        to each dataloader
+    train_config : Dict
+        a dictionary containing the configuration of training variables:
+        learning rates, maximum epochs, validation metric, etc.
+    scaler : StandardScaler
+        a scaler to normalize target data before training and validation and
+        to reverse transform prediction outputs 
     """
     def __init__(self, batch_size: int = 50,
                  uncertainty_method: Optional[str] = None,
@@ -91,7 +108,7 @@ class MPNN:
             ffn_num_layers=ffn_num_layers
         )
 
-        self.uncertainty_method = uncertainty_method
+        # self.uncertainty_method = uncertainty_method
         self.uncertainty = uncertainty_method in {'mve'}
         self.dataset_type = dataset_type
         self.num_tasks = num_tasks
@@ -99,8 +116,8 @@ class MPNN:
         self.epochs = epochs
         self.batch_size = batch_size
 
-        self.loss_func = mpnn.utils.get_loss_func(
-            dataset_type, uncertainty_method)
+        # self.loss_func = mpnn.utils.get_loss_func(
+        #     dataset_type, uncertainty_method)
         # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
