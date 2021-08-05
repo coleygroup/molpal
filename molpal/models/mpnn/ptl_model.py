@@ -25,7 +25,7 @@ class LitMPNN(pl.LightningModule):
         uncertainty_method = config.get('uncertainty_method', 'none')
 
         self.mpnn = model
-        self.uncertainty = uncertainty_method in {'mve'}
+        self.uncertainty = uncertainty_method #in {'mve'}
 
         self.warmup_epochs = config.get('warmup_epochs', 2.)
         self.max_epochs = config.get('max_epochs', 50)
@@ -64,7 +64,7 @@ class LitMPNN(pl.LightningModule):
         #         ], dim=1) * class_weights * mask
         #     )
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             pred_means = preds[:, 0::2]
             pred_vars = preds[:, 1::2]
 
@@ -84,7 +84,7 @@ class LitMPNN(pl.LightningModule):
         componentss, targets = batch
         
         preds = self.mpnn(componentss)
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             preds = preds[:, 0::2]
 
         targets = torch.tensor(targets, device=self.device)
