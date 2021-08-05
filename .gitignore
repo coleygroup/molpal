@@ -31,8 +31,4 @@ config_local
 scripts/distance.py
 fps_umap.py
 molpal_umap.py
-<<<<<<< HEAD
 lightning_logs
-=======
-lightning_logs
->>>>>>> adding new ignores
