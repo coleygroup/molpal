@@ -1,4 +1,4 @@
-from typing import Dict, List, TypeVar
+from typing import Dict, List
 
 from ray.util.sgd.torch import TrainingOperator
 import torch
@@ -9,9 +9,6 @@ from ..chemprop.data.data import MoleculeDataset
 from ..chemprop.nn_utils import NoamLR
 
 from molpal.models import mpnn
-
-T = TypeVar('T')
-T_feat = TypeVar('T_feat')
 
 class MPNNOperator(TrainingOperator):
     def setup(self, config: Dict):
@@ -74,7 +71,6 @@ class MPNNOperator(TrainingOperator):
         
         optimizer.zero_grad()
 
-        # look @ "non_blocking=True" if weird things start happening
         device = 'cuda' if self.use_gpu else 'cpu'
         componentss = [[
             X.to(device, non_blocking=True)
@@ -112,8 +108,6 @@ class MPNNOperator(TrainingOperator):
 
         loss.backward()
         optimizer.step()
-        # if isinstance(scheduler, NoamLR):
-        #     scheduler.step()
 
         return {'train_loss': loss.item(), 'num_samples': len(targets)}
     
@@ -177,9 +171,3 @@ class MPNNOperator(TrainingOperator):
 
         loss = metric(preds, targets)
         return {'loss': loss, 'num_samples': len(targets)}
-    
-    # def get_model(self):
-    #     model = super().get_model()
-    #     model.load_state_dict(self.best_state_dict)
-
-    #     return model
