@@ -14,8 +14,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import torch
 from tqdm import tqdm, trange
 
-from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
-                                 MoleculeDataLoader)
+from .chemprop.data.data import (
+    MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
+)
 from .chemprop.data.scaler import StandardScaler
 from .chemprop.data.utils import split_data
 from . import chemprop
@@ -98,39 +99,35 @@ class MPNN:
         self.epochs = epochs
         self.batch_size = batch_size
 
-        self.warmup_epochs = warmup_epochs
-        self.init_lr = init_lr
-        self.max_lr = max_lr
-        self.final_lr = final_lr
-        self.metric = metric
-
         self.loss_func = mpnn.utils.get_loss_func(
             dataset_type, uncertainty_method)
-        self.metric_func = chemprop.utils.get_metric_func(metric)
+        # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
-        self.use_gpu = ray.cluster_resources().get('GPU', 0) > 0
-        if self.use_gpu:
-            _predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+        ngpu = int(ray.cluster_resources().get('GPU', 0))
+        if ngpu > 0:
+            self.use_gpu = True
+            self._predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+            self.num_works = ngpu
         else:
-            _predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
+            self.use_gpu = False
+            self._predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
+            self.num_workers = ray.cluster_resources()['CPU'] // self.ncpu
         
-        self._predict = _predict
-
         self.seed = model_seed
         if model_seed is not None:
             torch.manual_seed(model_seed)
         
         self.train_config = {
             'model': self.model,
-            'dataset_type': self.dataset_type,
-            'uncertainty_method': self.uncertainty_method,
-            'warmup_epochs': self.warmup_epochs,
+            'dataset_type': dataset_type,
+            'uncertainty_method': uncertainty_method,
+            'warmup_epochs': warmup_epochs,
             'max_epochs': self.epochs,
-            'init_lr': self.init_lr,
-            'max_lr': self.max_lr,
-            'final_lr': self.final_lr,
-            'metric': self.metric,
+            'init_lr': init_lr,
+            'max_lr': max_lr,
+            'final_lr': final_lr,
+            'metric': metric,
             'use_gpu': self.use_gpu
         }
 
@@ -140,27 +137,29 @@ class MPNN:
         
         if self.ddp:
             ngpu = int(ray.cluster_resources().get('GPU', 0))
-            if ngpu > 0:
-                num_workers = ngpu
-            else:
-                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+            # if ngpu > 0:
+            #     num_workers = ngpu
+            # else:
+            #     num_workers = ray.cluster_resources()['CPU'] // self.ncpu
             
             # train_data, val_data = self.make_datasets(smis, targets)
             self.train_config['steps_per_epoch'] = (
                 len(train_data) // (self.batch_size)
             )
             self.train_config['train_loader'] = MoleculeDataLoader(
-                dataset=train_data, batch_size=self.batch_size * num_workers,
+                dataset=train_data,
+                batch_size=self.batch_size * self.num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
             self.train_config['val_loader'] = MoleculeDataLoader(
-                dataset=val_data, batch_size=self.batch_size * num_workers,
+                dataset=val_data,
+                batch_size=self.batch_size * self.num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
-                num_workers=num_workers, config=self.train_config,
+                num_workers=self.num_workers, config=self.train_config,
                 use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
