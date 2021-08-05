@@ -74,6 +74,8 @@ class MPNNOperator(TrainingOperator):
     def train_batch(self, batch: MoleculeDataset, batch_info: Dict) -> Dict:
         componentss, targets = batch
 
+        print(len(targets))
+        
         model = self.model
         optimizer = self.optimizer
         criterion = self.criterion
