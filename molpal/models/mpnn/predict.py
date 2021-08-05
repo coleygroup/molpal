@@ -11,7 +11,8 @@ from ..chemprop.data import (
 )
 
 def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1, 
-            uncertainty: bool = False, scaler: Optional[StandardScaler] = None,
+            uncertainty: Optional[str] = None,
+            scaler: Optional[StandardScaler] = None,
             use_gpu: bool = False, disable: bool = False):
     """Predict the target values of the given SMILES strings with the input 
     model
@@ -26,8 +27,9 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
         the size of each minibatch (impacts performance)
     ncpu : int, default=1
         the number of cores over which to parallelize input preparation
-    uncertainty : bool, default=False
-        whether the model predicts its own uncertainty
+    uncertainty : Optional[str], default=None
+        the uncertainty quantifiacation method the model uses. None if it
+        does not use any uncertainty quantifiacation
     scaler : StandardScaler, default=None
         A StandardScaler object fit on the training targets. If none,
         prediction values will not be transformed to original dataset
@@ -75,7 +77,7 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
     # preds = np.concatenate(pred_batches)
     preds = preds.cpu().numpy()
 
-    if uncertainty:
+    if uncertainty == 'mve':
         # means = preds[:, 0::2]
         # variances = preds[:, 1::2]
 
