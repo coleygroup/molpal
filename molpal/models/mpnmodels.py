@@ -163,19 +163,21 @@ class MPNN:
                 use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
-            bar = trange(self.epochs, desc='Training', unit='epoch')
-            for i in bar:
-                train_loss = trainer.train()['train_loss']
-                val_res = trainer.validate()
-                val_loss = val_res['val_loss']
-                lr = val_res['lr']
-                bar.set_postfix_str(
-                    f'train_loss={train_loss:0.3f}, '
-                    f'val_loss={val_loss:0.3f} '
-                    # f'lr={lr}'
-                )
-                print(f'Epoch {i}: lr={lr}', flush=True)
-            bar.close()
+            with trange(self.epochs, desc='Training', unit='epoch',
+                        dynamic_ncols=True, leave=True) as bar:
+            # bar = 
+                for _ in bar:
+                    train_loss = trainer.train()['train_loss']
+                    val_res = trainer.validate()
+                    val_loss = val_res['val_loss']
+                    # lr = val_res['lr']
+                    bar.set_postfix_str(
+                        f'train_loss={train_loss:0.3f}, '
+                        f'val_loss={val_loss:0.3f} '
+                        # f'lr={lr}'
+                    )
+                    # print(f'Epoch {i}: lr={lr}', flush=True)
+            # bar.close()
 
             self.model = trainer.get_model()
             trainer.shutdown()
