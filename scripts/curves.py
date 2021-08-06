@@ -85,6 +85,26 @@ def read_scores(scores_csv: str) -> Tuple[Dict, Dict]:
     
     return scores, failures
 
+class Experiment:
+    def __init__(self, expt_dir: str) -> None:
+        self.expt_dir = Path(expt_dir)
+
+        chkpts_dir = self.expt_dir / 'chkpts'
+        self.chkpts = sorted(
+            chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
+        )
+    
+        self._set_predss()
+    
+    def _set_predss(self):
+        preds_npzs = [np.load(chkpt / 'preds.npz')
+                      for chkpt in self.chkpts]
+
+        self.predss, self.varss = zip(*[
+            (preds_npz['Y_pred'], preds_npz['Y_var'])
+            for preds_npz in preds_npzs
+        ])
+
 #-----------------------------------------------------------------------------#
 
 def gather_experiment_predss(experiment) -> Tuple[List, List]:
