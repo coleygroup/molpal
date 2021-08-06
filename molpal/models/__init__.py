@@ -10,6 +10,7 @@ def model(model: str, **kwargs) -> Type[Model]:
     """Model factory function"""
     if model == 'rf':
         from molpal.models.sklmodels import RFModel
+
         return RFModel(**kwargs)
 
     if model == 'gp':
@@ -51,16 +52,14 @@ def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     from molpal.models.mpnmodels import (
         MPNModel, MPNDropoutModel, MPNTwoOutputModel, MPNUncertaintyModel
     )
-
-    conf_method = 'mve' if conf_method == 'twooutput' else conf_method
-
+            
     try:
         return {
             'dropout': MPNDropoutModel,
             'mve': MPNTwoOutputModel,
             'evidential': MPNUncertaintyModel,
             'none': MPNModel
-        }.get(conf_method, 'none')(uncertainty=conf_method, **kwargs)
+        }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
     except KeyError:
         raise NotImplementedError(
             f'Unrecognized MPN confidence method: "{conf_method}"')

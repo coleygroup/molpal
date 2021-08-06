@@ -20,6 +20,10 @@
 *.out
 *.ipynb
 *.batch
+*.hdf5
+*.npy
+*.npz
+*.h5
 *.png
 *.pkl
 *.json
@@ -36,3 +40,14 @@
 lightning_logs
 old_analyze_sar.py
 .gitignore
+*.json
+*.ini
+
+.vscode/
+.DS_Store
+analyze_test_loss.py
+config_local
+scripts/distance.py
+fps_umap.py
+molpal_umap.py
+lightning_logs

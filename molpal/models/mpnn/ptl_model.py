@@ -20,9 +20,12 @@ class LitMPNN(pl.LightningModule):
         super().__init__()
         config = config or dict()
 
+        model = config.get('model', mpnn.MoleculeModel())
         dataset_type = config.get('dataset_type', 'regression')
-        self.mpnn = config.get('model', mpnn.MoleculeModel())
-        self.uncertainty = config.get('uncertainty')
+        uncertainty_method = config.get('uncertainty_method', 'none')
+
+        self.mpnn = model
+        self.uncertainty = uncertainty_method #in {'mve'}
 
         self.warmup_epochs = config.get('warmup_epochs', 2.)
         self.max_epochs = config.get('max_epochs', 50)
@@ -101,7 +104,6 @@ class LitMPNN(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         val_loss = torch.cat(outputs).mean()
         self.log('val_loss', val_loss)
-
 
     def configure_optimizers(self) -> List:
         opt = Adam([{

@@ -24,8 +24,7 @@ This repository contains the source of MolPAL, a software for the accelerated di
 - Python (>= 3.6)
 
 _if utilizing GPU accelerated model training/inference_
-- CUDA (>= 8.0)
-- cuDNN
+- CUDA (>= 10.2)
 
 _if performing docking online_
 - the appropriate requirements as listed in the `pyscreener` [README](https://github.com/coleygroup/pyscreener)
@@ -40,12 +39,19 @@ The following packages are _optional_ to install before running MolPAL:
 - [map4](https://github.com/reymond-group/map4) and [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
 - [optuna](https://optuna.readthedocs.io/en/stable/installation.html) (if planning to perform hyperparameter optimization)
 
-#### setup via conda 
+#### setup via conda
+__NOTE__: you may wish to edit `environment.yml` to reflect the CUDA version you will be using. It is currently configured to use CUDA 11.1, but you can delete this line and uncomment the other line if your setup required CUDA 10.2. If you need a lower CUDA version than that, please go to the [pytorch wesbite](https://pytorch.org/get-started/locally/) to set the channels and versions of both pytorch and other packages properly.
+
 0. (if necessary) [install conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)
 1. `cd /path/to/molpal`
 1. `conda env create -f environment.yml`
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
+
+## Setting up a ray cluster
+MolPAL parallelizes objective function calculation and model inference (training coming later) using the [`ray`](ray.io) library. MolPAL will automatically start a ray cluster if none exists, but this is highly limiting because it can't leverage distributed resources nor will it accurately reflect allocated resources (i.e, it will think you have access to all N cores on a cluster node, regardless of your allocation.)
+
+To properly leverage multi-node allocations, you must set up a ray cluster manually before running MolPAL. The [documentation](https://docs.ray.io/en/master/cluster/index.html) has several examples of how to set up a ray cluster, and the only thing specific to MolPAL is the reliance on two environment variables: `redis_password` and `ip_head`. MolPAL will use the values of these environment variables to connect to the proper ray cluster. An example of this may be seen in the SLURM submission script [`run_molpal.batch`](run_molpal.batch)
 
 ## Object Model
 MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements several classes that handle specific elements of the optimization routine.
@@ -56,7 +62,7 @@ __MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual l
 
 __Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition of unlabeled inputs from the MoleculePool according to its `metric` and the prior distribution over the data. The [`metric`](molpal/acquirer/metrics.py) is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
 
-__Encoder__: An [`Encoder`](molpal/encoder.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
+__Featurizer__: A [`Featurizer`](molpal/encoder.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
 
 __Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
 
@@ -64,7 +70,9 @@ __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation o
 
 ## Preprocessing
 
-For models expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints, and that's exactly what the base `MoleculePool` (also referred to as an `EagerMoleculePool`) does. However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them on disk in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.) If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, if there were __no__ invalid smiles, you can pass the `--validated` flag in the options to further speed up MolPAL startup.
+For models expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints, and that's exactly what the base `MoleculePool` (also referred to as an `EagerMoleculePool`) does. However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them on disk in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.)
+
+If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. While this process can be parallelized over an infinitely large ray cluster (see [above](#setting-up-a-ray-cluster),) in our tests we were I/O limited above 12 cores, which takes about 4 hours to prepare an HDF5 file of 100M fingerprints. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, if there were __no__ invalid smiles, you can pass the `--validated` flag in the options to further speed up MolPAL startup.
 
 To prepare the fingerprints file corresopnding to the sample command below, issue the following command: `python scripts/fingerprints.py --library libraries/Enamine50k.csv.gz --fingerprint pair --length 2048 --radius 2 --name libraries/fps_enamine50k`
 
@@ -95,7 +103,7 @@ A sample command to run one of the experiments used to generate data in the init
 
 or the full command:
 
-`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-size 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --lookup-path data/4UNN_Enamine50k_scores.csv.gz --lookup-smiles-col 1 --lookup-data-col 2 --minimize --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
+`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-size 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --lookup-path data/Enamine50k_scores.csv.gz --lookup-smiles-col 0 --lookup-data-col 1 --minimize --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
 
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
@@ -130,6 +138,9 @@ MolPAL has a number of different model architectures, encodings, acquisition met
 
 `--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the β value for `ucb`.) 
 
+### GPU usage
+MolPAL will automatically use a GPU if it detects one. If this is undesired, use the following command before running: `export CUDA_VISIBLE_DEVICES=''`
+
 ## Hyperparameter Optimization
 While the default settings of MolPAL were chosen based on hyperparameter optimization with Optuna, they were calculated based on the context of structure-based discovery our computational resources. It is possible that these settings are not optimal for your particular problem. To adapt MolPAL to new circumstances, we recommend first generating a dataset that is representative of your particular problem then peforming hyperparameter optimization of your own using the `LookupObjective` class. This class acts as an Oracle for your particular objective function, enabling both consistent and near-instant calculation of the objective function for a particular input, saving time during hyperparameter optimization.
 
@@ -138,31 +149,50 @@ Though MolPAL was originally intended for use with protein-ligand docking screen
 
 ## Reproducing Experimental Results
 ### Generating data
-The data used in the original publication was generated through usage of the [`scripts/submit_molpal.py`](scripts/submit_molpal.py) script along with the corresponding configuration file located in `config_experiments` and the library name (e.g., '10k', '50k', 'HTS', or 'AmpC') as the two command line arguments. The submission script was designed to be used with a SLURM scheduler, but if you want to rerun the experiemnts on your machine, then you can simply follow the submission script logic to generate the proper command line arguments or write a new configuration file. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626).
+The data used in the original publication was generated through the corresponding configuration files located in `config_experiments` and the library name (e.g., '10k', '50k', 'HTS', or 'AmpC') as the two command line arguments. The submission script was designed to be used with a SLURM scheduler, but if you want to rerun the experiemnts on your machine, then you can simply follow the submission script logic to generate the proper command line arguments or write a new configuration file. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626).
 
 ### Analyzing data
 Once all of the data were generated, the directories were containing the data from each run organized according to the following structure:
 ```
-<library>
+<library> (= `--parent-dir`)
 ├── online
 │   ├── <batch_size>
-|   |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
+|   |   ├── <model>
+|   |   |   ├── <metric>
+|   |   |   |   └── rep_<i>
+│   │   |   └── ...
 │   │   └── ...
 │   ├── <batch_size>
-|   |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
+|   |   ├── <model>
+│   │   |   └── ...
 │   │   └── ...
 |   └── ...
 └── retrain
     ├── <batch_size>
-    |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
-    │   └── ...
-    ├── <batch_size>
-    |   ├── <library>_<model>_<metric>_<batch_size>_<repeat_number>_[extra]
     │   └── ...
     └── ...
 ```
-where everything between angled brackets is a single word that describes the corresponding parameter (e.g., `<model>` = `mpn`.)
+where everything between angled brackets is a single word that describes the corresponding parameter (e.g., `<model>` = `mpn`) and `<i>` is a number signifiying which repeat that run represents. Each `rep_<i>` folder is the actual output folder from a run of MolPAL.
 
-After the data was organized as above, `scripts/analyze_data.py` was used to produce the data that is included `scripts/figures.py`. Though it isn't necessary, if you wish to call `analyze_data.py` yourself, use the following command: `python scripts/analyze_data.py <full_score_dict.pkl> <parent_score_dir> <k>`, where `<full_score_dict.pkl>` is a pickled python dictionary generated by `scripts/make_dict.py` (just a dictionary of the included score CSV files), `<parent_score_dir>` would be `<library/online/batch_size>` from the directory structure above and `<k>` is the number of top-k results to analyze (100, 500, 1000, 50000 for the 10k, 50k, HTS, and AmpC libraries, respectively.)
+After the data was organized as above, `scripts/analyze_data.py` was used to analyze the data by parsing the output from individual runs, organizing the data, and using the data to produce the corresponding figure.
 
-The results from the corresponding commands are in `scripts/molpal_analysis.ipynb`, which also contains directions on how to generate many of the figures used in the main text. For the remaining figures (e.g., UMAP and histogram figures,) use the corresponding scripts in the `scripts` directory. To figure out how to run them, use the following command `python <script>.py --help`.
+#### Example
+To reproduce the 10k and 50k figures in the main text, we ran the script with the following command: `python scripts/analyze_data.py --parent-dir molpal_results/10k --true-pkl <10k_score_dict.pkl> --mode model-metrics --split 0.010`. In our case, the full results of all the 10k runs were stored under the folder `molpal_results/10k` according to the directory structure above. Also note that <10k_score_dict.pkl> is a pickled python dictionary generated by `scripts/make_dict.py` (just a dictionary of the included score CSV files.)
+
+For the remaining figures (e.g., UMAP and histogram figures,) use the corresponding scripts in the `scripts` directory. To figure out how to run them, use the following command `python <script>.py --help`.
+
+### Timings
+the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI GPUs
+
+| action | resources | approximate time |
+| --- | --- | --- |
+| calculating 2M fingerprints | 8 CPU <sup>1</sup> | 4m |
+| calculating 100M fingerprints | 12 CPU | 4h |
+| MPN training on 2k molecules | 8 CPU / 1 GPU | 2s / epoch |
+| MPN prediction on 2M molecules | 8 CPU / 1 GPU | 15m | 
+| MPN training on 100k molecules | 12 CPU / 1 GPU <sup>2</sup> | 30s / epoch |
+| MPN prediction on 100M molecules | 4 x (12 CPU / 1 GPU) <sup>2</sup> | 2h |
+
+<sup>1</sup>fingerprint code currently only support single process writing to limit total memory footprint. We have found it is I/O limited beyond 8 CPUs
+
+<sup>2</sup>used Intel Xeon 6130 CPUs and Nvidia V100 GPUs

@@ -1,5 +1,5 @@
 """This module contains the Explorer class, which is an abstraction
-for batched, Bayesian optimization."""
+for batch Bayesian optimization."""
 from collections import deque
 from collections.abc import Iterable
 import csv
@@ -22,8 +22,6 @@ class Explorer:
 
     Attributes
     ----------
-    name : str
-        the name this explorer will use for all outputs
     pool : MoleculePool
         the pool of inputs to explore
     encoder : Encoder
@@ -39,6 +37,7 @@ class Explorer:
         observed data
     retrain_from_scratch : bool
         whether the model will be retrained from scratch at each iteration.
+        If False, train the model online.
         NOTE: The definition of 'online' is model-specific.
     iter : int
         the current iteration of exploration. I.e., the loop iteration the
@@ -51,6 +50,9 @@ class Explorer:
     failed : Dict[T, None]
         a dictionary containing the inputs for which the objective function
         failed to evaluate
+    adjustment : int
+        the number of results that have been read from a file as
+        opposed to being actually calculated
     new_scores : Dict[T, float]
         a dictionary mapping an input's identifier to its corresponding
         objective function value for the most recent batch of labeled inputs
@@ -67,25 +69,21 @@ class Explorer:
     Y_var : np.ndarray
         an array parallel to the pool containing the variance in the predicted
         score for an input. Will be empty if model does not provide variance
-    recent_avgs : Deque[float]
-        a queue containing the <window_size> most recent averages
+    recent_avgs : List[float]
+        a list containing the recent top-k averages
     delta : float
         the minimum acceptable fractional difference between the current 
         average and the moving average in order to continue exploration
     max_iters : int
         the maximum number of batches to explore
-    root : str
-        the directory under which to organize all outputs
+    window_size : int
+        the number of recent averages from which to calculate a moving average
     write_final : bool
         whether the list of explored inputs and their scores should be written
         to a file at the end of exploration
     write_intermediate : bool
         whether the list of explored inputs and their scores should be written
         to a file after each round of exploration
-    scores_csvs : List[str]
-        a list containing the filepath of each score file that was written
-        in the order in which they were written. Used only when saving the
-        intermediate state to initialize another explorer
     save_preds : bool
         whether the predictions should be written after each exploration batch
     verbose : int
@@ -117,12 +115,6 @@ class Explorer:
         the filepath of a CSV file containing previous scoring data which will
         be treated as the initialization batch (instead of randomly selecting
         from the bool.)
-    scores_csvs : Union[str, List[str], None], default=None
-        a list of filepaths containing CSVs with previous scoring data or a 
-        pickle file containing this list. These
-        CSVs will be read in and the model trained on the data in the order
-        in which the CSVs are provide. This is useful for mimicking the
-        intermediate state of a previous Explorer instance
     verbose : int, default=0
     **kwargs
         keyword arguments to initialize an Encoder, MoleculePool, Acquirer, 
@@ -134,26 +126,20 @@ class Explorer:
         if k is less than 0
         if budget is less than 0
     """
-    def __init__(self, root: str = '.', name: str = 'molpal',
+    def __init__(self, name: str = 'molpal', root: str = '.',
                  k: Union[int, float] = 0.01, window_size: int = 3,
                  delta: float = 0.01, max_iters: int = 10, 
-                 budget: Union[int, float] = 1., model_update_cost: int = 0,
-                 retrain_from_scratch: bool = False,
-                 nn_threshold : Optional[float] = None,
-                 use_residuals: bool = True,
+                 budget: Union[int, float] = 1.,
                  write_final: bool = True, write_intermediate: bool = False,
-                 chkpt_freq: int = 0, previous_scores: Optional[str] = None,
-                 scores_csvs: Union[str, List[str], None] = None,
-                 verbose: int = 0, tmp_dir: str = tempfile.gettempdir(),
-                 checkpoint_file: Optional[str] = None,
+                 chkpt_freq: int = 0, checkpoint_file: Optional[str] = None,
+                 retrain_from_scratch: bool = False,
+                 previous_scores: Optional[str] = None,
                  **kwargs):
         args = locals()
         
         self.path = f'{root}/{name}'
-        # self.name = name; kwargs['name'] = name
-        self.verbose = verbose; kwargs['verbose'] = verbose
-        # self.root = root
-        self.tmp = tmp_dir
+        kwargs['path'] = self.path
+        self.verbose = kwargs.get('verbose', 0)
 
         self.featurizer = featurizer.Featurizer(
             fingerprint=kwargs['fingerprint'],
@@ -168,6 +154,7 @@ class Explorer:
             kwargs['dropout_size'] = 1
         self.model = models.model(input_size=len(self.featurizer), **kwargs)
         self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
+        self.retrain_from_scratch = retrain_from_scratch
 
         self.objective = objectives.objective(**kwargs)
 
@@ -176,12 +163,14 @@ class Explorer:
         self.retrain_from_scratch = retrain_from_scratch
         self.use_residuals = use_residuals
 
+        # stopping attributes
         self.k = k
         self.delta = delta
         self.budget = budget
         self.max_iters = max_iters
         self.window_size = window_size
 
+        # logging attributes
         self.write_final = write_final
         self.write_intermediate = write_intermediate
         self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float('inf')
@@ -200,28 +189,39 @@ class Explorer:
         self.model_updates = 0
         self.model_update_cost = model_update_cost
 
-        if isinstance(scores_csvs, str):
-            self.scores_csvs = pickle.load(open(scores_csvs, 'rb'))
-        elif isinstance(scores_csvs, list):
-            self.scores_csvs = scores_csvs
-        else:
-            self.scores_csvs = []
-
         if previous_scores:
             self.load_scores(previous_scores)
-        elif scores_csvs:
-            self.load()
 
         args.pop('self')
         args.update(**args.pop('kwargs'))
         args['fps'] = self.pool.fps_
         args['invalid_idxs'] = list(self.pool.invalid_idxs)
         args.pop('config', None)
-        args.pop('verbose')
         self.write_config(args)
 
         if checkpoint_file:
             self.load(checkpoint_file)
+
+    def __len__(self) -> int:
+        """The total expended budget expressed in terms of the number of 
+        objective evaluations"""
+        return self.num_explored
+    
+    @property
+    def num_explored(self) -> int:
+        """The total number of inputs this Explorer has explored adjusted
+        for score data that was read as opposed evaluated"""
+        return len(self.scores) + len(self.failures) - self.adjustment
+
+    @property
+    def path(self) -> Path:
+        """The directory containing all automated output of this Explorer"""
+        return self.__path
+    
+    @path.setter
+    def path(self, path: Union[str, Path]):
+        self.__path = Path(path)
+        self.__path.mkdir(parents=True, exist_ok=True)
 
     def __len__(self) -> int:
         """The total expended budget expressed in terms of the number of 
@@ -249,8 +249,8 @@ class Explorer:
 
     @property
     def k(self) -> int:
-        """the number of top-scoring inputs from which to calculate an average.
-        """
+        """the number of top-scoring inputs from which to calculate an
+        average"""
         k = self.__k
             
         return min(k, len(self.pool))
@@ -264,15 +264,15 @@ class Explorer:
         """
         if isinstance(k, float):
             k = int(k * len(self.pool))
-
         if k <= 0:
             raise ValueError(f'k(={k}) must be greater than 0!')
+
         self.__k = k
 
     @property
     def budget(self) -> int:
-        """the maximum budget expressed as the number of allowed objective
-        evaluations"""
+        """the maximum budget expressed in terms of the number of allowed 
+        objective function evaluations"""
         return self.__budget
     
     @budget.setter
@@ -284,7 +284,6 @@ class Explorer:
         """
         if isinstance(budget, float):
             budget = int(budget * len(self.pool))
-
         if budget <= 0.:
             raise ValueError(
                 f'budget(={budget}) must be greater than 0!')
@@ -299,6 +298,16 @@ class Explorer:
             return self.recent_avgs[-1]
         except IndexError:
             return None
+
+    @property
+    def status(self) -> str:
+        """The current status of the exploration in string format"""        
+        ave = f'{self.top_k_avg:0.3f}' if self.top_k_avg else 'N/A'
+        return (
+            f'ITER: {self.iter}/{self.max_iters} | '
+            f'TOP-{self.k} AVE: {ave} | '
+            f'BUDGET: {len(self)}/{self.budget}'
+        )
 
     @property
     def completed(self) -> bool:
@@ -325,7 +334,6 @@ class Explorer:
             return True
         if len(self) >= self.budget:
             return True
-
         if len(self.recent_avgs) < self.window_size:
             return False
 
@@ -340,27 +348,16 @@ class Explorer:
         """Explore the MoleculePool until the stopping condition is met"""
         if self.iter == 0:
             print('Starting exploration...')
-            print(f'ITER: {self.iter}/{self.max_iters} | '
-                  f'TOP-{self.k} AVE: N/A | '
-                  f'BUDGET: {len(self)}/{self.budget}.', flush=True)
+            print(f'{self.status}.', flush=True)
             self.explore_initial()
         else:
-            ave = f'{self.top_k_avg:0.3f}' if self.top_k_avg else 'N/A'
             print('Resuming exploration...')
-            print(f'ITER: {self.iter}/{self.max_iters} | '
-                  f'TOP-{self.k} AVE: {ave} | '
-                  f'BUDGET: {len(self)}/{self.budget}', flush=True)
+            print(f'{self.status}.', flush=True)
             self.explore_batch()
 
         while not self.completed:
             # if self.verbose > 0:
-            ave = f'{self.top_k_avg:0.3f}' if self.top_k_avg else 'N/A'
-            print(f'ITER: {self.iter}/{self.max_iters} | '
-                  f'TOP-{self.k} AVE: {ave} | '
-                  f'BUDGET: {len(self)}/{self.budget}. Continuing...',
-                  flush=True)
-                # print(f'Current average of top {self.k}: {self.top_k_avg:0.3f}',
-                #       'Continuing exploration ...', flush=True)
+            print(f'{self.status}. Continuing...', flush=True)
             self.explore_batch()
 
         print('Finished exploring!')
@@ -369,7 +366,7 @@ class Explorer:
         print(f'Final averages')
         print(f'--------------')
         for k in [0.0001, 0.0005, 0.001, 0.005]:
-            print(f'TOP-{k*100:0.2f}%: {self.avg(k):0.3f}')
+            print(f'TOP-{k:0.2%}: {self.avg(k):0.3f}')
         
         if self.write_final:
             self.write_scores(final=True)
@@ -393,6 +390,7 @@ class Explorer:
         new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
 
+        # self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.avg())
 
@@ -426,12 +424,7 @@ class Explorer:
                 'Cannot explore a batch before initialization!'
             )
 
-        # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
-        #     self.checkpoint()
-        #     self.previous_chkpt_iter = self.iter
-
         if self.num_explored >= len(self.pool):
-            # this needs to be reconsidered for warm-start type approach
             self.iter += 1
             return self.top_k_avg
 
@@ -506,7 +499,7 @@ class Explorer:
         
         Returns
         -------
-        top_explored : List[Tuple[str, float]]
+        top_explored : List[Tuple[T, float]]
             a list of tuples containing the identifier and score of the 
             top-k inputs, sorted by their score
         """
@@ -530,7 +523,7 @@ class Explorer:
         
         Returns
         -------
-        top_preds : List[Tuple[str, float]]
+        top_preds : List[Tuple[T, float]]
             a list of tuples containing the identifier and predicted score of 
             the top-k predicted inputs, sorted by their predicted score
         """
@@ -583,7 +576,6 @@ class Explorer:
             include_failed = True
         else:
             p_scores = p_data / f'top_{m}_explored_iter_{self.iter}.csv'
-        self.scores_csvs.append(str(p_scores))
 
         top_m = self.top_explored(m)
 
@@ -641,7 +633,7 @@ class Explorer:
         str
             the path of the JSON file containing all state information
         """
-        path = path or self.path /'chkpts' / f'iter_{self.iter}'
+        path = path or self.path / 'chkpts' / f'iter_{self.iter}'
         chkpt_dir = Path(path)
         chkpt_dir.mkdir(parents=True, exist_ok=True)
         
@@ -664,7 +656,7 @@ class Explorer:
             'new_scores': str(new_scores_pkl.absolute()),
             'adjustment': self.adjustment,
             'updated_model': self.updated_model,
-            'recent_avgs': list(self.recent_avgs),
+            'recent_avgs': self.recent_avgs,
             'preds': str(preds_npz.absolute()),
             'model': self.model.save(chkpt_dir / 'model')
         }
@@ -672,33 +664,10 @@ class Explorer:
         p_chkpt = chkpt_dir / 'state.json'
         json.dump(state, open(p_chkpt, 'w'), indent=4)
 
-        if self.verbose > 2:
-            print(f'  Checkpoint file saved to "{p_chkpt}".')
+        if self.verbose > 1:
+            print(f'Checkpoint file saved to "{p_chkpt}".')
 
         return str(p_chkpt)
-
-    # def save_preds(self, path: str) -> str:
-    #     """save the current predictions to the specified filepath
-        
-    #     If no uncertainty, the filepath contains an OxN array, where O is the
-    #     number of objectives and N is the number of pool members.
-    #     If predicting uncertainty, the filepath contains a 2xOxN array, where
-    #     index 0 contains an OxN array for the predicted and index 1 contains
-    #     the same for the uncertainties.
-    #     """
-    #     path = Path(path)
-    #     path.mkdir(parents=True, exist_ok=True)
-
-    #     preds_path = path / 'preds.npy'
-    #     np.save(preds_path, self.Y_pred)
-
-    #     if self.Y_var:
-    #         vars_path = path / 'vars.npy'
-    #         np.save(preds_path, self.Y_var)
-    #     else:
-    #         vars_path = None
-        
-    #     return str(preds_path), str(vars_path)
 
     def load(self, chkpt_file: str):
         """Load in the state of a previous Explorer's checkpoint"""
@@ -722,29 +691,11 @@ class Explorer:
         self.Y_var = preds_npz['Y_var']
 
         self.model.load(state['model'])
-        # for scores_csv in self.scores_csvs:
-        #     scores, self.failures = self._read_scores(scores_csv)
-
-        #     self.new_scores = {smi: score for smi, score in scores.items()
-        #                        if smi not in self.scores}
-
-        #     if not self.retrain_from_scratch:
-        #         self._update_model()
-
-        #     self.scores = scores
-        #     self.iter += 1
-
-        #     self.top_k_avg = self.avg()
-        #     if len(self.scores) >= self.k:
-        #         self.recent_avgs.append(self.top_k_avg)
 
         if self.verbose > 0:
             print('Done!')
     
     def write_config(self, args) -> str:
-        p_output = self.path
-        p_output.mkdir(exist_ok=True, parents=True)
-
         args['top-k'] = args.pop('k')
         args['no_title_line'] = not args.pop('title_line')
 
@@ -752,7 +703,7 @@ class Explorer:
             if v is None:
                 args.pop(k)
         
-        config_file = p_output / 'config.ini'
+        config_file = self.path / 'config.ini'
         with open(config_file, 'w') as fid:
             for k, v in args.items():
                 if v is None or v == False:
@@ -856,7 +807,7 @@ class Explorer:
             # self.y_vars = R ** 2
             
         self.updated_model = False
-
+        
     def _validate_acquirer(self):
         """Ensure that the model provides values the Acquirer needs"""
         if self.acquirer.needs > self.model.provides:

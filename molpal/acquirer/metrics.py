@@ -23,6 +23,7 @@ def get_metric(metric: str) -> Callable[..., float]:
             'ucb': ucb,
             'lcb': lcb,
             'thompson': thompson,
+            'ts': thompson,
             'ei': ei,
             'pi': pi,
         }[metric]
@@ -39,6 +40,7 @@ def get_needs(metric: str) -> Set[str]:
         'ei': {'means', 'vars'},
         'pi': {'means', 'vars'},
         'thompson': {'means', 'vars'},
+        'ts': {'means', 'vars'},
         'threshold': {'means'}
     }.get(metric, set())
 

@@ -1,47 +1,49 @@
-from typing import Dict, Iterable, List, Sequence, Tuple, TypeVar
+from typing import Dict, List
 
 from ray.util.sgd.torch import TrainingOperator
 import torch
 from torch.nn import functional as F
 from torch.optim import Adam
 
-from ..chemprop.data.data import MoleculeDatapoint, MoleculeDataset
-from ..chemprop.data.scaler import StandardScaler
-from ..chemprop.data.utils import split_data
+from ..chemprop.data.data import MoleculeDataset
 from ..chemprop.nn_utils import NoamLR
 
 from molpal.models import mpnn
 
-T = TypeVar('T')
-T_feat = TypeVar('T_feat')
-
 class MPNNOperator(TrainingOperator):
-    def setup(self, config):
+    def setup(self, config: Dict):
+        model = config['model']
+        dataset_type = config.get('dataset_type', 'regression')
+        self.uncertainty = config.get('uncertainty_method', 'none')
+
+        # self.uncertainty = uncertainty_method in {'mve'}
+
         warmup_epochs = config.get('warmup_epochs', 2.)
         steps_per_epoch = config['steps_per_epoch']
-        max_epochs = config['max_epochs']
+        max_epochs = config.get('max_epochs', 50)
         num_lrs = 1
         init_lr = config.get('init_lr', 1e-4)
         max_lr = config.get('max_lr', 1e-3)
         final_lr = config.get('final_lr', 1e-4)
-        uncertainty_method = config.get('uncertainty_method', 'none')
 
-        model = config['model']
         optimizer = Adam([{
-            'params': model.parameters(), 'lr': init_lr, 'weight_decay': 0
+            'params': model.parameters(),
+            'lr': init_lr,
+            'weight_decay': 0
         }])
-        # optimizer = Adam(model.parameters(), init_lr, weight_decay=0)
         scheduler = NoamLR(
-            optimizer=optimizer, warmup_epochs=[warmup_epochs],
+            optimizer=optimizer,
+            warmup_epochs=[warmup_epochs],
             total_epochs=[max_epochs] * num_lrs,
             steps_per_epoch=steps_per_epoch,
-            init_lr=[init_lr], max_lr=[max_lr], final_lr=[final_lr]
-        )
-        criterion = mpnn.utils.get_loss_func(
-            config['dataset_type'], uncertainty_method
+            init_lr=[init_lr],
+            max_lr=[max_lr],
+            final_lr=[final_lr]
         )
 
-        self.uncertainty = uncertainty_method in {'mve'}
+        criterion = mpnn.utils.get_loss_func(
+            dataset_type, self.uncertainty
+        )
 
         self.metric = {
             'mse': lambda X, Y: F.mse_loss(X, Y, reduction='none'),
@@ -50,10 +52,6 @@ class MPNNOperator(TrainingOperator):
 
         train_loader = config['train_loader']
         val_loader = config['val_loader']
-
-        self.n_iter = 0
-        self.best_val_score = float('-inf')
-        self.best_state_dict = model.state_dict()
 
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(
@@ -66,15 +64,13 @@ class MPNNOperator(TrainingOperator):
         
     def train_batch(self, batch: MoleculeDataset, batch_info: Dict) -> Dict:
         componentss, targets = batch
-
+        
         model = self.model
         optimizer = self.optimizer
         criterion = self.criterion
-        scheduler = self.scheduler
         
         optimizer.zero_grad()
 
-        # look @ "non_blocking=True" if weird things start happening
         device = 'cuda' if self.use_gpu else 'cpu'
         componentss = [[
             X.to(device, non_blocking=True)
@@ -100,7 +96,7 @@ class MPNNOperator(TrainingOperator):
         #         for target_index in range(preds.size(1))
         #     ], dim=1) * class_weights * mask)
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             pred_means = preds[:, 0::2]
             pred_vars = preds[:, 1::2]
 
@@ -112,29 +108,33 @@ class MPNNOperator(TrainingOperator):
 
         loss.backward()
         optimizer.step()
-        # if isinstance(scheduler, NoamLR):
-        #     scheduler.step()
 
         return {'train_loss': loss.item(), 'num_samples': len(targets)}
     
-    def validate(self, val_iterator, info):
+    def validate(self, val_iterator, info) -> Dict:
         """Runs one standard validation pass over the val_iterator.
         
-        Args:
-            val_iterator (iter): Iterable constructed from the
-                validation dataloader.
-            info: (dict): Dictionary for information to be used for custom
-                validation operations.
-        Returns:
-            A dict of metrics from the evaluation.
-                By default, returns "val_accuracy" and "val_loss"
-                which is computed by aggregating "loss" and "correct" values
-                from ``validate_batch`` and dividing it by the sum of
-                ``num_samples`` from all calls to ``self.validate_batch``.
+        Parameters
+        ----------
+        val_iterator : Iterable
+            Iterable constructed from the validation dataloader.
+        info : Dict
+            Dictionary for information to be used for custom validation 
+            operations.
+
+        Returns
+        --------
+        Dict
+            A dict of metrics from the evaluation. By default, returns 
+            "val_accuracy" and "val_loss" which is computed by aggregating 
+            "loss" and "correct" values from ``validate_batch`` and dividing it 
+            by the sum of ``num_samples`` from all calls to ``self.
+            validate_batch``.
         """
         self.model.eval()
 
-        losses, num_samples = [], 0
+        losses = []
+        num_samples = 0
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_iterator):
                 batch_info = {"batch_idx": batch_idx}
@@ -171,9 +171,3 @@ class MPNNOperator(TrainingOperator):
 
         loss = metric(preds, targets)
         return {'loss': loss, 'num_samples': len(targets)}
-    
-    # def get_model(self):
-    #     model = super().get_model()
-    #     model.load_state_dict(self.best_state_dict)
-
-    #     return model

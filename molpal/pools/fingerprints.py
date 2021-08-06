@@ -1,4 +1,3 @@
-
 from itertools import chain, islice
 from pathlib import Path
 from typing import Iterable, Iterator, List, Set, Tuple, TypeVar

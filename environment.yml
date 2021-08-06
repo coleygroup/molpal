@@ -1,23 +1,25 @@
 name: molpal
 
 channels:
-  - pytorch
   - conda-forge
   - defaults
 
 dependencies:
+  - conda-forge::cudatoolkit=11.1
+  # - pytorch::cudatoolkit=10.2
   - configargparse
   - h5py
   - importlib_resources
   - numpy
-  - omnia::pdbfixer
-  - python=3.6.10
-  - pytorch
+  - python=3.8
+  - pytorch::pytorch
   - rdkit
   - scikit-learn
   - tqdm
   - pip
   - pip:
+    - ray
+    - pytorch-lightning
     - tensorflow
     - tensorflow-addons
     - typing-extensions

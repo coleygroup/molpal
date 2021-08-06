@@ -23,15 +23,22 @@ from utils import (
 
 sns.set_theme(style='white', context='paper')
 
-def gather_experiment_predss(experiment) -> Tuple[List, List]:
+def get_checkpoints(experiment):
     chkpts_dir = Path(experiment) / 'chkpts'
 
     chkpt_iter_dirs = sorted(
         chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
     )[1:]
+    
+    return chkpt_iter_dirs
+
+def gather_experiment_predss(experiment) -> Tuple[List[np.ndarray],
+                                                  List[np.ndarray]]:
+    chkpts = get_checkpoints(experiment)
+
     try:                         # new way
-        preds_npzs = [np.load(chkpt_iter_dir / 'preds.npz')
-                      for chkpt_iter_dir in chkpt_iter_dirs]
+        preds_npzs = [np.load(chkpt / 'preds.npz')
+                      for chkpt in chkpts]
         predss, varss = zip(*[
             (preds_npz['Y_pred'], preds_npz['Y_var'])
             for preds_npz in preds_npzs
@@ -39,8 +46,8 @@ def gather_experiment_predss(experiment) -> Tuple[List, List]:
 
         return predss, varss
     except FileNotFoundError:   # old way
-        predss = [np.load(chkpt_iter_dir / 'preds.npy')
-                  for chkpt_iter_dir in chkpt_iter_dirs]
+        predss = [np.load(chkpt / 'preds.npy')
+                  for chkpt in chkpts]
 
         return predss, []
 

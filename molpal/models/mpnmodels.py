@@ -14,11 +14,11 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import torch
 from tqdm import tqdm, trange
 
-from .chemprop.data.data import (MoleculeDatapoint, MoleculeDataset,
-                                 MoleculeDataLoader)
+from .chemprop.data.data import (
+    MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
+)
 from .chemprop.data.scaler import StandardScaler
 from .chemprop.data.utils import split_data
-from . import chemprop
 
 from molpal.models.base import Model
 from molpal.models import mpnn, utils
@@ -52,20 +52,6 @@ class MPNN:
 
     Attributes
     ----------
-    model : MoleculeModel
-        the underlying chemprop model on which to train and make predictions
-    train_args : Namespace
-        the arguments used for model training
-    loss_func : Callable
-        the loss function used in model training
-    metric_func : str
-        the metric function used in model evaluation
-    device : str {'cpu', 'cuda'}
-        the device on which training/evaluation/prediction is performed
-    batch_size : int
-        the size of each batch during training to update gradients
-    epochs : int
-        the number of epochs over which to train
     ncpu : int
         the number of cores over which to parallelize input batch preparation
     ddp : bool
@@ -74,6 +60,37 @@ class MPNN:
     precision : int
         the precision with which to train the model represented in the number 
         of bits
+    model : MoleculeModel
+        the underlying chemprop model on which to train and make predictions
+    uncertainty : Optional[str], default=None
+        the uncertainty quantifiacation method the model uses. None if it
+        does not use any uncertainty quantifiacation
+    loss_func : Callable
+        the loss function used in model training
+    batch_size : int
+        the size of each minibatch during training
+    epochs : int
+        the number of epochs over which to train
+    dataset_type : str
+        the type of dataset. Choices: ('regression')
+        TODO: add support for classification
+    num_tasks : int
+        the number of training tasks
+    use_gpu : bool
+        whether the GPU will be used.
+        NOTE: If a GPU is detected, it will be used. If this is undesired, set 
+        the CUDA_VISIBLE_DEVICES environment variable to be empty
+    num_workers : int
+        the number of workers to distribute model training over. Equal to the
+        number of GPUs detected, or if none are available, the ratio of total
+        CPUs on detected on the ray cluster over the number of CPUs to dedicate
+        to each dataloader
+    train_config : Dict
+        a dictionary containing the configuration of training variables:
+        learning rates, maximum epochs, validation metric, etc.
+    scaler : StandardScaler
+        a scaler to normalize target data before training and validation and
+        to reverse transform prediction outputs 
     """
     def __init__(self, batch_size: int = 50,
                  uncertainty: Optional[str] = None,
@@ -105,54 +122,45 @@ class MPNN:
             ffn_num_layers=ffn_num_layers
         )
 
-        self.uncertainty = uncertainty
+        # self.uncertainty_method = uncertainty_method
+        self.uncertainty = uncertainty #uncertainty_method in {'mve'}
         self.dataset_type = dataset_type
         self.num_tasks = num_tasks
 
         self.epochs = epochs
         self.batch_size = batch_size
 
-        self.warmup_epochs = warmup_epochs
-        self.init_lr = init_lr
-        self.max_lr = max_lr
-        self.final_lr = final_lr
-        self.metric = metric
-
-        self.loss_func = mpnn.utils.get_loss_func(dataset_type, uncertainty)
-        self.metric_func = chemprop.utils.get_metric_func(metric)
+        # self.loss_func = mpnn.utils.get_loss_func(
+        #     dataset_type, uncertainty_method)
+        # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
-        self.use_gpu = ray.cluster_resources().get('GPU', 0) > 0
-        if self.use_gpu:
-            _predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+        ngpu = int(ray.cluster_resources().get('GPU', 0))
+        if ngpu > 0:
+            self.use_gpu = True
+            self._predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+            self.num_workers = ngpu
         else:
-            _predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
+            self.use_gpu = False
+            self._predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
+            self.num_workers = ray.cluster_resources()['CPU'] // self.ncpu
         
-        self._predict = _predict
-
         self.seed = model_seed
         if model_seed is not None:
             torch.manual_seed(model_seed)
-
+        
         self.train_config = {
             'model': self.model,
-            'dataset_type': self.dataset_type,
-            'uncertainty': self.uncertainty,
-            'warmup_epochs': self.warmup_epochs,
+            'dataset_type': dataset_type,
+            'uncertainty_method': uncertainty,
+            'warmup_epochs': warmup_epochs,
             'max_epochs': self.epochs,
-            'init_lr': self.init_lr,
-            'max_lr': self.max_lr,
-            'final_lr': self.final_lr,
-            'metric': self.metric,
+            'init_lr': init_lr,
+            'max_lr': max_lr,
+            'final_lr': final_lr,
+            'metric': metric,
+            'use_gpu': self.use_gpu
         }
-
-    @property
-    def device(self):
-        return self.__device
-
-    @device.setter
-    def device(self, device):
-        self.__device = device
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
@@ -160,45 +168,51 @@ class MPNN:
         
         if self.ddp:
             ngpu = int(ray.cluster_resources().get('GPU', 0))
-            if ngpu > 0:
-                num_workers = ngpu
-            else:
-                num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+            # if ngpu > 0:
+            #     num_workers = ngpu
+            # else:
+            #     num_workers = ray.cluster_resources()['CPU'] // self.ncpu
             
             # train_data, val_data = self.make_datasets(smis, targets)
             self.train_config['steps_per_epoch'] = (
-                len(train_data) // (self.batch_size * num_workers)
+                len(train_data) // (self.batch_size * self.num_workers)
             )
             self.train_config['train_loader'] = MoleculeDataLoader(
-                dataset=train_data, batch_size=self.batch_size * num_workers,
+                dataset=train_data,
+                batch_size=self.batch_size,# * self.num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
             self.train_config['val_loader'] = MoleculeDataLoader(
-                dataset=val_data, batch_size=self.batch_size * num_workers,
+                dataset=val_data,
+                batch_size=self.batch_size,# * self.num_workers,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
-                num_workers=num_workers, config=self.train_config,
+                num_workers=self.num_workers, config=self.train_config,
                 use_gpu=self.use_gpu, scheduler_step_freq='batch'
             )
             
-            bar = trange(self.epochs, desc='Training', unit='epoch')
-            for i in bar:
-                train_loss = trainer.train()['train_loss']
-                val_res = trainer.validate()
-                val_loss = val_res['val_loss']
-                lr = val_res['lr']
-                bar.set_postfix_str(
-                    f'train_loss={train_loss:0.3f}, '
-                    f'val_loss={val_loss:0.3f} '
-                    f'lr={lr}'
-                )
-                print(f'Epoch {i}: lr={lr}', flush=True)
-            bar.close()
+            with trange(self.epochs, desc='Training', unit='epoch',
+                        dynamic_ncols=True, leave=True) as bar:
+            # bar = 
+                for _ in bar:
+                    train_loss = trainer.train()['train_loss']
+                    val_res = trainer.validate()
+                    val_loss = val_res['val_loss']
+                    # lr = val_res['lr']
+                    bar.set_postfix_str(
+                        f'train_loss={train_loss:0.3f}, '
+                        f'val_loss={val_loss:0.3f} '
+                        # f'lr={lr}'
+                    )
+                    # print(f'Epoch {i}: lr={lr}', flush=True)
+            # bar.close()
 
             self.model = trainer.get_model()
+            trainer.shutdown()
+            
             return True
 
         train_dataloader = MoleculeDataLoader(
@@ -215,14 +229,13 @@ class MPNN:
             EarlyStopping('val_loss', patience=10, verbose=True, mode='min'),
             mpnn.callbacks.EpochAndStepProgressBar()
         ]
-
         trainer = pl.Trainer(
             max_epochs=self.epochs, callbacks=callbacks,
             gpus=1 if self.use_gpu else 0, precision=self.precision,
             weights_summary=None
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
-
+        
         return True
 
     def make_datasets(
@@ -355,7 +368,6 @@ class MPNDropoutModel(Model):
                  dropout: float = 0.2, dropout_size: int = 10,
                  ncpu: int = 1, ddp: bool = False, precision: int = 32,
                  model_seed: Optional[int] = None, **kwargs):
-
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
@@ -502,6 +514,7 @@ class MPNUncertaintyModel(Model):
 
     def _get_predictions(self, xs: Sequence[str]) -> Tuple[np.ndarray,
                                                            np.ndarray]:
+        """Get both the means and the variances for the xs"""
         preds = self.model.predict(xs)
         # assume single task prediction now
         # means, variances = preds[:, 0::2], preds[:, 1::2]

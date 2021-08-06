@@ -142,9 +142,6 @@ class Acquirer:
     @property
     def init_size(self) -> int:
         """the number of inputs to acquire initially"""
-        if isinstance(self.__init_size, float):
-            return math.ceil(self.size * self.__init_size)
-
         return self.__init_size
     
     @init_size.setter

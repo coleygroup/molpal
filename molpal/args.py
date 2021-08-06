@@ -25,6 +25,7 @@ def gen_args(args: Optional[str] = None) -> Namespace:
 
     args = parser.parse_args(args)
 
+    # modify_objective_args(args)
     cleanup_args(args)
 
     return args
@@ -49,11 +50,6 @@ def add_general_args(parser: ArgumentParser) -> None:
                         help='whether to write a summary file with all of the explored inputs and their associated scores after each round of exploration')
     parser.add_argument('--write-final', action='store_true', default=False,
                         help='whether to write a summary file with all of the explored inputs and their associated scores')
-
-    parser.add_argument('--save-preds', action='store_true', default=False,
-                        help='whether to write the full prediction data to a file each time the predictions are updated')
-    parser.add_argument('--save-state', action='store_true', default=False,
-                        help='whether to save the state of the explorer before each batch')
 
     parser.add_argument('--chkpt-freq', type=int,
                         nargs='?', default=0, const=-1,
@@ -92,29 +88,24 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         required=True, nargs='+',
                         help='the CSVs containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
-                        help='whether there are no title lines in the library files')
-
+                        help='whether there is no title line in the library files')
     parser.add_argument('--delimiter', default=',',
                         help='the column separator in the library files')
-
     parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library files')
     parser.add_argument('--cxsmiles', default=False, action='store_true',
                         help='whether the file uses CXSMILES strings')
-
     parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
                         help='an HDF5 file containing the precalculated feature representation of each molecule in the pool')
-
     parser.add_argument('--cluster', action='store_true', default=False,
                         help='whether to cluster the MoleculePool')
     parser.add_argument('--cache', action='store_true', default=False,
                         help='whether to store the full MoleculePool in memory')
     parser.add_argument('--validated', action='store_true', default=False,
-                        help='DEPRECATED. USE INVALID_IDXS INSTEAD. whether the pool has been manually validated and invalid SMILES strings have been removed.')
+                        help='DEPRECATED. whether the pool has been manually validated and invalid SMILES strings have been removed.')
     parser.add_argument('--invalid-idxs', '--invalid-lines',
                         type=int, nargs='*',
                         help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
-
 
 #####################################
 #       ACQUISITION ARGUMENTS       #
@@ -125,13 +116,12 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                                  'ucb', 'ei', 'pi', 'thompson'},
                         help='the acquisition metric to use')
 
-    parser.add_argument('--init-size', 
+    parser.add_argument('--init-size',
                         type=restricted_float_or_int, default=0.01,
-                        help='the number of ligands or fraction of total library to initially dock')
+                        help='the number of ligands or fraction of total library to initially sample')
     parser.add_argument('--batch-sizes',
                         type=restricted_float_or_int, default=[0.01], nargs='+',
                         help='the number of ligands or fraction of total library to sample for each successive batch of exploration. Will proceed through the values provided and repeat the final value as neccessary. I.e., passing --batch-sizes 10 20 30 will acquire 10 inputs in the first exploration iteration, 20 in the second, and 30 for all remaining exploration batches')
-
     parser.add_argument('--epsilon', type=float, default=0.,
                         help='the fraction of each batch that should be acquired randomly')
 
@@ -164,7 +154,6 @@ def add_objective_args(parser: ArgumentParser) -> None:
                         help='the objective function to use')
     parser.add_argument('--objective-config',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
-
 
 ###############################
 #       MODEL ARGUMENTS       #
@@ -238,6 +227,7 @@ def cleanup_args(args: Namespace):
         args.scores_csvs = args.scores_csvs[0]
 
     args.title_line = not args.no_title_line
+
     args_to_remove = {'no_title_line'}
 
     if args.metric != 'ei' or args.metric != 'pi':

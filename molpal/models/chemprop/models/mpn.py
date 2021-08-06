@@ -258,7 +258,10 @@ class MPN(nn.Module):
             containing the encoding of each molecule.
         """
         if all(isinstance(x, (str, Chem.Mol)) for x in batches[0]):
+<<<<<<< HEAD
         # if not isinstance(batches[0], BatchMolGraph):
+=======
+>>>>>>> budget
         # if type(batches[0]) != BatchMolGraph:
             # TODO: handle atom_descriptors_batch with multiple molecules per input
             # if self.atom_descriptors == 'feature':
