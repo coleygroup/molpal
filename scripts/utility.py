@@ -4,7 +4,6 @@ from itertools import repeat
 import utils
 import curves
 
-
 def cost(it: int) -> int:
     if it < 1:
         raise ValueError(f'no cost for iterations less than 1. got {it}')
