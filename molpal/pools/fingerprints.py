@@ -1,14 +1,12 @@
-from concurrent.futures import ProcessPoolExecutor as Pool
 from itertools import islice
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Set, Tuple, TypeVar
+from typing import Iterable, Iterator, List, Set, Tuple, TypeVar
 
 import h5py
-import numpy as np
 import ray
 from tqdm import tqdm
 
-from molpal.encoder import Featurizer, featurize, feature_matrix
+from molpal.featurizer import Featurizer, feature_matrix
 
 T = TypeVar('T')
 
