@@ -4,7 +4,7 @@
 ![overview of molpal structure and implementation](molpal_overview.png)
 
 ## Overview
-This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://arxiv.org/abs/2012.07127) 
+This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://pubs.rsc.org/en/content/articlelanding/2021/sc/d0sc06805e).
 
 ## Table of Contents
 - [Overview](#overview)
@@ -19,6 +19,7 @@ This repository contains the source of MolPAL, a software for the accelerated di
   * [Optional Settings](#optional-settings)
 - [Future Directions](#future-directions)
 - [Reproducing Experimental Results](#reproducing-experimental-results)
+- [Citation](#citation)
 
 ## Requirements
 - Python (>= 3.6)
@@ -196,3 +197,20 @@ the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI G
 <sup>1</sup>fingerprint code currently only support single process writing to limit total memory footprint. We have found it is I/O limited beyond 8 CPUs
 
 <sup>2</sup>used Intel Xeon 6130 CPUs and Nvidia V100 GPUs
+
+## Citation
+
+If you used MolPAL in your work, we would appreciate you citing us!
+
+```bibtex
+@article{graff_accelerating_2021,
+  title = {Accelerating high-throughput virtual screening through molecular pool-based active learning},
+  author = {Graff, David E. and Shakhnovich, Eugene I. and Coley, Connor W.},
+  journal = {Chemical Science},
+  year = {2021},
+  volume = {12},
+  number = {22},
+  pages = {7866--7881},
+  doi = {10.1039/D0SC06805E},
+}
+```
