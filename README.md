@@ -11,12 +11,14 @@ This repository contains the source of MolPAL, a software for the accelerated di
 - [Table of Contents](#table-of-contents)
 - [Requirements](#requirements)
 - [Installation](#installation)
-- [Object Model](#object-model)
-- [Preprocessing](#preprocessing)
 - [Running MolPAL](#running-molpal)
+  * [Setting up a ray cluster](#setting-up-a-ray-cluster)
+  * [Preprocessing](#preprocessing)
+  * [Configuration files](#configuration-files)
   * [Examples](#examples)
   * [Required Settings](#required-settings)
   * [Optional Settings](#optional-settings)
+- [Object Model](#object-model)
 - [Future Directions](#future-directions)
 - [Reproducing Experimental Results](#reproducing-experimental-results)
 - [Citation](#citation)
@@ -24,8 +26,10 @@ This repository contains the source of MolPAL, a software for the accelerated di
 ## Requirements
 - Python (>= 3.6)
 
-_if utilizing GPU accelerated model training/inference_
+_if utilizing GPU accelerated model inference_
 - CUDA (>= 10.2)
+_if utilizing GPU accelerated model training and inference_
+- CUDA (>= 11.1)
 
 _if performing docking online_
 - the appropriate requirements as listed in the `pyscreener` [README](https://github.com/coleygroup/pyscreener)
@@ -49,8 +53,6 @@ __NOTE__: the `environment.yml` must be edited to reflect your machine's setup. 
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
-
-
 ## Running MolPAL
 
 ### Setting up a ray cluster
@@ -63,6 +65,9 @@ _Ex._: To restrict the ray cluster to using only N CPUs and M GPUs, type:
 `ray start --head --num-cpus N --num-gpus M`
 
 To properly leverage multi-node allocations, you must set up a ray cluster manually before running MolPAL. The [documentation](https://docs.ray.io/en/master/cluster/index.html) has several examples of how to set up a ray cluster, and the only thing specific to MolPAL is the reliance on two environment variables: `redis_password` and `ip_head`. MolPAL will use the values of these environment variables to connect to the proper ray cluster. An example of this may be seen in the SLURM submission script [`run_molpal.batch`](run_molpal.batch)
+
+#### GPU usage
+MolPAL will automatically use a GPU if it detects one in the ray cluster. If this is undesired, you can specify `--num-gpus 0` when starting ray and running `export CUDA_VISIBLE_DEVICES=''` before starting MolPAL
 
 ### Preprocessing
 For models expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints, and that's exactly what the base `MoleculePool` (also referred to as an `EagerMoleculePool`) does. However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them on disk in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.)
@@ -95,47 +100,34 @@ Configuration files accept the following syntaxes:
 ### Examples
 A sample command to run one of the experiments used to generate data in the initial publication is as follows:
 
-`python run.py --config expt-configs/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-size 0.01 --model rf`
+`python run.py --config expt-configs/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf`
 
 or the full command:
 
-`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-size 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config objective-configs/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
+`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config objective-configs/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
 
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
 
-`-o` or `--objective`: The objective function you would like to use. Choices include `docking` for docking objectives and `lookup` for lookup objectives. There are additional arguments for each type of objective.
-- `docking`: given the variety of screening options allowed by the `pyscreener` library, it's likely easiest to specify an `--objective-config` rather than providing these options on the command line. The `objective-config` file must be provided in the format of a `pyscreener` configuration file, so some options might have different names (e.g., `size` in that file rather than `--box-size`). Any options specified on the command line will override any options provided in the configuration file. 
-  * `--software`: the docking software you would like to use. Choices: 'vina', 'smina', 'psovina', 'qvina', and 'ucsfdock' (Default = 'vina').
-  * `--receptor`': the filepath of the receptor you are attempting to dock ligands into.
-  * `--box-center`: the x-, y-, and z-coordinates (Å) of the center of the docking box.
-  * `--box-size`: the x-, y-, and z- radii of the docking box in Å.
-  * `--docked-ligand-file`: the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file. Either `--box-center` and `--box-size` must be specified or a docked ligand file must be provided. In the case that both are provided, 
-  * `--score-mode`: the method by which to calculate an overall score from multiple scored conformations
+`-o` or `--objective`: The objective function you would like to use. Choices include `docking` for docking objectives and `lookup` for lookup objectives and this dictates the options that must be specified in the `objective-config` file:
+- `docking`: please see the 
 - `lookup`
   * `--lookup-path`: the filepath of a CSV file containing score information for each input
 
-`--library`: the filepath of a CSV file containing the virtual library as SMILES strings
-- (optional) `--fps`: the filepath of an hdf5 file containing the precomputed fingerprints of your virtual library. MolPAL relies on the assumption that the ordering of the fingerprints in this file is exactly the same as that of the library file and that the encoder used to generate these fingerprints is exactly the same as the one used for model training. MolPAL handles writing this file for you if unspecified, so this option is mostly useful for avoiding the overhead at startup of running MolPAL again with the same library/encoder settings.
+`--libraries`: the filepaths of CSV files containing the virtual library as SMILES (or CXSMILES) strings. If CXSMILES, pass the additional `--cxsmiles` flag
 
 ### Optional Settings
-MolPAL has a number of different model architectures, encodings, acquisition metrics, and stopping criteria to choose from. Many of these choices have default settings that were arrived at through hyperparameter optimization, but your circumstances may call for modifying these choices. To see the full list, run MolPAL with either the `-h` or `--help` flags. A few common options to specify are shown below.
+- `--fps`: the filepath of an hdf5 file containing the precomputed fingerprints of your virtual library. MolPAL relies on the assumption that the ordering of the fingerprints in this file is exactly the same as that of the library file and that the encoder used to generate these fingerprints is exactly the same as the one used for model training. MolPAL handles writing this file for you if unspecified, so this option is mostly useful for avoiding the overhead at startup of running MolPAL again with the same library/featurizer settings.
+- `--invalid-idxs`: unless MolPAl prepares your fingerprints file for you, it must validate each SMILES string in the library and determine the set of invalid indices in the virtual library. This can be time-consuming for large virtual libraries, so passing this set to MolPAL, if known, can save time. Preparing the fingerprints file as in the [Preprocessing](#preprocessing) section will output this set for you.
 
-`-k`: the fraction (if between 0 and 1) or number (if greather than 1) of top scores to evaluate when calculating an average. (Default = 0.005)
-
-`--window-size` and `--delta`: the principle stopping criterion of MolPAL is whether or not the current top-k average score is better than the moving average of the `window_size` most recent top-k average scores by at least `delta`. (Default: `window_size` = 3, `delta` = 0.1)
-
-`--budget`: if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
-
-`--max-epochs`: Alternatively, you may specify the maximum number of epochs of exploration. (Default = 50)
-
-`--model`: the type of model to use. Choices include `rf`, `gp`, `nn`, and `mpn`. (Default = `rf`)  
-  - `--conf-method`: the confidence estimation method to use for the NN or MPN models. Choices include `ensemble`, `dropout`, `mve`, and `none`. (Default = 'none'). NOTE: the MPN model does not support ensembling
-
-`--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the β value for `ucb`.) 
-
-### GPU usage
-MolPAL will automatically use a GPU if it detects one. If this is undesired, use the following command before running: `export CUDA_VISIBLE_DEVICES=''`
+MolPAL also has a number of different model architectures, encodings, acquisition metrics, and stopping criteria to choose from. Many of these choices have default settings that were arrived at through hyperparameter optimization, but your circumstances may call for modifying these choices. To see the full list, run MolPAL with either the `-h` or `--help` flags. A few common options to specify are shown below.
+- `-k`: the fraction (if between 0 and 1) or number (if greather than 1) of top scores to evaluate when calculating an average. (Default = 0.005)
+- `--window-size` and `--delta`: the principle stopping criterion of MolPAL is whether or not the current top-k average score is better than the moving average of the `window_size` most recent top-k average scores by at least `delta`. (Default: `window_size` = 3, `delta` = 0.1)
+- `--budget`: if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
+- `--max-epochs`: Alternatively, you may specify the maximum number of epochs of exploration. (Default = 50)
+- `--model`: the type of model to use. Choices include `rf`, `gp`, `nn`, and `mpn`. (Default = `rf`)  
+  * `--conf-method`: the confidence estimation method to use for the NN or MPN models. Choices include `ensemble`, `dropout`, `mve`, and `none`. (Default = 'none'). NOTE: the MPN model does not support ensembling
+- `--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the β value for `ucb`.) 
 
 ## Object Model
 MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements several classes that handle specific elements of the optimization routine.
@@ -185,10 +177,10 @@ Once all of the data were generated, the directories were containing the data fr
 ```
 where everything between angled brackets is a single word that describes the corresponding parameter (e.g., `<model>` = `mpn`) and `<i>` is a number signifiying which repeat that run represents. Each `rep_<i>` folder is the actual output folder from a run of MolPAL.
 
-After the data was organized as above, `scripts/analyze_data.py` was used to analyze the data by parsing the output from individual runs, organizing the data, and using the data to produce the corresponding figure.
+After the data was organized as above, `scripts/trajectories.py` was used to analyze the data by parsing the output from individual runs, organizing the data, and using the data to produce the corresponding figure.
 
 #### Example
-To reproduce the 10k and 50k figures in the main text, we ran the script with the following command: `python scripts/analyze_data.py --parent-dir molpal_results/10k --true-pkl <10k_score_dict.pkl> --mode model-metrics --split 0.010`. In our case, the full results of all the 10k runs were stored under the folder `molpal_results/10k` according to the directory structure above. Also note that <10k_score_dict.pkl> is a pickled python dictionary generated by `scripts/make_dict.py` (just a dictionary of the included score CSV files.)
+To reproduce the 10k and 50k figures in the main text, we ran the script with the following command: `python scripts/trajectories.py --parent-dir molpal_results/10k --true-pkl <10k_score_dict.pkl> --mode model-metrics --split 0.010`. In our case, the full results of all the 10k runs were stored under the folder `molpal_results/10k` according to the directory structure above. Also note that <10k_score_dict.pkl> is a pickled python dictionary generated by `scripts/make_dict.py` (just a dictionary of the included score CSV files.)
 
 For the remaining figures (e.g., UMAP and histogram figures,) use the corresponding scripts in the `scripts` directory. To figure out how to run them, use the following command `python <script>.py --help`.
 
