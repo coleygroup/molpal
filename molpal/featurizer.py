@@ -121,7 +121,9 @@ class Featurizer:
 #                 f'fingerprint={self.fingerprint}, ' +
 #                 f'radius={self.radius}, length={self.length})')
 
-def featurize(smi, fingerprint, radius, length) -> Optional[np.ndarray]:
+def featurize(
+    smi: str, fingerprint: str, radius: int, length: int
+) -> Optional[np.ndarray]:
     mol = Chem.MolFromSmiles(smi)
     if mol is None:
         return None
@@ -157,13 +159,15 @@ def chunks(it: Iterable[T], chunk_size: int) -> Iterator[List]:
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
-def feature_matrix(smis, featurizer):
+def feature_matrix(smis: Iterable[str], featurizer: Featurizer):
     fingerprint = featurizer.fingerprint
     radius = featurizer.radius
     length = featurizer.length
 
     @ray.remote
-    def featurize_chunk(smis, fingerprint, radius, length):
+    def featurize_chunk(
+        smis: Iterable[str], fingerprint: str, radius: int, length: int
+    ):
         return [featurize(smi, fingerprint, radius, length) for smi in smis]
 
     chunksize = int(math.sqrt(ray.cluster_resources()['CPU']) * 512)

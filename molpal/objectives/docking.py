@@ -2,7 +2,7 @@ import atexit
 import csv
 from typing import Dict, List, Optional, TypeVar
 
-from molpal.objectives.base import Objective
+from molpal.objectives.base import Task
 
 from pyscreener import args as pyscreener_args
 from pyscreener import docking
@@ -10,8 +10,8 @@ from pyscreener import docking
 T = TypeVar('T')
 U = TypeVar('U')
 
-class DockingObjective(Objective):
-    """A DockingObjective calculates the objective function by calculating the
+class DockingTask(Task):
+    """A DockingTask calculates the objective function by calculating the
     docking score of a molecule
 
     Attributes
@@ -26,16 +26,16 @@ class DockingObjective(Objective):
 
     Parameters
     ----------
-    config : Optional[str] (Default = None)
-        the path to a pyscreener config file containing the options for docking
-        calculations.
-    verbose : int (Default = 0)
-    **kwargs
-        additional and unused keyword arguments
+    objective_config : str
+        the path to a pyscreener config file containing the options for
+        docking calculations.
+    verbose : int, default=0
+    minimize : bool, default=True
     """
-    def __init__(self, objective_config: str, path: str = '.',
+    def __init__(self, config: str, *,
+                 path: str, minimize: bool = True, verbose: int = 0
                 #  input_map_file: Optional[str] = None,
-                 verbose: int = 0, minimize: bool = True, **kwargs):
+                ):
         # self.input_map_file = input_map_file
         
         params = {
@@ -44,7 +44,7 @@ class DockingObjective(Objective):
         }
 
         params.update(vars(pyscreener_args.gen_args(
-            f'--config {objective_config}'
+            f'--config {config}'
         )))
 
         self.docking_screener = docking.screener(**params)

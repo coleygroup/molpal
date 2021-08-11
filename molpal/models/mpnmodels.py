@@ -4,7 +4,9 @@ from functools import partial
 import json
 import logging
 from pathlib import Path
-from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
+from typing import (
+    Iterable, List, NoReturn, Optional, Sequence, Tuple, Type, TypeVar
+)
 
 import numpy as np
 import ray
@@ -27,6 +29,20 @@ logging.getLogger('lightning').setLevel(logging.FATAL)
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
+
+def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
+    """MPN-type Model factory function"""
+    try:
+        return {
+            'dropout': MPNDropoutModel,
+            'twooutput': MPNTwoOutputModel,
+            'mve': MPNTwoOutputModel,
+            'none': MPNModel
+        }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
+        
+    except KeyError:
+        raise NotImplementedError(
+            f'Unrecognized MPN confidence method: "{conf_method}"')
 
 class MPNN:
     """A message-passing neural network base class

@@ -3,6 +3,7 @@ input based on various metrics"""
 from typing import Callable, Optional, Set
 
 import numpy as np
+import pygmo as pg
 from scipy.stats import norm
 
 # this module maintains an independent random number generator
@@ -44,37 +45,39 @@ def get_needs(metric: str) -> Set[str]:
         'threshold': {'means'}
     }.get(metric, set())
 
-def calc(metric: str, Y_mean: np.ndarray, Y_var: np.ndarray,
-         current_max: float, threshold: float,
-         beta: int, xi: float, stochastic: bool) -> np.ndarray:
+def calc(
+    metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
+    P_f: np.ndarray, current_max: float, threshold: float,
+    beta: int, xi: float, stochastic: bool, nadir: np.ndarray
+) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
     if metric == 'random':
-        return random(Y_mean)
+        return random(Y_means)
     if metric == 'threshold':
-        return random_threshold(Y_mean, threshold)
+        return random_threshold(Y_means, threshold)
     if metric == 'greedy':
-        return greedy(Y_mean)
+        return greedy(Y_means, P_f, nadir)
     if metric == 'noisy':
-        return noisy(Y_mean)
+        return noisy(Y_means, P_f, nadir)
     if metric == 'ucb':
-        return ucb(Y_mean, Y_var, beta)
+        return ucb(Y_means, Y_vars, beta)
     if metric == 'lcb':
-        return lcb(Y_mean, Y_var, beta)
-    if metric in ['ts', 'thompson']:
-        return thompson(Y_mean, Y_var, stochastic)
+        return lcb(Y_means, Y_vars, beta)
+    if metric in ('ts', 'thompson'):
+        return thompson(Y_means, Y_vars, stochastic)
     if metric == 'ei':
-        return ei(Y_mean, Y_var, current_max, xi)
+        return ei(Y_means, Y_vars, current_max, xi)
     if metric == 'pi':
-        return pi(Y_mean, Y_var, current_max, xi)
+        return pi(Y_means, Y_vars, current_max, xi)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
 
-def random(Y_mean: np.ndarray) -> np.ndarray:
+def random(Y_means: np.ndarray) -> np.ndarray:
     """Random acquistion score
 
     Parameters
     ----------
-    Y_mean : np.ndarray
+    Y_means : np.ndarray
         an array of length equal to the number of random scores to generate.
         It is only used to determine the dimension of the output array, so the
         values contained in it are meaningless.
@@ -84,15 +87,15 @@ def random(Y_mean: np.ndarray) -> np.ndarray:
     np.ndarray
         the random acquisition scores
     """
-    return RG.random(len(Y_mean))
+    return RG.random(len(Y_means))
 
-def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
+def random_threshold(Y_means: np.ndarray, threshold: float) -> float:
     """Random acquisition score [0, 1) if at or above threshold. Otherwise,
     return -1.
     
     Parameters
     ----------
-    Y_mean : np.ndarray
+    Y_means : np.ndarray
     threshold : float
         the threshold value below which to assign acquisition scores as -1 and 
         above or equal to which to assign random acquisition scores in the 
@@ -103,59 +106,109 @@ def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
     np.ndarray
         the random threshold acquisition scores
     """
-    return np.where(Y_mean >= threshold, RG.random(Y_mean.shape), -1.)
+    return np.where(Y_means >= threshold, RG.random(Y_means.shape), -1.)
 
-def greedy(Y_mean: np.ndarray) -> np.ndarray:
-    """Greedy acquisition score
+def greedy(
+    Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray
+) -> np.ndarray:
+    """Calculate the greedy acquisition utility of each point
     
+    If the dimension of the objective is greather than 1, use the hypervolume 
+    improvement, or S-metric
+
     Parameters
     ----------
-    Y_mean : np.ndarray
-        the mean predicted y values
+    Y_means : np.ndarray
+        an NxT array where N is the number of inputs and T is dimension of the
+        objective
+    P_f : np.ndarray
+        the current pareto frontier
+    nadir : np.ndarray
+        the nadir or reference point of the objective. I.e., the point in 
+        objective space which will be less than all other points in each
+        dimension
 
     Returns
     -------
     np.ndarray
-        the greedy acquisition scores
+        the means if T is equal to 1 or the S-metric if T is greater than 1
+        for each point
     """
-    return Y_mean
+    if Y_means.shape[1] > 1:
+        return hvi(Y_means, P_f, nadir)
 
-def noisy(Y_mean: np.ndarray) -> np.ndarray:
+    return Y_means[:, 0]
+
+def hvi(Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray) -> np.ndarray:
+    """Calculate the hypervolume improvement or S-metric for the predictions
+
+    Parameters
+    ----------
+    Y_means : np.ndarray
+    P_f : np.ndarray
+        the current pareto frontier
+    nadir : np.ndarray
+        the nadir or reference point of the objective. I.e., the point in 
+        objective space which will be less than all other points in each
+        dimension
+
+    Returns
+    -------
+    S : np.ndarray
+        the hypervolume improvement or S-metric for each point
+    """
+    Y_means = -Y_means
+    P_f = -P_f
+
+    hv_old = pg.hypervolume(Y_means).compute(nadir)
+    S = np.empty(len(Y_means))
+    
+    for i, Y_means in enumerate(Y_means):
+        hv_new = pg.hypervolume(
+            np.vstack((P_f, Y_means))
+        ).compute(nadir)
+        S[i] = hv_new - hv_old
+
+    return S
+
+def noisy(
+    Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray
+) -> np.ndarray:
     """Noisy greedy acquisition score
     
     Adds a random amount of noise to each predicted mean value. The noise is
     randomly sampled from a normal distribution centered at 0 with standard
     deviation equal to the standard deviation of the input predicted means.
     """
-    sd = np.std(Y_mean)
-    noise = RG.normal(scale=sd, size=len(Y_mean))
-    return Y_mean + noise
+    sds = Y_means.std(axis=0)
+    noise = RG.normal(scale=sds, size=Y_means.shape)
+    return greedy(Y_means + noise, P_f, nadir)
 
-def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
+def ucb(Y_means: np.ndarray, Y_vars: np.ndarray, beta: int = 2) -> float:
     """Upper confidence bound acquisition score
 
     Parameters
     ----------
-    Y_mean : np.ndarray
-    Y_var : np.ndarray
+    Y_means : np.ndarray
+    Y_vars : np.ndarray
         the variance of the mean predicted y values
     beta : int (Default = 2)
-        the number of standard deviations to add to Y_mean
+        the number of standard deviations to add to Y_means
 
     Returns
     -------
     np.ndarray
         the upper confidence bound acquisition scores
     """
-    return Y_mean + beta*np.sqrt(Y_var)
+    return Y_means + beta*np.sqrt(Y_vars)
 
-def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
+def lcb(Y_means: np.ndarray, Y_vars: np.ndarray, beta: int = 2) -> float:
     """Lower confidence bound acquisition score
 
     Parameters
     ----------
-    Y_mean : np.ndarray
-    Y_var : np.ndarray
+    Y_means : np.ndarray
+    Y_vars : np.ndarray
     beta : int (Default = 2)
 
     Returns
@@ -163,18 +216,18 @@ def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
     np.ndarray
         the lower confidence bound acquisition scores
     """
-    return Y_mean - beta*np.sqrt(Y_var)
+    return Y_means - beta*np.sqrt(Y_vars)
 
-def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
+def thompson(Y_means: np.ndarray, Y_vars: np.ndarray,
              stochastic: bool = False) -> float:
     """Thompson acquisition score
 
     Parameters
     -----------
-    Y_mean : np.ndarray
-    Y_var : np.ndarray
+    Y_means : np.ndarray
+    Y_vars : np.ndarray
     stochastic : bool
-        is Y_mean generated stochastically?
+        is Y_means generated stochastically?
 
     Returns
     -------
@@ -182,20 +235,20 @@ def thompson(Y_mean: np.ndarray, Y_var: np.ndarray,
         the thompson acquisition scores
     """
     if stochastic:
-        return Y_mean
+        return Y_means
 
-    Y_sd = np.sqrt(Y_var)
+    Y_sd = np.sqrt(Y_vars)
 
-    return RG.normal(Y_mean, Y_sd)
+    return RG.normal(Y_means, Y_sd)
 
-def ei(Y_mean: np.ndarray, Y_var: np.ndarray,
+def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
        current_max: float, xi: float = 0.01) -> float:
     """Exected improvement acquisition score
 
     Parameters
     ----------
-    Y_mean : np.ndarray
-    Y_var : np.ndarray
+    Y_means : np.ndarray
+    Y_vars : np.ndarray
     current_max : float
         the current maximum observed score
     xi : float (Default = 0.01)
@@ -206,27 +259,27 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray,
     E_imp : np.ndarray
         the expected improvement acquisition scores
     """
-    I = Y_mean - current_max + xi
-    Y_sd = np.sqrt(Y_var)
+    I = Y_means - current_max + xi
+    Y_sd = np.sqrt(Y_vars)
     with np.errstate(divide='ignore', invalid='ignore'):
         Z = I / Y_sd
     E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
     # if the expected variance is 0, the expected improvement
     # is the predicted improvement
-    mask = (Y_var == 0)
+    mask = (Y_vars == 0)
     E_imp[mask] = I[mask]
 
     return E_imp
 
-def pi(Y_mean: np.ndarray, Y_var: np.ndarray,
+def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
        current_max: float, xi: float = 0.01) -> np.ndarray:
     """Probability of improvement acquisition score
 
     Parameters
     ----------
-    Y_mean : np.ndarray
-    Y_var : np.ndarray
+    Y_means : np.ndarray
+    Y_vars : np.ndarray
     current_max : float
     xi : float (Default = 0.01)
 
@@ -235,14 +288,14 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray,
     P_imp : np.ndarray
         the probability of improvement acquisition scores
     """
-    I = Y_mean - current_max + xi
+    I = Y_means - current_max + xi
     with np.errstate(divide='ignore'):
-        Z = I / np.sqrt(Y_var)
+        Z = I / np.sqrt(Y_vars)
     P_imp = norm.cdf(Z)
 
     # if expected variance is 0, probability of improvement is 0 or 1 
     # depending on whether the predicted improvement is negative or positive
-    mask = (Y_var == 0)
+    mask = (Y_vars == 0)
     P_imp[mask] = np.where(I > 0, 1, 0)[mask]
 
     return P_imp
