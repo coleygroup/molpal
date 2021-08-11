@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
-from molpal import acquirer, encoder, models, objectives, pools
+from molpal import acquirer, featurizer, models, objectives, pools
 
 T = TypeVar('T')
 
@@ -25,8 +25,8 @@ class Explorer:
         the name this explorer will use for all outputs
     pool : MoleculePool
         the pool of inputs to explore
-    encoder : Encoder
-        the encoder this explorer will use convert molecules from SMILES
+    featurizer : Featurizer
+        the featurizer this explorer will use convert molecules from SMILES
         strings into feature representations
     acquirer : Acquirer
         an acquirer which selects molecules to explore next using a prior
@@ -135,7 +135,7 @@ class Explorer:
         self.root = root
         self.tmp = tmp_dir
 
-        self.featurizer = encoder.Featurizer(
+        self.featurizer = featurizer.Featurizer(
             fingerprint=kwargs['fingerprint'],
             radius=kwargs['radius'], length=kwargs['length']
         )

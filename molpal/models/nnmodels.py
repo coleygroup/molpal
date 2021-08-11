@@ -1,6 +1,5 @@
 """This module contains Model implementations that utilize an NN model as their 
 underlying model"""
-
 from functools import partial
 import logging
 import json
@@ -18,9 +17,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from tensorflow import keras
 
-from molpal.encoder import feature_matrix
+from molpal.featurizer import Featurizer, feature_matrix
 from molpal.models.base import Model
-# from molpal.models.utils import feature_matrix
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -260,11 +258,11 @@ class NNModel(Model):
         return 'nn'
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurize: Callable[[T], ndarray], retrain: bool = False) -> bool:
+              featurizer: Featurizer, retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
 
-        return self.model.train(xs, ys, featurize)
+        return self.model.train(xs, ys, featurizer)
 
     def get_means(self, xs: List) -> ndarray:
         return self.model.predict(xs)[:, 0]
@@ -324,7 +322,7 @@ class NNEnsembleModel(Model):
         return {'means', 'vars'}
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Callable[[T], ndarray], retrain: bool = False):
+              featurizer: Featurizer, retrain: bool = False):
         if retrain:
             self.models = [
                 self.build_model() for _ in range(self.ensemble_size)
@@ -396,7 +394,7 @@ class NNTwoOutputModel(Model):
         return {'means', 'vars'}
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Callable[[T], ndarray], retrain: bool = False) -> bool:
+              featurizer: Featurizer, retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
 
@@ -464,7 +462,7 @@ class NNDropoutModel(Model):
         return {'means', 'vars', 'stochastic'}
 
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Callable[[T], ndarray], retrain: bool = False) -> bool:
+              featurizer: Featurizer, retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
         
