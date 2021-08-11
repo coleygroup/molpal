@@ -177,3 +177,4 @@ def feature_matrix(smis, featurizer):
     ]
     fps = list(chain(*fps_chunks))
     return np.array(fps)
+    

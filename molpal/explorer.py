@@ -24,8 +24,8 @@ class Explorer:
     ----------
     pool : MoleculePool
         the pool of inputs to explore
-    encoder : Encoder
-        the encoder this explorer will use convert molecules from SMILES
+    featurizer : Featurizer
+        the featurizer this explorer will use convert molecules from SMILES
         strings into feature representations
     acquirer : Acquirer
         an acquirer which selects molecules to explore next using a prior
