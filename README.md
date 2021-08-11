@@ -40,9 +40,11 @@ The first step in installing MolPAL is to clone this repository: `git clone <thi
 The easiest way to install all dependencies is to use conda along with the supplied [environment.yml](environment.yml) file, but you may also install them manually, if desired. All libraries listed in that file are __required__ before using `MolPAL`
 
 The following packages are _optional_ to install before running MolPAL:
-- cudatoolkit (whichever version matches your CUDA build if utilizing GPU acceleration for PyTorch-based models (MPN)
-- [map4](https://github.com/reymond-group/map4) and [tmap](https://github.com/reymond-group/tmap) (if utilizing the map4 fingerprint)
-- [optuna](https://optuna.readthedocs.io/en/stable/installation.html) (if planning to perform hyperparameter optimization)
+- cudatoolkit: whichever version matches your CUDA build if utilizing GPU acceleration for PyTorch-based models (MPN)
+- [map4](https://github.com/reymond-group/map4) and [tmap](https://github.com/reymond-group/tmap): if utilizing the map4 fingerprint
+- [optuna](https://optuna.readthedocs.io/en/stable/installation.html): if planning to perform hyperparameter optimization
+- matplotlib: to generate plots from the publication
+- seaborn: to generate plots from the publication
 
 #### setup via conda
 __NOTE__: the `environment.yml` must be edited to reflect your machine's setup. To do this, uncomment out the appropriate line depending on your CUDA version or if you lack a GPU entirely. If you need a lower CUDA version than those specified in the environment YAML file, comment out the PyTorch line as well and go to the [pytorch wesbite](https://pytorch.org/get-started/locally/) to set the channels and versions of both the pytorch and cudatoolkit packages properly.
