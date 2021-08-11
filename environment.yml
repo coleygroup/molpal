@@ -5,8 +5,10 @@ channels:
   - defaults
 
 dependencies:
-  - conda-forge::cudatoolkit=11.1
+  # comment out the corresponding line for your specific CUDA version
+  # - nvidia::cudatoolkit=11.1
   # - pytorch::cudatoolkit=10.2
+  # - pytorch::cpuonly
   - configargparse
   - h5py
   - importlib_resources
@@ -18,7 +20,7 @@ dependencies:
   - tqdm
   - pip
   - pip:
-    - ray
+    - ray[default]
     - pytorch-lightning
     - tensorflow
     - tensorflow-addons
