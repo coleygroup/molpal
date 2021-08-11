@@ -181,3 +181,4 @@ def feature_matrix(smis: Iterable[str], featurizer: Featurizer):
     ]
     fps = list(chain(*fps_chunks))
     return np.array(fps)
+    
