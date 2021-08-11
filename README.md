@@ -41,7 +41,7 @@ The following packages are _optional_ to install before running MolPAL:
 - [optuna](https://optuna.readthedocs.io/en/stable/installation.html) (if planning to perform hyperparameter optimization)
 
 #### setup via conda
-__NOTE__: you may wish to edit `environment.yml` to reflect the CUDA version you will be using. It is currently configured to use CUDA 11.1, but you can delete this line and uncomment the other line if your setup required CUDA 10.2. If you need a lower CUDA version than that, please go to the [pytorch wesbite](https://pytorch.org/get-started/locally/) to set the channels and versions of both pytorch and other packages properly.
+__NOTE__: the `environment.yml` must be edited to reflect your machine's setup. To do this, uncomment out the appropriate line depending on your CUDA version or if you lack a GPU entirely. If you need a lower CUDA version than those specified in the environment YAML file, comment out the PyTorch line as well and go to the [pytorch wesbite](https://pytorch.org/get-started/locally/) to set the channels and versions of both the pytorch and cudatoolkit packages properly.
 
 0. (if necessary) [install conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)
 1. `cd /path/to/molpal`
@@ -49,39 +49,33 @@ __NOTE__: you may wish to edit `environment.yml` to reflect the CUDA version you
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
-## Setting up a ray cluster
-MolPAL parallelizes objective function calculation and model inference (training coming later) using the [`ray`](ray.io) library. MolPAL will automatically start a ray cluster if none exists, but this is highly limiting because it can't leverage distributed resources nor will it accurately reflect allocated resources (i.e, it will think you have access to all N cores on a cluster node, regardless of your allocation.)
 
-To properly leverage multi-node allocations, you must set up a ray cluster manually before running MolPAL. The [documentation](https://docs.ray.io/en/master/cluster/index.html) has several examples of how to set up a ray cluster, and the only thing specific to MolPAL is the reliance on two environment variables: `redis_password` and `ip_head`. MolPAL will use the values of these environment variables to connect to the proper ray cluster. An example of this may be seen in the SLURM submission script [`run_molpal.batch`](run_molpal.batch)
-
-## Object Model
-MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements several classes that handle specific elements of the optimization routine.
-
-__Explorer__: An [`Explorer`](molpal/explorer.py) is the abstraction of the optimization routine. It ties together the `MoleculePool`, `Acquirer`, `Encoder`, `Model`, and `Objective`, which each handle (roughly) a single step of a Bayesian optimization loop, into a full optimization procedure. Its main functionality is defined by the `run()` method, which performs the optimization until a stopping condition is met, but it also defines other convenience functions that make it amenable to running a single iteration of the optimization loop and interrogating its current state if optimization is desired to be run interactively.
-
-__MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual library (i.e., domain of inputs) and caches precomputed feature representations, if feasible.
-
-__Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition of unlabeled inputs from the MoleculePool according to its `metric` and the prior distribution over the data. The [`metric`](molpal/acquirer/metrics.py) is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
-
-__Featurizer__: A [`Featurizer`](molpal/encoder.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
-
-__Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
-
-__Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
-
-## Preprocessing
-
-For models expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints, and that's exactly what the base `MoleculePool` (also referred to as an `EagerMoleculePool`) does. However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them on disk in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.)
-
-If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. While this process can be parallelized over an infinitely large ray cluster (see [above](#setting-up-a-ray-cluster),) in our tests we were I/O limited above 12 cores, which takes about 4 hours to prepare an HDF5 file of 100M fingerprints. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, if there were __no__ invalid smiles, you can pass the `--validated` flag in the options to further speed up MolPAL startup.
-
-To prepare the fingerprints file corresopnding to the sample command below, issue the following command: `python scripts/fingerprints.py --library libraries/Enamine50k.csv.gz --fingerprint pair --length 2048 --radius 2 --name libraries/fps_enamine50k`
-
-The resulting fingerprint file will be located in your current working directory as `libraries/fps_enamine50k.h5`. To use this in the sample command below, add `--fps libraries/fps_enamine50k.h5` to the argument list.
 
 ## Running MolPAL
 
-### Examples
+### Setting up a ray cluster
+MolPAL parallelizes objective function calculation and model inference (training coming later) using the [`ray`](ray.io) library. MolPAL will automatically start a ray cluster if none exists, but this is highly limiting because it can't leverage distributed resources nor will it accurately reflect allocated resources (i.e, it will think you have access to all N cores on a cluster node, regardless of your allocation.) 
+
+_Ex._: To specify a local ray cluster with all the resources on your machine, type:
+`ray start --head`
+
+_Ex._: To restrict the ray cluster to using only N CPUs and M GPUs, type:
+`ray start --head --num-cpus N --num-gpus M`
+
+To properly leverage multi-node allocations, you must set up a ray cluster manually before running MolPAL. The [documentation](https://docs.ray.io/en/master/cluster/index.html) has several examples of how to set up a ray cluster, and the only thing specific to MolPAL is the reliance on two environment variables: `redis_password` and `ip_head`. MolPAL will use the values of these environment variables to connect to the proper ray cluster. An example of this may be seen in the SLURM submission script [`run_molpal.batch`](run_molpal.batch)
+
+### Preprocessing
+For models expecting vectors as inputs (e.g., random forest and feed-forward neural network models,) molecular fingerprints must be calculated first. Given that the set of fingerprints used for inference is the same each time, it makes sense to cache these fingerprints, and that's exactly what the base `MoleculePool` (also referred to as an `EagerMoleculePool`) does. However, the complete set of fingerprints for most libraries would be too large to cache entirely in memory on most systems, so we instead store them on disk in an HDF5 file that is transparently prepared for the user during MolPAL startup (if not already provided with the `--fps` option.)
+
+If you wish to prepare this file ahead of time, you can use [`scripts/fingerprints.py`](scripts/fingerprints.py) to do just this. While this process can be parallelized over an infinitely large ray cluster (see [above](#setting-up-a-ray-cluster),) we found this was I/O limited above 12 cores, which takes about 4 hours to prepare an HDF5 file of 100M fingerprints. __Note__: if MolPAL prepares the file for you, it prints a message saying where the file was written to (usually under the $TMP directory) and whether there were invalid SMILES. To reuse this fingerprints file, simply move this file to a persistent directory after MolPAL has completed its run. Additionally, it will tell you which lines in your library file were invalid. You should use this value for the `--invalid-idxs` argument to further speed up MolPAL startup.
+
+_Ex._: To prepare the fingerprints file corresopnding to the sample command below, issue the following command:
+
+`python scripts/fingerprints.py --library libraries/Enamine50k.csv.gz --fingerprint pair --length 2048 --radius 2 --name libraries/fps_enamine50k`
+
+The resulting fingerprint file will be located in your current working directory as `libraries/fps_enamine50k.h5`. To use this in the sample command below, add `--fps libraries/fps_enamine50k.h5` to the argument list.
+
+### Configuration files
 The general command to run MolPAL is as follows:
 
 `python molpal.py -o <objective_type> [additional objective arguments] --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
@@ -98,13 +92,14 @@ Configuration files accept the following syntaxes:
 - `arg = value` (INI)
 - `arg value`
 
+### Examples
 A sample command to run one of the experiments used to generate data in the initial publication is as follows:
 
-`python run.py --config config_expts/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-size 0.01 --model rf`
+`python run.py --config expt-configs/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-size 0.01 --model rf`
 
 or the full command:
 
-`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-size 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --lookup-path data/Enamine50k_scores.csv.gz --lookup-smiles-col 0 --lookup-data-col 1 --minimize --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
+`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-size 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config objective-configs/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
 
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
@@ -130,7 +125,7 @@ MolPAL has a number of different model architectures, encodings, acquisition met
 
 `--window-size` and `--delta`: the principle stopping criterion of MolPAL is whether or not the current top-k average score is better than the moving average of the `window_size` most recent top-k average scores by at least `delta`. (Default: `window_size` = 3, `delta` = 0.1)
 
-`--max-explore`: if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
+`--budget`: if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
 
 `--max-epochs`: Alternatively, you may specify the maximum number of epochs of exploration. (Default = 50)
 
@@ -141,6 +136,21 @@ MolPAL has a number of different model architectures, encodings, acquisition met
 
 ### GPU usage
 MolPAL will automatically use a GPU if it detects one. If this is undesired, use the following command before running: `export CUDA_VISIBLE_DEVICES=''`
+
+## Object Model
+MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements several classes that handle specific elements of the optimization routine.
+
+__Explorer__: An [`Explorer`](molpal/explorer.py) is the abstraction of the optimization routine. It ties together the `MoleculePool`, `Acquirer`, `Encoder`, `Model`, and `Objective`, which each handle (roughly) a single step of a Bayesian optimization loop, into a full optimization procedure. Its main functionality is defined by the `run()` method, which performs the optimization until a stopping condition is met, but it also defines other convenience functions that make it amenable to running a single iteration of the optimization loop and interrogating its current state if optimization is desired to be run interactively.
+
+__MoleculePool__: A [`MoleculePool`](molpal/pools/base.py) defines the virtual library (i.e., domain of inputs) and caches precomputed feature representations, if feasible.
+
+__Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition of unlabeled inputs from the MoleculePool according to its `metric` and the prior distribution over the data. The [`metric`](molpal/acquirer/metrics.py) is a function that takes an input array of predictions and returns an array of equal dimension containing acquisition utilities.
+
+__Featurizer__: A [`Featurizer`](molpal/featurizer.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
+
+__Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
+
+__Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
 
 ## Hyperparameter Optimization
 While the default settings of MolPAL were chosen based on hyperparameter optimization with Optuna, they were calculated based on the context of structure-based discovery our computational resources. It is possible that these settings are not optimal for your particular problem. To adapt MolPAL to new circumstances, we recommend first generating a dataset that is representative of your particular problem then peforming hyperparameter optimization of your own using the `LookupObjective` class. This class acts as an Oracle for your particular objective function, enabling both consistent and near-instant calculation of the objective function for a particular input, saving time during hyperparameter optimization.
