@@ -60,10 +60,10 @@ class Explorer:
         whether the predictions are currently out-of-date with the model
     top_k_avg : float
         the average of the top-k explored inputs
-    Y_pred : np.ndarray
+    Y_means_pred : np.ndarray
         a list parallel to the pool containing the mean predicted score
         for an input
-    Y_var : np.ndarray
+    Y_vars_pred : np.ndarray
         a list parallel to the pool containing the variance in the predicted
         score for an input. Will be empty if model does not provide variance
     recent_avgs : List[float]
@@ -139,15 +139,19 @@ class Explorer:
             radius=kwargs['radius'], length=kwargs['length']
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
-        self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
-
+        self.objective = objectives.Objective(**kwargs)
+        self.acquirer = acquirer.Acquirer(
+            size=len(self.pool), dim=len(self.objective),
+            nadir=self.objective.nadir,
+            stochastic_preds = 'stochastic' in self.model.provides,
+            **kwargs
+        )
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
-        self.model = models.model(input_size=len(self.featurizer), **kwargs)
-        self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
+        self.model = models.MultiTaskModel(
+            input_size=len(self.featurizer), **kwargs
+        )
         self.retrain_from_scratch = retrain_from_scratch
-
-        self.objective = objectives.objective(**kwargs)
 
         self._validate_acquirer()
 
@@ -172,8 +176,8 @@ class Explorer:
         self.adjustment = 0
         self.updated_model = None
         self.recent_avgs = []
-        self.Y_pred = np.array([])
-        self.Y_var = np.array([])
+        self.Y_means_pred = np.array([])
+        self.Y_vars_pred = np.array([])
 
         if previous_scores:
             self.load_scores(previous_scores)
@@ -351,7 +355,6 @@ class Explorer:
         new_scores = self.objective.calc(inputs)
         self._clean_and_update_scores(new_scores)
 
-        # self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.avg())
 
@@ -393,7 +396,9 @@ class Explorer:
         self._update_predictions()
 
         inputs = self.acquirer.acquire_batch(
-            xs=self.pool.smis(), y_means=self.Y_pred, y_vars=self.Y_var,
+            xs=self.pool.smis(),
+            y_means=self.Y_means_pred,
+            y_vars=self.Y_vars_pred,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes, t=(self.iter-1),
@@ -445,7 +450,9 @@ class Explorer:
         
         return sum(score for _, score in self.top_explored(k)) / k
 
-    def top_explored(self, k: Union[int, float, None] = None) -> List[Tuple]:
+    def top_explored(
+        self, k: Union[int, float, None] = None
+    ) -> List[Tuple[T, List[Optional[float]]]]:
         """Get the top-k explored molecules
         
         Parameter
@@ -458,19 +465,21 @@ class Explorer:
         
         Returns
         -------
-        top_explored : List[Tuple[T, float]]
+        top_explored : List[Tuple[T, List[Optional[float]]]]
             a list of tuples containing the identifier and score of the 
-            top-k inputs, sorted by their score
+            top-k inputs, sorted by their score on the first task
         """
         k = k or self.k
         if isinstance(k, float):
             k = int(k * len(self.pool))
         k = min(k, len(self.scores))
 
+        key = lambda k_vs: k_vs[1][0] or -float('inf')
+
         if k / len(self.scores) < 0.8:
-            return heapq.nlargest(k, self.scores.items(), key=itemgetter(1))
+            return heapq.nlargest(k, self.scores.items(), key=key)
         
-        return sorted(self.scores.items(), key=itemgetter(1), reverse=True)[:k]
+        return sorted(self.scores.items(), key=key, reverse=True)[:k]
 
     def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the current top predicted molecules and their scores
@@ -492,7 +501,7 @@ class Explorer:
         k = min(k, len(self.scores))
 
         selected = []
-        for x, y in zip(self.pool.smis(), self.Y_pred):
+        for x, y in zip(self.pool.smis(), self.Y_means_pred):
             if len(selected) < k:
                 heapq.heappush(selected, (y, x))
             else:
@@ -537,17 +546,20 @@ class Explorer:
             p_scores = p_data / f'top_{m}_explored_iter_{self.iter}.csv'
 
         top_m = self.top_explored(m)
+        rows = [(k, *vs) for k, vs in top_m]
+        header = ['smiles', *[f'task_{i}' for i in range(1, len(rows[0]))]]
 
         with open(p_scores, 'w') as fid:
             writer = csv.writer(fid)
-            writer.writerow(['smiles', 'score'])
-            writer.writerows(top_m)
+            writer.writerow(header)
+            writer.writerows(rows)
             if include_failed:
                 writer.writerows(self.failures.items())
         
         if self.verbose > 0:
             print(f'Results were written to "{p_scores}"')
 
+    # TODO: fix this function for multiobj
     def load_scores(self, previous_scores: str) -> None:
         """Load the scores CSV located at saved_scores.
         
@@ -606,7 +618,10 @@ class Explorer:
         pickle.dump(self.new_scores, open(new_scores_pkl, 'wb'))
 
         preds_npz = chkpt_dir / 'preds.npz'
-        np.savez(preds_npz, Y_pred=self.Y_pred, Y_var=self.Y_var)
+        np.savez(
+            preds_npz, Y_means_pred=self.Y_means_pred,
+            Y_vars_pred=self.Y_vars_pred
+        )
 
         state = {
             'iter': self.iter,
@@ -647,8 +662,8 @@ class Explorer:
         self.recent_avgs.extend(state['recent_avgs'])
 
         preds_npz = np.load(state['preds'])
-        self.Y_pred = preds_npz['Y_pred']
-        self.Y_var = preds_npz['Y_var']
+        self.Y_means_pred = preds_npz['Y_means_pred']
+        self.Y_vars_pred = preds_npz['Y_vars_pred']
 
         self.model.load(state['model'])
 
@@ -694,12 +709,15 @@ class Explorer:
         (mutates) self.failures : Dict[T, None]
             a dictionary storing the inputs for which scoring failed
         """
-        for x, y in new_scores.items():
-            if y is None:
-                self.failures[x] = y
-            else:
-                self.scores[x] = y
-                self.new_scores[x] = y
+        self.new_scores = new_scores
+        self.scores.update(new_scores)
+
+        # for x, y in new_scores.items():
+        #     if y is None:
+        #         self.failures[x] = y
+        #     else:
+        #         self.scores[x] = y
+        #         self.new_scores[x] = y
 
     def _update_model(self):
         """Update the prior distribution to generate a posterior distribution
@@ -719,12 +737,12 @@ class Explorer:
             return
 
         if self.retrain_from_scratch:
-            xs, ys = zip(*self.scores.items())
+            xs, yss = zip(*self.scores.items())
         else:
-            xs, ys = zip(*self.new_scores.items())
+            xs, yss = zip(*self.new_scores.items())
 
         self.model.train(
-            xs, ys, retrain=self.retrain_from_scratch,
+            xs, yss, retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
         )
         self.new_scores = {}
@@ -735,23 +753,23 @@ class Explorer:
 
         Side effects
         ------------
-        (sets) self.Y_pred : np.ndarray
+        (sets) self.Y_means_pred : np.ndarray
             a list of floats parallel to the pool inputs containing the mean
             predicted score for each input
-        (sets) self.Y_var : np.ndarray
+        (sets) self.Y_vars_pred : np.ndarray
             a list of floats parallel to the pool inputs containing the
             predicted variance for each input
         (sets) self.updated_model : bool
             sets self.updated_model to False, indicating that the predictions 
             are now up-to-date with the current model
         """
-        if not self.updated_model and self.Y_pred.size > 0:
+        if not self.updated_model and self.Y_means_pred.size > 0:
             if self.verbose > 1:
                 print('Model has not been updated since the last time ',
                      'predictions were set. Skipping update!')
             return
 
-        self.Y_pred, self.Y_var = self.model.apply(
+        self.Y_mean_pred, self.Y_vars_pred = self.model.apply(
             x_ids=self.pool.smis(), x_feats=self.pool.fps(), 
             batched_size=None, size=len(self.pool), 
             mean_only='vars' not in self.acquirer.needs
@@ -765,7 +783,7 @@ class Explorer:
             raise IncompatibilityError(
                 f'{self.acquirer.metric} metric needs: '
                 + f'{self.acquirer.needs} '
-                + f'but {self.model.type_} only provides: '
+                + f'but model only provides: '
                 + f'{self.model.provides}')
 
     def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:

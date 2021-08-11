@@ -1,6 +1,7 @@
 """This module contains the Model abstract base class. All custom models must
 implement this interface in order to interact properly with an Explorer"""
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import (Callable, Iterable, List, Optional,
                     Sequence, Set, Tuple, TypeVar)
 
@@ -12,24 +13,81 @@ from molpal.models.utils import batches
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 
-class Model(ABC):
+class MultiTaskModel:
+    def __init__(self, models: Iterable[str], **kwargs) -> None:
+        self.models = []
+        for model in models:
+            if model == 'rf':
+                from molpal.models.sklmodels import RFModel
+                m = RFModel(**kwargs)
+
+            elif model == 'gp':
+                from molpal.models.sklmodels import GPModel
+                m = GPModel(**kwargs)
+                
+            elif model == 'nn':
+                from molpal.models.nnmodels import nn
+                m = nn(**kwargs)
+
+            elif model == 'mpn':
+                from molpal.models.mpnmodels import mpn
+                m = mpn(**kwargs)
+            
+            elif model == 'random':
+                from molpal.models.random import RandomModel
+                m = RandomModel(**kwargs)
+
+            else:
+                raise NotImplementedError(f'Unrecognized model: "{model}"')
+            
+            self.models.append(m)
+
+    def __len__(self):
+        """the number of tasks this model predicts"""
+        return len(self.models)
+        
+    @property
+    @abstractmethod
+    def provides(self) -> Set[str]:
+        return set.intersection(*[model.provides for model in self.models])
+
+    def train(
+        self, xs: Iterable[T], yss: Sequence[Sequence[Optional[float]]],
+        **kwargs
+    ):
+        Ys = np.array(yss).T
+        for model, Y in zip(self.models, Ys):
+            mask = ~np.isnan(Y)
+            xs = np.array(xs)[mask]
+            ys = Y[mask]
+            model.train(xs, ys, **kwargs)
+
+        return True
+
+    def apply(self, *args, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
+        Y_preds = [model.apply(*args, **kwargs) for model in self.models]
+        Y_preds_mean, Y_preds_var = zip(*Y_preds)
+
+        return np.stack(Y_preds_mean, axis=1), np.stack(Y_preds_var, axis=1)
+    
+    def save(self, basepath: str) -> Iterable[str]:
+        basepath = Path(basepath)
+        return [
+            model.save(basepath.with_name(f'{basepath.stem}_{i}'))
+            for i, model in enumerate(self.models)
+        ]
+    
+    def load(self, paths: Iterable[str]):
+        for model, path in zip(self.models, paths):
+            model.load(path)
+
+class SingleTaskModel(ABC):
     """A Model can be trained on input data to predict the values for inputs
     that have not yet been evaluated.
 
     This is an abstract base class and cannot be instantiated by itself.
 
-    Properties
-    ----------
-    provides : Set[str]
-        the types of values this class of model provides
-        - 'means': this model provides a mean predicted value for an input
-        - 'vars': this model provides a variance for the predicted mean
-        - 'stochastic': this model generates predicted values sthocastically
-    type_ : str
-        the underlying architecture of model.
-        E.g., 'nn' for all models that use the NN class
-
-    Attributes (instance)
+    Attributes
     ----------
     model(s)
         the model(s) used to calculate prediction values

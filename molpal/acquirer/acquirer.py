@@ -65,18 +65,22 @@ class Acquirer:
     def __init__(self, size: int,
                  init_size: Union[int, float] = 0.01,
                  batch_sizes: Iterable[Union[int, float]] = [0.01],
-                 metric: str = 'greedy',
+                 metric: str = 'greedy', dim: int = 1,
+                 nadir: Iterable[float]= (0),
                  epsilon: float = 0., beta: int = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
+                 stochastic_preds: bool = False,
                  temp_i: Optional[float] = None, temp_f: Optional[float] = 1.,
                  seed: Optional[int] = None, verbose: int = 0, **kwargs):
         self.size = size
         self.init_size = init_size
         self.batch_sizes = batch_sizes
-        # self.batch_size = next(self.batch_sizes)
 
         self.metric = metric
-        self.stochastic_preds = False
+        self.dim = dim
+        self.nadir = np.array(nadir, dtype=float)
+
+        self.stochastic_preds = stochastic_preds
 
         if not 0. <= epsilon <= 1.:
             raise ValueError(f'Epsilon(={epsilon}) must be in [0, 1]')
@@ -94,6 +98,18 @@ class Acquirer:
 
     def __len__(self) -> int:
         return self.size
+
+    @property
+    def dim(self) -> int:
+        """The dimension of the objective for which we are acquiring"""
+        return self.__dim
+    
+    @dim.setter
+    def dim(self, dim):
+        if dim < 1:
+            raise ValueError(f'Invalid dimension for acquisition. got: {dim}')
+        
+        self.__dim = dim
 
     @property
     def needs(self) -> Set[str]:
@@ -133,6 +149,13 @@ class Acquirer:
                 self.__batch_sizes[i] = math.ceil(self.size * bs)
             if bs < 0:
                 raise ValueError(f'batch_size(={bs} must be positive')
+
+    def batch_size(self, t: int):
+        """return the batch size to use for iteration t"""
+        try:
+            return self.batch_sizes[t]
+        except IndexError:
+            return self.batch_sizes[-1]
 
     def acquire_initial(self, xs: Iterable[T],
                         cluster_ids: Optional[Iterable[int]] = None,
@@ -222,35 +245,34 @@ class Acquirer:
         List[T]
             a list of selected inputs
         """
+        current_max = -np.inf
+        P_f = np.array([current_max] * self.dim)
+
         if explored:
             ys = list(explored.values())
             Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
-            current_max = np.partition(Y, -k)[-k]
-            # try:
-            #     current_max = max(y for y in explored.values() if y is not None)
-            # except ValueError:
-            #     current_max = float('-inf')
+            if self.dim == 1:
+                current_max = np.partition(Y, -k)[-k]
+            else:
+                P_f = Acquirer.pareto_frontier(Y)
         else:
             explored = {}
-            current_max = float('-inf')
 
-        try:
-            batch_size = self.batch_sizes[t]
-        except IndexError:
-            batch_size = self.batch_sizes[-1]
+        batch_size = self.batch_size(t)
 
         begin = default_timer()
 
-        Y_mean = np.array(y_means)
-        Y_var = np.array(y_vars)
+        Y_means = np.array(y_means)
+        Y_vars = np.array(y_vars)
 
         if self.verbose > 1:
             print('Calculating acquisition utilities ...', end=' ')
 
         U = metrics.calc(
-            self.metric, Y_mean=Y_mean, Y_var=Y_var, current_max=current_max, 
+            self.metric, Y_means=Y_means, Y_vars=Y_vars,
+            P_f=P_f, current_max=current_max, 
             threshold=self.threshold, beta=self.beta, xi=self.xi,
-            stochastic=self.stochastic_preds
+            stochastic=self.stochastic_preds, nadir=self.nadir
         )
 
         idxs = np.random.choice(
@@ -277,9 +299,9 @@ class Acquirer:
                 else:
                     heapq.heappushpop(heap, (u, x))
         else:
-            # this is broken for e-greedy/pi/etc. approaches
+            # TODO(degraff): fix for epsilon-X approaches
             # the random indices are not distributed evenly amongst clusters
-
+            # TODO(degraff): fix for MOO
             d_cid_heap = {
                 cid: ([], math.ceil(batch_size * cluster_size/U.size))
                 for cid, cluster_size in cluster_sizes.items()
@@ -287,7 +309,7 @@ class Acquirer:
 
             global_pred_max = float('-inf')
 
-            for x, y_pred, u, cid in tqdm(zip(xs, Y_mean, U, cluster_ids),
+            for x, y_pred, u, cid in tqdm(zip(xs, Y_means, U, cluster_ids),
                                           total=U.size, desc='Acquiring'):
                 global_pred_max = max(y_pred, global_pred_max)
 
@@ -376,3 +398,29 @@ class Acquirer:
                     temp: float) -> float:
         """Calculate the decay factor of a given heap"""
         return math.exp(-(global_max - local_max)/temp)
+
+    @staticmethod
+    def pareto_frontier(Y: np.ndarray) -> np.ndarray:
+        """calculate the pareto frontier for the objective matrix Y
+        
+        code from: https://github.com/QUVA-Lab/artemis/blob/peter/artemis/general/pareto_efficiency.py"""
+        efficient_idxs = np.arange(Y.shape[0])
+        Y_copy = Y
+        idx = 0
+        while idx < len(Y_copy):
+            nondominated_point_mask = np.any(Y_copy > Y_copy[idx], axis=1)
+            nondominated_point_mask[idx] = True
+
+            efficient_idxs = efficient_idxs[nondominated_point_mask]
+            Y_copy = Y_copy[nondominated_point_mask]
+
+            idx = np.sum(nondominated_point_mask[:idx]) + 1
+
+        return Y[efficient_idxs]
+        # if return_mask:
+        #     is_efficient_mask = np.zeros(N, dtype = bool)
+        #     is_efficient_mask[is_efficient] = True
+        #     return is_efficient_mask
+        # else:
+        #     return is_efficient
+        

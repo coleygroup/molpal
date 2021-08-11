@@ -7,10 +7,10 @@ from typing import Collection, Dict, Optional
 from configargparse import ArgumentParser
 from tqdm import tqdm
 
-from molpal.objectives.base import Objective
+from molpal.objectives.base import Task
 
-class LookupObjective(Objective):
-    """A LookupObjective calculates the objective function by looking the
+class LookupTask(Task):
+    """A LookupTask calculates the objective function by looking the
     value up in an input file.
 
     Useful for retrospective studies.
@@ -23,24 +23,18 @@ class LookupObjective(Objective):
 
     Parameters
     ----------
-    lookup_path : str
-        the path of the file containing lookup data
-    lookup_title_line : bool (Default = True)
-        is there a title in in the lookup file?
-    lookup_smiles_col : int (Default = 0)
-        the column containing the SMILES string in the lookup file
-    lookup_data_col : int (Default = 1)
-        the column containing the desired data in the lookup file
-    **kwargs
-        unused and addditional keyword arguments
+    objective_config : str
+        the path to a pyscreener config file containing the options for
+        docking calculations.
+    verbose : int, default=0
+    minimize : bool, default=True
     """
-    def __init__(self, objective_config: str,
-                #  lookup_path: str,
-                #  lookup_sep: str = ',', lookup_title_line: bool = True,
-                #  lookup_smiles_col: int = 0, lookup_data_col: int = 1,
-                 **kwargs):
+    def __init__(self, config: str, *,
+                 path: str, minimize: bool = True, verbose: int = 0
+                ):
         path, sep, title_line, smiles_col, score_col, minimize = (
-            parse_config(objective_config))
+            parse_config(config)
+        )
 
         if Path(path).suffix == '.gz':
             open_ = partial(gzip.open, mode='rt')
