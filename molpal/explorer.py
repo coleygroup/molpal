@@ -420,10 +420,6 @@ class Explorer:
         #     self.checkpoint()
         #     self.previous_chkpt_iter = self.iter
 
-        # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
-        #     self.checkpoint()
-        #     self.previous_chkpt_iter = self.iter
-
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores)/len(valid_scores)
 
