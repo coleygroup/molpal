@@ -260,11 +260,6 @@ class Acquirer:
 
         batch_size = self.batch_size(t)
 
-        try:
-            batch_size = self.batch_sizes[t]
-        except IndexError:
-            batch_size = self.batch_sizes[-1]
-
         begin = default_timer()
 
         Y_means = np.array(y_means)
