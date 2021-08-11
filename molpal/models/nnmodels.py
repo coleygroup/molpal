@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 from typing import (Callable, Iterable, List, NoReturn,
-                    Optional, Sequence, Tuple, TypeVar)
+                    Optional, Sequence, Tuple, Type, TypeVar)
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
@@ -25,6 +25,21 @@ from molpal.models.base import Model
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 Dataset = tf.data.Dataset
+
+def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
+    """NN-type Model factory function"""
+    try:
+        return {
+            'dropout': NNDropoutModel,
+            'ensemble': NNEnsembleModel,
+            'twooutput': NNTwoOutputModel,
+            'mve': NNTwoOutputModel,
+            'none': NNModel
+        }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
+        
+    except KeyError:
+        raise NotImplementedError(
+            f'Unrecognized NN confidence method: "{conf_method}"')
 
 def mve_loss(y_true, y_pred):
     mu = y_pred[:, 0]

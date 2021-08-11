@@ -4,7 +4,7 @@ training data."""
 
 from typing import Optional, Type
 
-from molpal.models.base import Model
+from molpal.models.base import Model, MultiTaskModel
 
 def model(model: str, **kwargs) -> Type[Model]:
     """Model factory function"""
