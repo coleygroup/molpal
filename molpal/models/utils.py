@@ -1,12 +1,7 @@
 """utility functions for the models module"""
-from concurrent.futures import ProcessPoolExecutor as Pool
-from functools import partial
 from itertools import islice
 import os
-from typing import Callable, Iterable, Iterator, List, TypeVar
-
-import numpy as np
-from tqdm import tqdm
+from typing import Iterable, Iterator, List, TypeVar
 
 T = TypeVar('T')
 

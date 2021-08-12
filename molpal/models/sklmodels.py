@@ -1,6 +1,7 @@
 """This module contains Model implementations that utilize the sklearn models 
 as their underlying model"""
 import logging
+from molpal.acquirer.metrics import random
 from pathlib import Path
 import pickle
 from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
