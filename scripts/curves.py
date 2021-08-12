@@ -16,6 +16,7 @@ import seaborn as sns
 from tqdm import tqdm
 
 from molpal.acquirer import metrics
+from experiment import Experiment, Point
 from utils import (
     extract_smis, build_true_dict, chunk, read_scores,
     style_axis, abbreviate_k_or_M
@@ -123,9 +124,11 @@ def get_all_points_in_order(experiment: str, metric: str,
     
     return init_size, all_points_in_order
 
-def reward_curve(
-        all_points_in_order, true_top_k: List, reward: str = 'scores'
-    ) -> np.ndarray:
+def reward_curve(experiment: Experiment,
+                 true_top_k: List[Point], reward: str = 'scores'):
+# def reward_curve(
+#         all_points_in_order, true_top_k: List, reward: str = 'scores'
+#     ) -> np.ndarray:
     """Calculate the reward curve of a molpal run
 
     Parameters
@@ -146,6 +149,7 @@ def reward_curve(
     np.ndarray
         the reward as a function of the number of molecules sampled
     """
+    all_points_in_order = experiment.points_in_order()
     k = len(true_top_k)
 
     if reward == 'scores':
