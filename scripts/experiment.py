@@ -1,8 +1,9 @@
-from collections.abc import Iterable
+from collections import Counter
 import csv
+import heapq
 from pathlib import Path
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 import numpy as np
 
 sys.path.append('../molpal')
@@ -157,6 +158,81 @@ class Experiment:
         
         return all_points_in_order
     
+    def reward_curve(
+        self, true_top_k: List[Point], reward: str = 'scores'
+    ):
+        """Calculate the reward curve of a molpal run
+
+        Parameters
+        ----------
+        experiment : Experiment
+            the data structure corresponding to the MolPAL experiment
+        true_top_k : List
+            the list of the true top-k molecules as tuples of their SMILES string
+            and associated score
+        reward : str, default='scores'
+            the type of reward to calculate
+
+        Returns
+        -------
+        np.ndarray
+            the reward as a function of the number of molecules sampled
+        """
+        all_points_in_order = self.points_in_order()
+        k = len(true_top_k)
+
+        if reward == 'scores':
+            _, true_scores = zip(*true_top_k)
+            missed_scores = Counter(true_scores)
+
+            all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
+            for i, (_, score) in enumerate(all_points_in_order):
+                if score not in missed_scores:
+                    continue
+                all_hits_in_order[i] = True
+                missed_scores[score] -= 1
+                if missed_scores[score] == 0:
+                    del missed_scores[score]
+            reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+
+        elif reward == 'smis':
+            true_top_k_smis = {smi for smi, _ in true_top_k}
+            all_hits_in_order = np.array([
+                smi in true_top_k_smis
+                for smi, _ in all_points_in_order
+            ], dtype=bool)
+            reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+
+        elif reward == 'top-k-ave':
+            reward_curve = np.zeros(len(all_points_in_order), dtype='f8')
+            heap = []
+
+            for i, (_, score) in enumerate(all_points_in_order[:k]):
+                if score is not None:
+                    heapq.heappush(heap, score)
+                top_k_avg = sum(heap) / k
+                reward_curve[i] = top_k_avg
+            reward_curve[:k] = top_k_avg
+
+            for i, (_, score) in enumerate(all_points_in_order[k:]):
+                if score is not None:
+                    heapq.heappushpop(heap, score)
+
+                top_k_avg = sum(heap) / k
+                reward_curve[i+k] = top_k_avg
+
+        elif reward == 'total-ave':
+            _, all_scores_in_order = zip(*all_points_in_order)
+            Y = np.array(all_scores_in_order, dtype=float)
+            Y = np.nan_to_num(Y)
+            N = np.arange(0, len(Y)) + 1
+            reward_curve = np.cumsum(Y) / N
+            
+        else:
+            raise ValueError
+
+        return reward_curve
+        
     @staticmethod
     def read_scores(scores_csv: str) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""

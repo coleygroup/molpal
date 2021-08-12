@@ -10,7 +10,7 @@ from scipy.stats import norm
 import seaborn as sns
 from tqdm import tqdm
 
-from curves import get_all_points_in_order, reward_curve
+from experiment import Experiment
 from utils import (
     extract_smis, build_true_dict, chunk,
     style_axis, abbreviate_k_or_M
@@ -214,27 +214,24 @@ if __name__ == "__main__":
     args.title_line = not args.no_title_line
 
     smis = extract_smis(args.library, args.smiles_col, args.title_line)
+    d_smi_idx = {smi: i for i, smi in enumerate(smis)}
+
     d_smi_score = build_true_dict(
         args.true_csv, args.smiles_col, args.score_col,
         args.title_line, args.maximize
     )
-
     true_smis_scores = sorted(d_smi_score.items(), key=lambda kv: kv[1])[::-1]
     true_top_k = true_smis_scores[:args.k]
-    d_smi_idx = {smi: i for i, smi in enumerate(smis)}
 
     reward_curves = []
     init_sizes = []
     for experiment, metric in zip(args.experiments, args.metrics):
-        init_size, all_points_in_order = get_all_points_in_order(
-            experiment, metric, d_smi_idx, args.k
-        )
-        init_sizes.append(init_size)
-        reward_curves.append(reward_curve(
-            all_points_in_order, true_top_k, args.regret
-        ))
+        experiment = Experiment(experiment, d_smi_idx)
+        init_sizes.append(experiment.init_size)
+        reward_curves.append(experiment.reward_curve(true_top_k, args.regret))
 
     reward_curvess = chunk(reward_curves, args.reps or [])
+    init_sizes = [x[0] for x in chunk(init_sizes, args.reps or [])]
 
     _, true_scores = zip(*true_smis_scores)
     plot_regret(

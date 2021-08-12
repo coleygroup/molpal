@@ -1,208 +1,97 @@
-import sys
-sys.path.append('../molpal')
-
 from argparse import ArgumentParser
 from collections import Counter
 import heapq
 from itertools import repeat
-from pathlib import Path
 import sys
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List
 
 from matplotlib import pyplot as plt
 from matplotlib import ticker
 import numpy as np
 import seaborn as sns
-from tqdm import tqdm
 
-from molpal.acquirer import metrics
 from experiment import Experiment, Point
 from utils import (
-    extract_smis, build_true_dict, chunk, read_scores,
+    extract_smis, build_true_dict, chunk,
     style_axis, abbreviate_k_or_M
 )
 
 sns.set_theme(style='white', context='paper')
 
-def get_checkpoints(experiment):
-    chkpts_dir = Path(experiment) / 'chkpts'
-
-    chkpt_iter_dirs = sorted(
-        chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
-    )[1:]
-    
-    return chkpt_iter_dirs
-
-def gather_experiment_predss(experiment) -> Tuple[List[np.ndarray],
-                                                  List[np.ndarray]]:
-    chkpts = get_checkpoints(experiment)
-
-    try:                         # new way
-        preds_npzs = [np.load(chkpt / 'preds.npz')
-                      for chkpt in chkpts]
-        predss, varss = zip(*[
-            (preds_npz['Y_pred'], preds_npz['Y_var'])
-            for preds_npz in preds_npzs
-        ])
-
-        return predss, varss
-    except FileNotFoundError:   # old way
-        predss = [np.load(chkpt / 'preds.npy')
-                  for chkpt in chkpts]
-
-        return predss, []
-
-def calculate_utilties(
-        metric: str, Y_preds: List[np.ndarray], Y_vars: List[np.ndarray], 
-        new_points_by_epoch: List[Dict], k: int = 1,
-        beta: float = 2., xi: float = 0.01
-    ) -> List[np.ndarray]:
-    Us = []
-    explored = {}
-
-    # import pdb; pdb.set_trace()
-    for Y_pred, Y_var, new_points in zip(Y_preds, Y_vars, new_points_by_epoch):
-        explored.update(new_points)
-        ys = list(explored.values())
-        Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
-        current_max = np.partition(Y, -k)[-k]
-
-        Us.append(metrics.calc(
-            metric, Y_pred, Y_var,
-            current_max, 0., beta, xi, False
-        ))
-
-    return Us
-
-def get_new_points_by_epoch(experiment) -> List[Dict]:
-    """get the set of new points acquired at each iteration in the list of 
-    scores_csvs that are already sorted by iteration"""
-    data_dir = Path(experiment) / 'data'
-
-    scores_csvs = [p for p in data_dir.iterdir() if 'final' not in p.stem]
-    scores_csvs = sorted(
-        scores_csvs, key=lambda p: int(p.stem.split('_')[-1])
-    )
-
-    all_points = {}
-    new_points_by_epoch = []
-    for scores_csv in scores_csvs:
-        scores, failures = read_scores(scores_csv)
-        scores.update(failures)
-        new_points = {smi: score for smi, score in scores.items()
-                    if smi not in all_points}
-        new_points_by_epoch.append(new_points)
-        all_points.update(new_points)
-    
-    return new_points_by_epoch
-
-def get_all_points_in_order(experiment: str, metric: str,
-                            d_smi_idx: Dict, k: int) -> Tuple[int, List]:
-    """Get all points acquired during a MolPAL run in the order in which they
-    were acquired as well as the initialization batch size"""
-    new_points_by_epoch = get_new_points_by_epoch(experiment)
-    init_size = len(new_points_by_epoch[0])
-
-    # import pdb; pdb.set_trace()
-    Y_preds, Y_vars = gather_experiment_predss(experiment)
-    Us = calculate_utilties(metric, Y_preds, Y_vars, new_points_by_epoch, k)
-
-    all_points_in_order = []
-    all_points_in_order.extend(new_points_by_epoch[0].items())
-
-    for new_points, U in zip(new_points_by_epoch[1:], Us):
-        us = np.array([
-            U[d_smi_idx[smi]]
-            for smi in tqdm(new_points, desc='ordering', leave=False)
-        ])
-        new_points_in_order = [
-            smi_score for _, smi_score in sorted(
-                zip(us, new_points.items()), reverse=True
-            )
-        ]
-        all_points_in_order.extend(new_points_in_order)
-    
-    return init_size, all_points_in_order
-
-def reward_curve(experiment: Experiment,
-                 true_top_k: List[Point], reward: str = 'scores'):
 # def reward_curve(
-#         all_points_in_order, true_top_k: List, reward: str = 'scores'
-#     ) -> np.ndarray:
-    """Calculate the reward curve of a molpal run
+#     experiment: Experiment, true_top_k: List[Point], reward: str = 'scores'
+# ):
+#     """Calculate the reward curve of a molpal run
 
-    Parameters
-    ----------
-    all_points_in_order : str
-        The points acquired during a MolPAL run, ordered by acquisition timing
-    metric : str
-        the acquisition metric used
-    d_smi_idx : Dict
-    true_top_k : List
-        the list of the true top-k molecules as tuples of their SMILES string
-        and associated score
-    reward : str, default='scores'
-        the type of reward to calculate
+#     Parameters
+#     ----------
+#     experiment : Experiment
+#         the data structure corresponding to the MolPAL experiment
+#     true_top_k : List
+#         the list of the true top-k molecules as tuples of their SMILES string
+#         and associated score
+#     reward : str, default='scores'
+#         the type of reward to calculate
 
-    Returns
-    -------
-    np.ndarray
-        the reward as a function of the number of molecules sampled
-    """
-    all_points_in_order = experiment.points_in_order()
-    k = len(true_top_k)
+#     Returns
+#     -------
+#     np.ndarray
+#         the reward as a function of the number of molecules sampled
+#     """
+#     all_points_in_order = experiment.points_in_order()
+#     k = len(true_top_k)
 
-    if reward == 'scores':
-        _, true_scores = zip(*true_top_k)
-        missed_scores = Counter(true_scores)
+#     if reward == 'scores':
+#         _, true_scores = zip(*true_top_k)
+#         missed_scores = Counter(true_scores)
 
-        all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
-        for i, (_, score) in enumerate(all_points_in_order):
-            if score not in missed_scores:
-                continue
-            all_hits_in_order[i] = True
-            missed_scores[score] -= 1
-            if missed_scores[score] == 0:
-                del missed_scores[score]
-        reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+#         all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
+#         for i, (_, score) in enumerate(all_points_in_order):
+#             if score not in missed_scores:
+#                 continue
+#             all_hits_in_order[i] = True
+#             missed_scores[score] -= 1
+#             if missed_scores[score] == 0:
+#                 del missed_scores[score]
+#         reward_curve = 100 * np.cumsum(all_hits_in_order) / k
 
-    elif reward == 'smis':
-        true_top_k_smis = {smi for smi, _ in true_top_k}
-        all_hits_in_order = np.array([
-            smi in true_top_k_smis
-            for smi, _ in all_points_in_order
-        ], dtype=bool)
-        reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+#     elif reward == 'smis':
+#         true_top_k_smis = {smi for smi, _ in true_top_k}
+#         all_hits_in_order = np.array([
+#             smi in true_top_k_smis
+#             for smi, _ in all_points_in_order
+#         ], dtype=bool)
+#         reward_curve = 100 * np.cumsum(all_hits_in_order) / k
 
-    elif reward == 'top-k-ave':
-        reward_curve = np.zeros(len(all_points_in_order), dtype='f8')
-        heap = []
+#     elif reward == 'top-k-ave':
+#         reward_curve = np.zeros(len(all_points_in_order), dtype='f8')
+#         heap = []
 
-        for i, (_, score) in enumerate(all_points_in_order[:k]):
-            if score is not None:
-                heapq.heappush(heap, score)
-            top_k_avg = sum(heap) / k
-            reward_curve[i] = top_k_avg
-        reward_curve[:k] = top_k_avg
+#         for i, (_, score) in enumerate(all_points_in_order[:k]):
+#             if score is not None:
+#                 heapq.heappush(heap, score)
+#             top_k_avg = sum(heap) / k
+#             reward_curve[i] = top_k_avg
+#         reward_curve[:k] = top_k_avg
 
-        for i, (_, score) in enumerate(all_points_in_order[k:]):
-            if score is not None:
-                heapq.heappushpop(heap, score)
+#         for i, (_, score) in enumerate(all_points_in_order[k:]):
+#             if score is not None:
+#                 heapq.heappushpop(heap, score)
 
-            top_k_avg = sum(heap) / k
-            reward_curve[i+k] = top_k_avg
+#             top_k_avg = sum(heap) / k
+#             reward_curve[i+k] = top_k_avg
 
-    elif reward == 'total-ave':
-        _, all_scores_in_order = zip(*all_points_in_order)
-        Y = np.array(all_scores_in_order, dtype=float)
-        Y = np.nan_to_num(Y)
-        N = np.arange(0, len(Y)) + 1
-        reward_curve = np.cumsum(Y) / N
+#     elif reward == 'total-ave':
+#         _, all_scores_in_order = zip(*all_points_in_order)
+#         Y = np.array(all_scores_in_order, dtype=float)
+#         Y = np.nan_to_num(Y)
+#         N = np.arange(0, len(Y)) + 1
+#         reward_curve = np.cumsum(Y) / N
         
-    else:
-        raise ValueError
+#     else:
+#         raise ValueError
 
-    return reward_curve
+#     return reward_curve
 
 #-----------------------------------------------------------------------------#
 
@@ -275,6 +164,8 @@ if __name__ == "__main__":
     args.title_line = not args.no_title_line
 
     smis = extract_smis(args.library, args.smiles_col, args.title_line)
+    d_smi_idx = {smi: i for i, smi in enumerate(smis)}
+
     d_smi_score = build_true_dict(
         args.true_csv, args.smiles_col, args.score_col,
         args.title_line, args.maximize
@@ -282,20 +173,16 @@ if __name__ == "__main__":
 
     true_smis_scores = sorted(d_smi_score.items(), key=lambda kv: kv[1])[::-1]
     true_top_k = true_smis_scores[:args.N]
-    d_smi_idx = {smi: i for i, smi in enumerate(smis)}
 
     reward_curves = []
-    init_sizes = []
+    # init_sizes = []
     for experiment, metric in zip(args.experiments, args.metrics):
-        init_size, all_points_in_order = get_all_points_in_order(
-            experiment, metric, d_smi_idx, args.k
-        )
-        init_sizes.append(init_size)
-        reward_curves.append(reward_curve(
-            all_points_in_order, true_top_k, args.reward
-        ))
+        experiment = Experiment(experiment, d_smi_idx)
+        # init_sizes.append(experiment.init_size)
+        reward_curves.append(experiment.reward_curve(true_top_k, args.reward))
 
     reward_curvess = chunk(reward_curves, args.reps or [])
+    # init_sizes = [x[0] for x in chunk(init_sizes, args.reps or [])]
 
     bs = int(args.split * len(smis))
     title = {
