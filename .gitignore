@@ -39,12 +39,15 @@
 .ipynb_checkpoints*
 lightning_logs
 old_analyze_sar.py
-.gitignore
 *.json
 *.ini
 
 .vscode/
 .DS_Store
+E50k_test
+chkpt_tests
+prep_glide_csv.py
+
 analyze_test_loss.py
 config_local
 scripts/distance.py
