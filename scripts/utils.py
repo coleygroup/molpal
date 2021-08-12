@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Tuple
 
 from matplotlib import ticker
 
-def extract_smis(library, smiles_col=0, title_line=True) -> List:
+def extract_smis(library, smiles_col=0, title_line=True) -> List[str]:
     if Path(library).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
     else:

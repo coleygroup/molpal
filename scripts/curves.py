@@ -1,99 +1,18 @@
 from argparse import ArgumentParser
-from collections import Counter
-import heapq
 from itertools import repeat
-import sys
-from typing import Iterable, List
+from typing import Iterable
 
 from matplotlib import pyplot as plt
 from matplotlib import ticker
 import numpy as np
 import seaborn as sns
 
-from experiment import Experiment, Point
+from experiment import Experiment
 from utils import (
-    extract_smis, build_true_dict, chunk,
-    style_axis, abbreviate_k_or_M
+    extract_smis, build_true_dict, chunk, style_axis, abbreviate_k_or_M
 )
 
 sns.set_theme(style='white', context='paper')
-
-# def reward_curve(
-#     experiment: Experiment, true_top_k: List[Point], reward: str = 'scores'
-# ):
-#     """Calculate the reward curve of a molpal run
-
-#     Parameters
-#     ----------
-#     experiment : Experiment
-#         the data structure corresponding to the MolPAL experiment
-#     true_top_k : List
-#         the list of the true top-k molecules as tuples of their SMILES string
-#         and associated score
-#     reward : str, default='scores'
-#         the type of reward to calculate
-
-#     Returns
-#     -------
-#     np.ndarray
-#         the reward as a function of the number of molecules sampled
-#     """
-#     all_points_in_order = experiment.points_in_order()
-#     k = len(true_top_k)
-
-#     if reward == 'scores':
-#         _, true_scores = zip(*true_top_k)
-#         missed_scores = Counter(true_scores)
-
-#         all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
-#         for i, (_, score) in enumerate(all_points_in_order):
-#             if score not in missed_scores:
-#                 continue
-#             all_hits_in_order[i] = True
-#             missed_scores[score] -= 1
-#             if missed_scores[score] == 0:
-#                 del missed_scores[score]
-#         reward_curve = 100 * np.cumsum(all_hits_in_order) / k
-
-#     elif reward == 'smis':
-#         true_top_k_smis = {smi for smi, _ in true_top_k}
-#         all_hits_in_order = np.array([
-#             smi in true_top_k_smis
-#             for smi, _ in all_points_in_order
-#         ], dtype=bool)
-#         reward_curve = 100 * np.cumsum(all_hits_in_order) / k
-
-#     elif reward == 'top-k-ave':
-#         reward_curve = np.zeros(len(all_points_in_order), dtype='f8')
-#         heap = []
-
-#         for i, (_, score) in enumerate(all_points_in_order[:k]):
-#             if score is not None:
-#                 heapq.heappush(heap, score)
-#             top_k_avg = sum(heap) / k
-#             reward_curve[i] = top_k_avg
-#         reward_curve[:k] = top_k_avg
-
-#         for i, (_, score) in enumerate(all_points_in_order[k:]):
-#             if score is not None:
-#                 heapq.heappushpop(heap, score)
-
-#             top_k_avg = sum(heap) / k
-#             reward_curve[i+k] = top_k_avg
-
-#     elif reward == 'total-ave':
-#         _, all_scores_in_order = zip(*all_points_in_order)
-#         Y = np.array(all_scores_in_order, dtype=float)
-#         Y = np.nan_to_num(Y)
-#         N = np.arange(0, len(Y)) + 1
-#         reward_curve = np.cumsum(Y) / N
-        
-#     else:
-#         raise ValueError
-
-#     return reward_curve
-
-#-----------------------------------------------------------------------------#
 
 def plot_reward_curves(yss: Iterable[Iterable[np.ndarray]],
                        labels: Iterable[str], bs: int, title: str):
@@ -176,7 +95,7 @@ if __name__ == "__main__":
 
     reward_curves = []
     # init_sizes = []
-    for experiment, metric in zip(args.experiments, args.metrics):
+    for experiment in args.experiments:
         experiment = Experiment(experiment, d_smi_idx)
         # init_sizes.append(experiment.init_size)
         reward_curves.append(experiment.reward_curve(true_top_k, args.reward))

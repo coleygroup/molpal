@@ -3,7 +3,7 @@ import csv
 import heapq
 from pathlib import Path
 import sys
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, Union
 import numpy as np
 
 sys.path.append('../molpal')
@@ -27,6 +27,10 @@ class Experiment:
         )
 
         data_dir = self.experiment / 'data'
+        final_csv = data_dir / 'all_explored_final.csv'
+        final_scores, final_failures = Experiment.read_scores(final_csv)
+        self.__size = len({**final_scores, **final_failures})
+
         scores_csvs = [p for p in data_dir.iterdir() if 'final' not in p.stem]
         self.scores_csvs = sorted(
             scores_csvs, key=lambda p: int(p.stem.split('_')[-1])
@@ -38,10 +42,12 @@ class Experiment:
         self.beta = float(config.get('beta', 2.))
         self.xi = float(config.get('xi', 0.001))
 
+        print(len(self))
+
     # NOTE: should len(self) be the total number of points 
     # or number of iterations?
-    # def __len__(self) -> int:
-    #     return len(self.scores_csvs)
+    def __len__(self) -> int:
+        return self.__size
 
     def __getitem__(self, i: int) -> Dict:
         """Get the score data for iteration i"""
@@ -232,9 +238,9 @@ class Experiment:
             raise ValueError
 
         return reward_curve
-        
+
     @staticmethod
-    def read_scores(scores_csv: str) -> Tuple[Dict, Dict]:
+    def read_scores(scores_csv: Union[Path, str]) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""
         scores = {}
         failures = {}

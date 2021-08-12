@@ -12,8 +12,7 @@ from tqdm import tqdm
 
 from experiment import Experiment
 from utils import (
-    extract_smis, build_true_dict, chunk,
-    style_axis, abbreviate_k_or_M
+    extract_smis, build_true_dict, chunk, style_axis, abbreviate_k_or_M
 )
 
 sns.set_theme(style='white', context='paper')
@@ -46,7 +45,6 @@ def plot_regret(
     ax0.plot(x, y_true, '--', c='k', lw=2, label='True')
 
     for ys, init_size, label in zip(total_avgss, init_sizes, labels):
-        # import pdb; pdb.set_trace()
         Y = -np.stack(ys)[:, init_size:] # hack b/c i know true data is neg
         y_mean = Y.mean(axis=0)
         y_sd = Y.std(axis=0)
@@ -225,7 +223,7 @@ if __name__ == "__main__":
 
     reward_curves = []
     init_sizes = []
-    for experiment, metric in zip(args.experiments, args.metrics):
+    for experiment in args.experiments:
         experiment = Experiment(experiment, d_smi_idx)
         init_sizes.append(experiment.init_size)
         reward_curves.append(experiment.reward_curve(true_top_k, args.regret))
