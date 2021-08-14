@@ -1,9 +1,10 @@
 from collections import Counter
 import csv
 import heapq
+from itertools import islice
 from pathlib import Path
 import sys
-from typing import Dict, Iterable, List, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 import numpy as np
 
 sys.path.append('../molpal')
@@ -17,14 +18,25 @@ class Experiment:
     It can be queried for the progress at a given iteration, the order in which
     points were acquired, and other conveniences
     """
-    def __init__(self, experiment: str, d_smi_idx: Dict):
+    def __init__(self, experiment: Union[Path, str],
+                 d_smi_idx: Optional[Dict] = None):
         self.experiment = Path(experiment)
         self.d_smi_idx = d_smi_idx
 
-        chkpts_dir = self.experiment / 'chkpts'
-        self.chkpts = sorted(
-            chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
-        )
+        try:
+            chkpts_dir = self.experiment / 'chkpts'
+            self.chkpts = sorted(
+                chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
+            )
+            config = Experiment.read_config(self.experiment / 'config.ini')
+            self.k = int(config['top-k'])
+            self.metric = config['metric']
+            self.beta = float(config.get('beta', 2.))
+            self.xi = float(config.get('xi', 0.001))
+
+            self.new_style = True
+        except FileNotFoundError:
+            self.new_style = False
 
         data_dir = self.experiment / 'data'
         final_csv = data_dir / 'all_explored_final.csv'
@@ -36,21 +48,13 @@ class Experiment:
             scores_csvs, key=lambda p: int(p.stem.split('_')[-1])
         )
 
-        config = Experiment.read_config(self.experiment / 'config.ini')
-        self.k = int(config['top-k'])
-        self.metric = config['metric']
-        self.beta = float(config.get('beta', 2.))
-        self.xi = float(config.get('xi', 0.001))
-
-        print(len(self))
-
-    # NOTE: should len(self) be the total number of points 
-    # or number of iterations?
     def __len__(self) -> int:
+        """the total number of inputs sampled in this experiment"""
         return self.__size
 
     def __getitem__(self, i: int) -> Dict:
-        """Get the score data for iteration i"""
+        """Get the score data for iteration i, where i=0 is the
+        initialization batch"""
         scores, failures = Experiment.read_scores(self.scores_csvs[i])
 
         return {**scores, **failures}
@@ -71,6 +75,24 @@ class Experiment:
     def init_size(self) -> int:
         """the size of this experiment's initialization batch"""
         return len(self[0])
+
+    def get(self, i: int, N: Optional[int] = None) -> Dict:
+        scores, failures = Experiment.read_scores(self.scores_csvs[i], N)
+        return {**scores, **failures}
+
+    def new_points_by_epoch(self) -> List[Dict]:
+        """get the set of new points acquired at each iteration in the list of 
+        scores_csvs that are already sorted by iteration"""
+        new_points_by_epoch = []
+        all_points = {}
+
+        for scores in self:
+            new_points = {smi: score for smi, score in scores.items()
+                          if smi not in all_points}
+            new_points_by_epoch.append(new_points)
+            all_points.update(new_points)
+        
+        return new_points_by_epoch
 
     def predictions(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
         """get the predictions for exploration iteration i.
@@ -96,38 +118,11 @@ class Experiment:
 
         return preds_npz['Y_pred'], preds_npz['Y_var']
 
-    # def predss(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-    #     try:                         # new way
-    #         preds_npzs = [
-    #             np.load(chkpt / 'preds.npz') for chkpt in self.chkpts[1:]
-    #         ]
-    #         predss, varss = zip(*[
-    #             (preds_npz['Y_pred'], preds_npz['Y_var'])
-    #             for preds_npz in preds_npzs
-    #         ])
-    #         return predss, varss
-
-    #     except FileNotFoundError:   # old way
-    #         predss = [
-    #             np.load(chkpt / 'preds.npy') for chkpt in self.chkpts[1:]
-    #         ]
-    #         return predss, []
-
-    def new_points_by_epoch(self) -> List[Dict]:
-        """get the set of new points acquired at each iteration in the list of 
-        scores_csvs that are already sorted by iteration"""
-        new_points_by_epoch = []
-        all_points = {}
-
-        for scores in self:
-            new_points = {smi: score for smi, score in scores.items()
-                          if smi not in all_points}
-            new_points_by_epoch.append(new_points)
-            all_points.update(new_points)
-        
-        return new_points_by_epoch
-
     def utilities(self) -> List[np.ndarray]:
+        if not self.new_style:
+            raise NotImplementedError(
+                'Utilities cannot be calculated for an old style MolPAL run'
+            )
         Us = []
 
         for i in range(1, self.num_iters):
@@ -147,6 +142,14 @@ class Experiment:
     def points_in_order(self) -> List[Point]:
         """Get all points acquired during this experiment's run in the order
         in which they were acquired"""
+        if self.d_smi_idx is None:
+            raise NotImplementedError(
+                'Cannot get points in order without setting "self.d_smi_idx"'
+            )
+        if not self.new_style:
+            raise NotImplementedError(
+                'Cannot get points in order for an old style MolPAL run'
+            )
         init_batch, *exp_batches = self.new_points_by_epoch()
 
         all_points_in_order = []
@@ -239,8 +242,66 @@ class Experiment:
 
         return reward_curve
 
+    def calculate_reward(
+        self, i: int, true: List[Point], is_sorted = True,
+        avg: bool = True, smis: bool = True, scores: bool = True
+    ) -> Tuple[float, float, float]:
+        N = len(true)
+        if not is_sorted:
+            true = sorted(true, key=lambda kv: kv[1], reverse=True)
+        
+        found = list(self.get(i, N).items())
+
+        found_smis, found_scores = zip(*found)
+        true_smis, true_scores = zip(*true)
+
+        if avg:
+            found_avg = np.mean(found_scores)
+            true_avg = np.mean(true_scores)
+            f_avg = found_avg / true_avg
+        else:
+            f_avg = None
+
+        if smis:
+            found_smis = set(found_smis)
+            true_smis = set(true_smis)
+            correct_smis = len(found_smis & true_smis)
+            f_smis = correct_smis / len(true_smis)
+        else:
+            f_smis = None
+
+        if scores:
+            missed_scores = Counter(true_scores)
+            missed_scores.subtract(found_scores)
+            n_missed_scores = sum(
+                count if count > 0 else 0
+                for count in missed_scores.values()
+            )
+            f_scores = (N - n_missed_scores) / N
+        else:
+            f_scores = None
+
+        return f_avg, f_smis, f_scores
+
+    def calculate_cluster_fraction(
+        self, i: int, true_clusters: Tuple[Set, Set, Set]
+    ) -> Tuple[float, float, float]:
+        # import pdb; pdb.set_trace()
+
+        large, mids, singletons = true_clusters
+        N = len(large) + len(mids) + len(singletons)
+        
+        found = set(list(self.get(i, N).keys()))
+
+        f_large = len(found & large) / len(large)
+        f_mids = len(found & mids) / len(mids)
+        f_singletons = len(found & singletons) / len(singletons)
+
+        return f_large, f_mids, f_singletons
+
     @staticmethod
-    def read_scores(scores_csv: Union[Path, str]) -> Tuple[Dict, Dict]:
+    def read_scores(scores_csv: Union[Path, str],
+                    N: Optional[int] = None) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""
         scores = {}
         failures = {}
@@ -248,12 +309,20 @@ class Experiment:
         with open(scores_csv) as fid:
             reader = csv.reader(fid)
             next(reader)
-            for row in reader:
-                try:
-                    scores[row[0]] = float(row[1])
-                except:
-                    failures[row[0]] = None
-        
+
+            if N is None:
+                for row in reader:
+                    try:
+                        scores[row[0]] = float(row[1])
+                    except:
+                        failures[row[0]] = None
+            else:
+                for row in islice(reader, N):
+                    try:
+                        scores[row[0]] = float(row[1])
+                    except:
+                        failures[row[0]] = None
+
         return scores, failures
     
     @staticmethod
@@ -261,4 +330,11 @@ class Experiment:
         """parse an autogenerated MolPAL config file to a dictionary"""
         with open(config_file) as fid:
             return dict(line.split(' = ') for line in fid.read().splitlines())
+        
+    @staticmethod
+    def boltzmann(xs: Iterable[float]) -> float:
+        X = np.array(xs)
+        E = np.exp(-X)
+        Z = E.sum()
+        return (X * E / Z).sum()
         
