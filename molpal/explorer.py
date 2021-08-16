@@ -1,6 +1,5 @@
 """This module contains the Explorer class, which is an abstraction
 for batch Bayesian optimization."""
-from collections import deque
 from collections.abc import Iterable
 import csv
 import heapq
@@ -8,7 +7,6 @@ import json
 from operator import itemgetter
 from pathlib import Path
 import pickle
-import tempfile
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np

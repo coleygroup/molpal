@@ -113,7 +113,9 @@ class MoleculePool(Sequence[Mol]):
         self.cxsmiles = cxsmiles
         self.verbose = verbose
 
+        self.smis_ = None
         self.fps_ = fps
+
         if invalid_idxs is not None:
             self.invalid_idxs = set(invalid_idxs)
         else:
@@ -121,8 +123,6 @@ class MoleculePool(Sequence[Mol]):
         self.size = None
         self.chunk_size = None
         self._encode_mols(featurizer, fps_path)
-        
-        self.smis_ = None
         self._validate_and_cache_smis(cache)
 
         self.cluster_ids_ = None

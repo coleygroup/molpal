@@ -160,6 +160,7 @@ def fps_hdf5(smis: Iterable[str], size: int,
     invalid_idxs : Set[int]
         the set of invalid indices in the input SMILES strings
     """
+    ncpu = int(ray.cluster_resources()['CPU'])
     with h5py.File(filepath, 'w') as h5f:
         CHUNKSIZE = 512
 
@@ -168,17 +169,19 @@ def fps_hdf5(smis: Iterable[str], size: int,
             chunks=(CHUNKSIZE, length), dtype='int8'
         )
         
-        batchsize = 262144
-        n_batches = size//batchsize + 1
+        batch_size = CHUNKSIZE * 2 * ncpu
+        n_batches = size//batch_size + 1
 
         invalid_idxs = set()
         i = 0
         offset = 0
 
-        for smis_batch in tqdm(batches(smis, batchsize), total=n_batches,
-                               desc='Precalculating fps', unit='batch'):
+        for smis_batch in tqdm(
+            batches(smis, batch_size), total=n_batches,
+            desc='Precalculating fps', unit='smi', unit_scale=batch_size
+        ):
             fps = smis_to_fps(smis_batch, fingerprint, radius, length)
-            for fp in tqdm(fps, total=batchsize, leave=False, desc='Writing'):
+            for fp in tqdm(fps, total=batch_size, leave=False, desc='Writing'):
                 if fp is None:
                     invalid_idxs.add(i + offset)
                     offset += 1

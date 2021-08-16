@@ -190,8 +190,10 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
         i = 0
         offset = 0
 
-        for smis_batch in tqdm(batches(smis, batch_size), total=n_batches,
-                             desc='Precalculating fps', unit='batch'):
+        for smis_batch in tqdm(
+            batches(smis, batch_size), total=n_batches,
+            desc='Precalculating fps', unit='smi', unit_scale=batch_size
+        ):
             fps = feature_matrix(smis_batch, featurizer)
             for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
                 if fp is None:

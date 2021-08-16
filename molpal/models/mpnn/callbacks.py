@@ -14,12 +14,12 @@ class EpochAndStepProgressBar(ProgressBarBase):
     def on_train_start(self, trainer, pl_module):
         super().on_train_start(trainer, pl_module)
         self.epoch_bar = tqdm(
-            desc='Training', unit='epoch', leave=True, dynamic_ncols=True,
-            total=trainer.max_epochs,
+            desc='Training', unit='epoch', leave=True,
+            dynamic_ncols=True, total=trainer.max_epochs,
         )
         self.step_bar = tqdm(
-            desc='Epoch (train)', unit='step',
-            leave=False, dynamic_ncols=True,
+            desc='Epoch (train)', unit='step', leave=False,
+            dynamic_ncols=True,
             total=self.total_train_batches+self.total_val_batches,
         )
                 
