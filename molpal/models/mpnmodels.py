@@ -152,24 +152,17 @@ class MPNN:
         train_data, val_data = self.make_datasets(smis, targets)
         
         if self.ddp:
-            ngpu = int(ray.cluster_resources().get('GPU', 0))
-            # if ngpu > 0:
-            #     num_workers = ngpu
-            # else:
-            #     num_workers = ray.cluster_resources()['CPU'] // self.ncpu
-            
-            # train_data, val_data = self.make_datasets(smis, targets)
             self.train_config['steps_per_epoch'] = (
                 len(train_data) // (self.batch_size)
             )
             self.train_config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data,
-                batch_size=self.batch_size,# * self.num_workers,
+                batch_size=self.batch_size,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
             self.train_config['val_loader'] = MoleculeDataLoader(
                 dataset=val_data,
-                batch_size=self.batch_size,# * self.num_workers,
+                batch_size=self.batch_size,
                 num_workers=self.ncpu, pin_memory=self.use_gpu
             )
 
@@ -181,19 +174,14 @@ class MPNN:
             
             with trange(self.epochs, desc='Training', unit='epoch',
                         dynamic_ncols=True, leave=True) as bar:
-            # bar = 
                 for _ in bar:
                     train_loss = trainer.train()['train_loss']
                     val_res = trainer.validate()
                     val_loss = val_res['val_loss']
-                    # lr = val_res['lr']
                     bar.set_postfix_str(
                         f'train_loss={train_loss:0.3f}, '
                         f'val_loss={val_loss:0.3f} '
-                        # f'lr={lr}'
                     )
-                    # print(f'Epoch {i}: lr={lr}', flush=True)
-            # bar.close()
 
             self.model = trainer.get_model()
             trainer.shutdown()
