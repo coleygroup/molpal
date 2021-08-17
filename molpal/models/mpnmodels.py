@@ -99,7 +99,7 @@ class MPNN:
         self.precision = precision
 
         self.model = mpnn.MoleculeModel(
-            uncertainty_method=uncertainty,
+            uncertainty=uncertainty,
             dataset_type=dataset_type, num_tasks=num_tasks,
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
