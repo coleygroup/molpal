@@ -86,7 +86,7 @@ def feature_matrix(smis, featurizer, disable: bool = False) -> List[np.ndarray]:
     fps_chunks = [
         ray.get(r) for r in tqdm(
             refs, desc='Featurizing', unit='smi',
-            leave=False, unit_scale=chunksize, disable=disable
+            leave=False, disable=disable
         )
     ]
     fps = list(chain(*fps_chunks))
