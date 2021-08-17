@@ -33,7 +33,7 @@ class MoleculeModel(nn.Module):
         the feed-forward network of the message-passing network
     """
     def __init__(self,
-                 uncertainty_method: Optional[str] = None,
+                 uncertainty: Optional[str] = None,
                  dataset_type: str = 'regression', num_tasks: int = 1,
                  atom_messages: bool = False, bias: bool = False,
                  depth: int = 3, dropout: float = 0.0, undirected: bool = False,
@@ -43,8 +43,7 @@ class MoleculeModel(nn.Module):
                  ffn_num_layers: int = 2):
         super().__init__()
 
-        self.uncertainty_method = uncertainty_method
-        self.uncertainty = uncertainty_method in {'mve'}
+        self.uncertainty = uncertainty
         self.classification = dataset_type == 'classification'
         if self.classification:
             self.sigmoid = nn.Sigmoid()
@@ -86,14 +85,14 @@ class MoleculeModel(nn.Module):
         first_linear_dim = hidden_size
 
         # If dropout uncertainty method, use for both evaluation and training
-        if self.uncertainty_method == 'dropout':
+        if self.uncertainty == 'dropout':
             dropout = EvaluationDropout(dropout)
         else:
             dropout = nn.Dropout(dropout)
 
         activation = get_activation_function(activation)
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             output_size *= 2
 
         if ffn_num_layers == 1:
@@ -123,7 +122,7 @@ class MoleculeModel(nn.Module):
         """Runs the MoleculeModel on the input."""
         z = self.ffn(self.encoder(*inputs))
 
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             pred_means = z[:, 0::2]
             pred_vars = z[:, 1::2]
             capped_vars = nn.functional.softplus(pred_vars)
