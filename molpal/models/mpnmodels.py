@@ -3,6 +3,7 @@ their underlying model"""
 from functools import partial
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
@@ -163,7 +164,8 @@ class MPNN:
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
                 num_workers=self.num_workers, config=self.train_config,
-                use_gpu=self.use_gpu, scheduler_step_freq='batch'
+                use_gpu=self.use_gpu, scheduler_step_freq='batch',
+                initialization_hook=initialization_hook
             )
             
             with trange(self.epochs, desc='Training', unit='epoch',
@@ -430,6 +432,13 @@ class MPNTwoOutputModel(Model):
     
     def load(self, path):
         self.model.load(path)
+
+def initialization_hook():
+    print("NCCL DEBUG SET")
+    # Need this for avoiding a connection restart issue
+    os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+    os.environ["NCCL_LL_THRESHOLD"] = "0"
+    os.environ["NCCL_DEBUG"] = "INFO"
 
 # def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):
