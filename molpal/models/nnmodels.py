@@ -67,7 +67,7 @@ class NN:
         the dimension of the model output
     batch_size : int
         the size to batch training into        
-    uncertainty_method : Optional[str]
+    uncertainty : Optional[str]
         the uncertainty method this model is using (if at all)
     uncertainty : bool
        Whether the model directly predicts its own uncertainty
@@ -89,27 +89,24 @@ class NN:
         rate after each hidden layer
     activation : Optional[str], default='relu'
         the name of the activation function to use
-    uncertainty_method : Optional[str], default=None
+    uncertainty : Optional[str], default=None
     """
     def __init__(self, input_size: int, num_tasks: int,
                  batch_size: int = 4096,
                  layer_sizes: Optional[Sequence[int]] = None,
                  dropout: Optional[float] = None,
-                #  dropout_at_predict: bool = False,
                  activation: Optional[str] = 'relu',
-                 uncertainty_method: Optional[str] = None,
+                 uncertainty: Optional[str] = None,
                  model_seed: Optional[int] = None):
         self.input_size = input_size
-        self.output_size = num_tasks
         self.batch_size = batch_size
 
-        self.uncertainty_method = uncertainty_method
-        self.uncertainty = uncertainty_method in {'mve'}
+        self.uncertainty = uncertainty
 
         layer_sizes = layer_sizes or [100, 100]
         self.model, self.optimizer, self.loss = self.build(
             input_size, num_tasks, layer_sizes, dropout,
-            uncertainty_method, activation
+            self.uncertainty, activation
         )
 
         self.mean = 0
@@ -118,11 +115,11 @@ class NN:
         tf.random.set_seed(model_seed)
         
     def build(self, input_size, num_tasks, layer_sizes, dropout, 
-              uncertainty_method, activation):
+              uncertainty, activation):
         """Build the model, optimizer, and loss function"""
         # self.model = keras.Sequential()
 
-        dropout_at_predict = uncertainty_method == 'dropout'
+        dropout_at_predict = uncertainty == 'dropout'
         output_size = 2*num_tasks if self.uncertainty else num_tasks
         
         inputs = keras.layers.Input(shape=(input_size,))
@@ -146,15 +143,15 @@ class NN:
 
         model = keras.Model(inputs, outputs)
 
-        if uncertainty_method not in {'mve'}:
+        if uncertainty not in {'mve'}:
             optimizer = keras.optimizers.Adam(lr=0.01)
             loss = keras.losses.mse
-        elif uncertainty_method == 'mve':
+        elif uncertainty == 'mve':
             optimizer = keras.optimizers.Adam(lr=0.05)
             loss = mve_loss
         else:
             raise ValueError(
-                f'Unrecognized uncertainty method: "{uncertainty_method}"')
+                f'Unrecognized uncertainty method: "{uncertainty}"')
 
         return model, optimizer, loss
 
@@ -178,17 +175,17 @@ class NN:
         """
         self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        X = feature_matrix(xs, featurizer)
+        X = np.array(feature_matrix(xs, featurizer))
         Y = self._normalize(ys)
 
         self.model.fit(
-            X, Y,
-            batch_size=self.batch_size, validation_split=0.2, epochs=50,
-            validation_freq=2, verbose=2,
+            X, Y, batch_size=self.batch_size, validation_split=0.2,
+            epochs=50, validation_freq=2, verbose=0,
             callbacks=[
                 keras.callbacks.EarlyStopping(
                     monitor='val_loss', patience=5,
-                    verbose=2, restore_best_weights=True),
+                    restore_best_weights=True, verbose=0
+                ),
                 tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
             ]
         )
@@ -199,11 +196,11 @@ class NN:
         X = np.stack(xs, axis=0)
         Y_pred = self.model.predict(X)
 
-        if not self.uncertainty:
-            Y_pred = Y_pred * self.std + self.mean
-        else:
+        if self.uncertainty == 'mve':
             Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.std + self.mean
             Y_pred[:, 1::2] = Y_pred[:, 1::2] * self.std**2
+        else:
+            Y_pred = Y_pred * self.std + self.mean
 
         return Y_pred
     
@@ -231,7 +228,7 @@ class NN:
         self.std = state['std']
         self.mean = state['mean']
 
-        if self.uncertainty_method == 'mve':
+        if self.uncertainty == 'mve':
             custom_objects = {'mve_loss': mve_loss}
         else:
             custom_objects = {}
@@ -277,9 +274,11 @@ class NNModel(Model):
                  **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   model_seed=model_seed)
+        self.build_model = partial(
+            NN, input_size=input_size, num_tasks=1,
+            batch_size=test_batch_size, dropout=dropout,
+            model_seed=model_seed
+        )
         self.model = self.build_model()
 
         super().__init__(test_batch_size, **kwargs)
@@ -339,9 +338,11 @@ class NNEnsembleModel(Model):
                  bootstrap_ensemble: Optional[bool] = False,
                  model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 4096
-        self.build_model = partial(NN, input_size=input_size, output_size=1,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   model_seed=model_seed)
+        self.build_model = partial(
+            NN, input_size=input_size, num_tasks=1,
+            batch_size=test_batch_size, dropout=dropout,
+            model_seed=model_seed
+        )
 
         self.ensemble_size = ensemble_size
         self.models = [self.build_model() for _ in range(self.ensemble_size)]
@@ -419,10 +420,11 @@ class NNTwoOutputModel(Model):
                  **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        self.build_model = partial(NN, input_size=input_size, num_tasks=1,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   uncertainty_method='mve', 
-                                   model_seed=model_seed)
+        self.build_model = partial(
+            NN, input_size=input_size, num_tasks=1,
+            batch_size=test_batch_size, dropout=dropout,
+            uncertainty='mve', model_seed=model_seed
+        )
         self.model = self.build_model()
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
@@ -487,10 +489,11 @@ class NNDropoutModel(Model):
                  model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 4096
 
-        self.build_model = partial(NN, input_size=input_size, num_tasks=1,
-                                   batch_size=test_batch_size, dropout=dropout,
-                                   uncertainty_method='dropout',
-                                   model_seed=model_seed)
+        self.build_model = partial(
+            NN, input_size=input_size, num_tasks=1,
+            batch_size=test_batch_size, dropout=dropout,
+            uncertainty='dropout', model_seed=model_seed
+        )
         self.model = self.build_model()
         self.dropout_size = dropout_size
 

@@ -20,7 +20,6 @@ except ImportError:
     pass
 
 T = TypeVar('T')            # input identifier
-T_comp = TypeVar('T_comp')  # compressed feature representation of an input
 
 @dataclass
 class Featurizer:
@@ -34,96 +33,7 @@ class Featurizer:
     def __call__(self, smi: str) -> Optional[np.ndarray]:
         return featurize(smi, self.fingerprint, self.radius, self.length)
 
-# class Encoder:
-#     """An Encoder implements methods to transforms an identifier into its
-#     compressed and uncompressed feature representations
-#     """
-#     def __init__(self, fingerprint: str = 'pair', radius: int = 2,
-#                  length: int = 2048, **kwargs):
-#         self.fingerprint = fingerprint
-#         self.length = length
-#         self.radius = radius
-
-#     def __call__(self, x: T) -> T_comp:
-#         return self.encode(x)
-
-#     def __len__(self) -> int:
-#         return self.length
-
-#     def encode(self, x: T) -> Optional[T_comp]:
-#         try:
-#             return self._encode(x, self.fingerprint, self.radius, self.length)
-#         except:
-#             return None
-    
-#     @staticmethod
-#     def _encode(smi: str, fingerprint: str, radius: int, length: int) -> T_comp:
-#         """fingerprint functions must be wrapped in a static function
-#         so that they may be pickled for parallel processing
-        
-#         Parameters
-#         ----------
-#         smi : str
-#             the SMILES string of the molecule to encode
-#         fingerprint : str
-#             the the type of fingerprint to generate
-#         radius : int
-#             the radius of the fingerprint
-#         length : int
-#             the length of the fingerprint
-        
-#         Returns
-#         -------
-#         T_comp
-#             the compressed feature representation of the molecule
-#         """
-#         mol = Chem.MolFromSmiles(smi)
-#         if fingerprint == 'morgan':
-#             return rdmd.GetMorganFingerprintAsBitVect(
-#                 mol, radius=radius, nBits=length, useChirality=True)
-
-#         if fingerprint == 'pair':
-#             return rdmd.GetHashedAtomPairFingerprintAsBitVect(
-#                 mol, minLength=1, maxLength=1+radius, nBits=length)
-        
-#         if fingerprint == 'rdkit':
-#             return rdmd.RDKFingerprint(
-#                 mol, minPath=1, maxPath=1+radius, fpSize=length)
-        
-#         if fingerprint == 'maccs':
-#             return rdmd.GetMACCSKeysFingerprint(mol)
-
-#         if fingerprint == 'map4':
-#             return map4.MAP4Calculator(
-#                 dimensions=length, radius=radius, is_folded=True
-#             ).calculate(mol)
-
-#         raise NotImplementedError(f'Unrecognized fingerprint: "{fingerprint}"')
-
-#     @staticmethod
-#     def uncompress(x_comp: T_comp) -> np.ndarray:
-#         # if isinstance(x_comp, ExplicitBitVect):
-#         #     pass
-#         x = np.empty(len(x_comp))
-#         ConvertToNumpyArray(x_comp, x)
-#         return x
-#         # return np.array(x_comp)
-
-#     def encode_and_uncompress(self, x: T) -> Optional[np.ndarray]:
-#         """Generate the uncompressed representation of x"""
-#         try:
-#             return self.uncompress(self.encode(x))
-#         except:
-#             return None
-
-#     def __repr__(self) -> str:
-#         return (f'{self.__class__.__name__}(' + 
-#                 f'fingerprint={self.fingerprint}, ' +
-#                 f'radius={self.radius}, length={self.length})')
-
-def featurize(
-    smi: str, fingerprint: str, radius: int, length: int
-) -> Optional[np.ndarray]:
+def featurize(smi, fingerprint, radius, length) -> Optional[np.ndarray]:
     mol = Chem.MolFromSmiles(smi)
     if mol is None:
         return None
@@ -159,16 +69,14 @@ def chunks(it: Iterable[T], chunk_size: int) -> Iterator[List]:
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
-def feature_matrix(smis: Iterable[str], featurizer: Featurizer):
+@ray.remote
+def featurize_chunk(smis, fingerprint, radius, length) -> List[np.ndarray]:
+    return [featurize(smi, fingerprint, radius, length) for smi in smis]
+
+def feature_matrix(smis, featurizer, disable: bool = False) -> List[np.ndarray]:
     fingerprint = featurizer.fingerprint
     radius = featurizer.radius
     length = featurizer.length
-
-    @ray.remote
-    def featurize_chunk(
-        smis: Iterable[str], fingerprint: str, radius: int, length: int
-    ):
-        return [featurize(smi, fingerprint, radius, length) for smi in smis]
 
     chunksize = int(math.sqrt(ray.cluster_resources()['CPU']) * 512)
     refs = [
@@ -176,9 +84,11 @@ def feature_matrix(smis: Iterable[str], featurizer: Featurizer):
         for smis_chunk in chunks(smis, chunksize)
     ]
     fps_chunks = [
-        ray.get(r)
-        for r in tqdm(refs, desc='Featurizing', unit='smi', leave=False)
+        ray.get(r) for r in tqdm(
+            refs, desc='Featurizing', unit='smi',
+            leave=False, unit_scale=chunksize, disable=disable
+        )
     ]
     fps = list(chain(*fps_chunks))
-    return np.array(fps)
+    return fps
     

@@ -266,7 +266,13 @@ class Explorer:
     @property
     def status(self) -> str:
         """The current status of the exploration in string format"""        
-        ave = f'{self.top_k_avg:0.3f}' if self.top_k_avg else 'N/A'
+        if self.top_k_avg:
+            ave = f'{self.top_k_avg:0.3f}' 
+        else:
+            if len(self.scores) > 0:
+                ave = f'N/A (only {len(self.scores)} scores)'
+            else:
+                ave = 'N/A (no scores)'
         return (
             f'ITER: {self.iter}/{self.max_iters} | '
             f'TOP-{self.k} AVE: {ave} | '
