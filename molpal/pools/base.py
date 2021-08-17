@@ -540,8 +540,6 @@ class MoleculePool(Sequence[Mol]):
             if self.verbose > 1:
                 print(f'Detected {len(self.invalid_idxs)} invalid SMILES')
 
-            # return (i+1) - len(invalid_idxs), invalid_idxs
-
     def _cluster_mols(self, ncluster: int) -> None:
         """Cluster the molecules in the library.
 
@@ -565,9 +563,6 @@ def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
     batch potentially being smaller"""
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
-
-# def validate_smi(smi):
-#     return smi if Chem.MolFromSmiles(smi) else None
 
 @ray.remote
 def _validate_smis(smis):

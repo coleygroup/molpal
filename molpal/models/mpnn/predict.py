@@ -13,8 +13,8 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
             uncertainty: Optional[str] = None,
             scaler: Optional[StandardScaler] = None,
             use_gpu: bool = False, disable: bool = False):
-    """Predict the target values of the given SMILES strings with the input 
-    model
+    """Predict the target values of the given SMILES strings with the
+    input model
 
     Parameters
     ----------
@@ -55,15 +55,9 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
 
     pred_batches = []
     with torch.no_grad():
-        # pred_batches = [
-        #     model(batch_graph)
-        #     for batch_graph, _ in tqdm(
-        #         data_loader, desc='Inference', unit='batch', leave=False, disable=disable
-        #     )
-        # ]
         for batch in tqdm(data_loader, desc='Inference', unit='batch',
                           leave=False, disable=disable):
-            componentss, _ = batch#.batch_graph()
+            componentss, _ = batch
             componentss = [
                 [X.to(device)#, non_blocking=True)
                  if isinstance(X, torch.Tensor) else X for X in components]
@@ -73,7 +67,6 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
             pred_batches.append(pred_batch)#.data.cpu().numpy())
 
         preds = torch.cat(pred_batches)
-    # preds = np.concatenate(pred_batches)
     preds = preds.cpu().numpy()
 
     if uncertainty == 'mve':

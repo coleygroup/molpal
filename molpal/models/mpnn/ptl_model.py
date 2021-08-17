@@ -3,14 +3,11 @@ from typing import Dict, List, Optional, Tuple
 
 import pytorch_lightning as pl
 import torch
-from torch import nn
 from torch.optim import Adam
 from torch.nn import functional as F
 
 from molpal.models import mpnn
-from ..chemprop.data import MoleculeDataset
 from ..chemprop.nn_utils import NoamLR
-from .. import chemprop
 
 logging.getLogger('lightning').setLevel(logging.FATAL)
 
@@ -18,14 +15,11 @@ class LitMPNN(pl.LightningModule):
     """A message-passing neural network base class"""
     def __init__(self, config: Optional[Dict] = None):
         super().__init__()
-        config = config or dict()
+        config = config or {}
 
-        model = config.get('model', mpnn.MoleculeModel())
-        dataset_type = config.get('dataset_type', 'regression')
-        uncertainty_method = config.get('uncertainty_method', 'none')
-
-        self.mpnn = model
-        self.uncertainty = uncertainty_method #in {'mve'}
+        self.mpnn = config.get('model', mpnn.MoleculeModel())
+        self.uncertainty = config.get('uncertainty', 'none')
+        self.dataset_type = config.get('dataset_type', 'regression')
 
         self.warmup_epochs = config.get('warmup_epochs', 2.)
         self.max_epochs = config.get('max_epochs', 50)
@@ -35,13 +29,12 @@ class LitMPNN(pl.LightningModule):
         self.final_lr = config.get('final_lr', 1e-4)
 
         self.criterion = mpnn.utils.get_loss_func(
-            dataset_type, uncertainty_method
+            self.dataset_type, self.uncertainty
         )
-        # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.metric = {
             'mse': lambda X, Y: F.mse_loss(X, Y, reduction='none'),
             'rmse': lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction='none'))
-        }[config.get('metric', 'rmse')]
+        }.get(config.get('metric', 'rmse'), 'rmse')
 
     def training_step(self, batch: Tuple, batch_idx) -> torch.Tensor:
         componentss, targets = batch
@@ -85,11 +78,11 @@ class LitMPNN(pl.LightningModule):
         
         preds = self.mpnn(componentss)
         if self.uncertainty == 'mve':
-            preds = preds[:, 0::2]
+            pred_means = preds[:, 0::2]
 
         targets = torch.tensor(targets, device=self.device)
 
-        return self.metric(preds, targets)
+        return self.metric(pred_means, targets)
 
     def validation_epoch_end(self, outputs):
         val_loss = torch.cat(outputs).mean()
