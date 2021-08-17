@@ -194,8 +194,11 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
             batches(smis, batch_size), total=n_batches,
             desc='Precalculating fps', unit='smi', unit_scale=batch_size
         ):
-            fps = feature_matrix(smis_batch, featurizer)
-            for fp in tqdm(fps, total=batch_size, smoothing=0., leave=False):
+            fps = feature_matrix(smis_batch, featurizer, disable=True)
+            for fp in tqdm(
+                fps, desc='Writing', total=batch_size,
+                smoothing=0., leave=False
+            ):
                 if fp is None:
                     invalid_idxs.add(i+offset)
                     offset += 1

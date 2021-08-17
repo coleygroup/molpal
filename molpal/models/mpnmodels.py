@@ -63,8 +63,8 @@ class MPNN:
     model : MoleculeModel
         the underlying chemprop model on which to train and make predictions
     uncertainty : Optional[str], default=None
-        the uncertainty quantifiacation method the model uses. None if it
-        does not use any uncertainty quantifiacation
+        the uncertainty quantification method the model uses. None if it
+        does not use any uncertainty quantification
     loss_func : Callable
         the loss function used in model training
     batch_size : int

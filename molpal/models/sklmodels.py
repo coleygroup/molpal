@@ -67,7 +67,7 @@ class RFModel(Model):
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurizer: Callable[[T], np.ndarray], retrain: bool = True):
-        X = feature_matrix(xs, featurizer)
+        X = np.array(feature_matrix(xs, featurizer))
         Y = np.array(ys)
 
         with joblib.parallel_backend('ray'):
@@ -155,7 +155,7 @@ class GPModel(Model):
 
     def train(self, xs: Iterable[T], ys: Iterable[float], *,
               featurizer, retrain: bool = False) -> bool:
-        X = feature_matrix(xs, featurizer)
+        X = np.array(feature_matrix(xs, featurizer))
         Y = np.array(list(ys))
 
         self.model.fit(X, Y)
