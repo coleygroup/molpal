@@ -154,12 +154,12 @@ class MPNN:
             self.train_config['train_loader'] = MoleculeDataLoader(
                 dataset=train_data,
                 batch_size=self.batch_size,
-                num_workers=self.ncpu, pin_memory=self.use_gpu
+                num_workers=self.ncpu, pin_memory=False#self.use_gpu
             )
             self.train_config['val_loader'] = MoleculeDataLoader(
                 dataset=val_data,
                 batch_size=self.batch_size,
-                num_workers=self.ncpu, pin_memory=self.use_gpu
+                num_workers=self.ncpu, pin_memory=False#self.use_gpu
             )
 
             trainer = TorchTrainer(

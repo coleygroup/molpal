@@ -67,11 +67,11 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
 
         for smis_batch in tqdm(
             batches(smis, batch_size), total=n_batches,
-            desc='Precalculating fps', unit='smi'
+            desc='Precalculating fps', unit='batch'
         ):
             fps = feature_matrix(smis_batch, featurizer, disable=True)
             for fp in tqdm(
-                fps, desc='Writing', total=batch_size,
+                fps, desc='Writing', total=batch_size, unit='smi',
                 smoothing=0., leave=False
             ):
                 if fp is None:
