@@ -14,7 +14,7 @@ class MPNNOperator(TrainingOperator):
     def setup(self, config: Dict):
         model = config['model']
         dataset_type = config.get('dataset_type', 'regression')
-        self.uncertainty = config.get('uncertainty_method', 'none')
+        self.uncertainty = config.get('uncertainty', 'none')
 
         # self.uncertainty = uncertainty_method in {'mve'}
 
@@ -158,15 +158,17 @@ class MPNNOperator(TrainingOperator):
         metric = self.metric
 
         device = 'cuda' if self.use_gpu else 'cpu'
-        componentss = [[
-            X.to(device, non_blocking=True)
+        componentss = [
+            [
+                X.to(device, non_blocking=True)
                 if isinstance(X, torch.Tensor) else X
-            for X in components
-        ] for components in componentss]
+                for X in components
+            ] for components in componentss
+        ]
         targets = torch.tensor(targets, device=device)
 
         preds = model(componentss)
-        if self.uncertainty:
+        if self.uncertainty == 'mve':
             preds = preds[:, 0::2]
 
         loss = metric(preds, targets)
