@@ -146,21 +146,19 @@ class MPNN:
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
+        train_dataloader = MoleculeDataLoader(
+            dataset=train_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=False#self.use_gpu
+        )
+        val_dataloader = MoleculeDataLoader(
+            dataset=val_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=False#self.use_gpu
+        )
         
         if self.ddp:
-            self.train_config['steps_per_epoch'] = (
-                len(train_data) // (self.batch_size)
-            )
-            self.train_config['train_loader'] = MoleculeDataLoader(
-                dataset=train_data,
-                batch_size=self.batch_size,
-                num_workers=self.ncpu, pin_memory=False#self.use_gpu
-            )
-            self.train_config['val_loader'] = MoleculeDataLoader(
-                dataset=val_data,
-                batch_size=self.batch_size,
-                num_workers=self.ncpu, pin_memory=False#self.use_gpu
-            )
+            self.train_config['steps_per_epoch'] = (len(train_dataloader))
+            self.train_config['train_loader'] = train_dataloader
+            self.train_config['val_loader'] = val_dataloader
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
@@ -184,14 +182,6 @@ class MPNN:
             
             return True
 
-        train_dataloader = MoleculeDataLoader(
-            dataset=train_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=self.use_gpu
-        )
-        val_dataloader = MoleculeDataLoader(
-            dataset=val_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=self.use_gpu
-        )
         lit_model = mpnn.LitMPNN(self.train_config)
         
         callbacks = [
