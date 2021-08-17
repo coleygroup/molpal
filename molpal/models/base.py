@@ -89,10 +89,11 @@ class Model(ABC):
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         """Get both the predicted mean and variance for a sequence of inputs"""
 
-    def apply(self, x_ids: Iterable[T], x_feats: Iterable[T_feat],
-              batched_size: Optional[int] = None,
-              size: Optional[int] = None, mean_only: bool = True
-              ) -> Tuple[np.ndarray, np.ndarray]:
+    def apply(
+        self, x_ids: Iterable[T], x_feats: Iterable[T_feat],
+        batched_size: Optional[int] = None,
+        size: Optional[int] = None, mean_only: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Apply the model to the inputs
 
         Parameters
@@ -127,21 +128,26 @@ class Model(ABC):
         if batched_size:
             n_batches = (size//batched_size) + 1 if size else None
         else:
-            n_batches = (size//self.test_batch_size) + 1 if size else None
             xs = batches(xs, self.test_batch_size)
+            n_batches = (size//self.test_batch_size) + 1 if size else None
+            batched_size = self.test_batch_size
 
         meanss = []
         variancess = []
 
         if mean_only:
-            for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
-                                 desc='Inference', unit='batch'):
+            for batch_xs in tqdm(
+                xs, total=n_batches, desc='Inference', smoothing=0.,
+                unit='smi', unit_scale=batched_size
+            ):
                 means = self.get_means(batch_xs)
                 meanss.append(means)
                 variancess.append([])
         else:
-            for batch_xs in tqdm(xs, total=n_batches, smoothing=0.,
-                                 desc='Inference', unit='batch'):
+            for batch_xs in tqdm(
+                xs, total=n_batches, desc='Inference', smoothing=0.,
+                unit='smi', unit_scale=batched_size
+            ):
                 means, variances = self.get_means_and_vars(batch_xs)
                 meanss.append(means)
                 variancess.append(variances)
