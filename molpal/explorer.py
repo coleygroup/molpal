@@ -265,7 +265,10 @@ class Explorer:
         if self.top_k_avg:
             ave = f'{self.top_k_avg:0.3f}' 
         else:
-            ave = f'N/A (only {len(self.scores)} scores)'
+            if len(self.scores) > 0:
+                ave = f'N/A (only {len(self.scores)} scores)'
+            else:
+                ave = 'N/A (no scores)'
         return (
             f'ITER: {self.iter}/{self.max_iters} | '
             f'TOP-{self.k} AVE: {ave} | '
