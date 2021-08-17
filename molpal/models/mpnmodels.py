@@ -78,7 +78,7 @@ class MPNN:
         to reverse transform prediction outputs 
     """
     def __init__(self, batch_size: int = 50,
-                 uncertainty_method: Optional[str] = None,
+                 uncertainty: Optional[str] = None,
                  dataset_type: str = 'regression', num_tasks: int = 1,
                  atom_messages: bool = False, hidden_size: int = 300,
                  bias: bool = False, depth: int = 3, dropout: float = 0.0,
@@ -99,7 +99,7 @@ class MPNN:
         self.precision = precision
 
         self.model = mpnn.MoleculeModel(
-            uncertainty_method=uncertainty_method,
+            uncertainty_method=uncertainty,
             dataset_type=dataset_type, num_tasks=num_tasks,
             atom_messages=atom_messages, hidden_size=hidden_size,
             bias=bias, depth=depth, dropout=dropout, undirected=undirected,
@@ -107,17 +107,13 @@ class MPNN:
             ffn_num_layers=ffn_num_layers
         )
 
-        # self.uncertainty_method = uncertainty_method
-        self.uncertainty = uncertainty_method in {'mve'}
+        self.uncertainty = uncertainty
         self.dataset_type = dataset_type
         self.num_tasks = num_tasks
 
         self.epochs = epochs
         self.batch_size = batch_size
 
-        # self.loss_func = mpnn.utils.get_loss_func(
-        #     dataset_type, uncertainty_method)
-        # self.metric_func = chemprop.utils.get_metric_func(metric)
         self.scaler = None
 
         ngpu = int(ray.cluster_resources().get('GPU', 0))
@@ -137,7 +133,7 @@ class MPNN:
         self.train_config = {
             'model': self.model,
             'dataset_type': dataset_type,
-            'uncertainty_method': uncertainty_method,
+            'uncertainty': self.uncertainty,
             'warmup_epochs': warmup_epochs,
             'max_epochs': self.epochs,
             'init_lr': init_lr,
@@ -199,13 +195,13 @@ class MPNN:
         lit_model = mpnn.LitMPNN(self.train_config)
         
         callbacks = [
-            EarlyStopping('val_loss', patience=10, verbose=True, mode='min'),
+            EarlyStopping('val_loss', patience=10, mode='min'),
             mpnn.callbacks.EpochAndStepProgressBar()
         ]
         trainer = pl.Trainer(
             max_epochs=self.epochs, callbacks=callbacks,
             gpus=1 if self.use_gpu else 0, precision=self.precision,
-            weights_summary=None
+            weights_summary=None, log_every_n_steps=len(train_dataloader)
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
         
@@ -344,7 +340,7 @@ class MPNDropoutModel(Model):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, uncertainty_method='dropout', dropout=dropout, 
+            MPNN, uncertainty='dropout', dropout=dropout, 
             ncpu=ncpu, ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
@@ -399,7 +395,7 @@ class MPNTwoOutputModel(Model):
         test_batch_size = test_batch_size or 1000000
 
         self.build_model = partial(
-            MPNN, uncertainty_method='mve', ncpu=ncpu,
+            MPNN, uncertainty='mve', ncpu=ncpu,
             ddp=ddp, precision=precision, model_seed=model_seed
         )
         self.model = self.build_model()
