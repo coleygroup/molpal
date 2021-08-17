@@ -30,9 +30,8 @@ class MoleculeModel(nn.Module):
             uncertainty. Output size is equal to 4*num_tasks, where each task
             has 4 outputs associated with it: mean, lambda, alpha, and beta.
             I.e., indices 0::4, 1::4, 2::4, and 3::4
-    uncertainty : bool
-        whether this model predicts its own uncertainty values
-        (e.g. Mean-Variance estimation)
+    uncertainty : str
+       the type of uncertainty quantification this model uses
     classification : bool
         whether this model is a classification model
     output_size : int
