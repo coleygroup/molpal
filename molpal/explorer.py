@@ -132,6 +132,8 @@ class Explorer:
                  chkpt_freq: int = 0, checkpoint_file: Optional[str] = None,
                  retrain_from_scratch: bool = False,
                  previous_scores: Optional[str] = None,
+                 nn_threshold: Optional[float] = None,
+                 use_residuals: bool = False,
                  **kwargs):
         args = locals()
         
@@ -143,8 +145,9 @@ class Explorer:
             fingerprint=kwargs['fingerprint'],
             radius=kwargs['radius'], length=kwargs['length']
         )
-        self.pool = pools.pool(featurizer=self.featurizer, 
-                               nn_threshold=nn_threshold, **kwargs)
+        self.pool = pools.pool(
+            featurizer=self.featurizer, nn_threshold=nn_threshold, **kwargs
+        )
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
         self.nn_uncertainty = nn_threshold is not None
 
@@ -185,7 +188,7 @@ class Explorer:
         self.Y_pred = np.array([])
         self.Y_var = np.array([])
         self.model_updates = 0
-        self.model_update_cost = model_update_cost
+        self.model_update_cost = 0 #model_update_cost
 
         if previous_scores:
             self.load_scores(previous_scores)

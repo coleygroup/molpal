@@ -78,6 +78,7 @@ if __name__ == "__main__":
                         help='the label of each trace on the plot. Will use the metric labels if not specified. NOTE: the labels correspond the number of different configurations. I.e., if you pass in the args: --expts e1_a e1_b e1_c --reps 3, you only need to specify one label: --labels l1')
     parser.add_argument('--name',
                         help='the filepath to which the plot should be saved')
+    parser.add_argument('--dpi', type=int, default=300)
 
     args = parser.parse_args()
     args.title_line = not args.no_title_line
@@ -106,13 +107,13 @@ if __name__ == "__main__":
     bs = int(args.split * len(smis))
     title = {
         'smis': f'Percentage of Top-{args.N} SMILES Found',
-        'scores': f'Percentage of Top-{args.N} scores Found',
-        'top-k-ave': f'Top-{args.N} average',
-        'total-ave': f'Total average'
+        'scores': f'Percentage of Top-{args.N} Scores Found',
+        'top-k-ave': f'Top-{args.N} Average',
+        'total-ave': f'Total Average'
     }[args.reward]
 
     fig = plot_reward_curves(
         reward_curvess, args.labels or args.metrics, bs, title
-    ).savefig(args.name)
+    ).savefig(args.name, dpi=args.dpi)
 
     exit()

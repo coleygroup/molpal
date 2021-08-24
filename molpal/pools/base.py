@@ -105,7 +105,8 @@ class MoleculePool(Sequence[Mol]):
                  cache: bool = False,
                  invalid_idxs: Optional[Iterable[int]] = None,
                  cluster: bool = False, ncluster: int = 100,
-                 fps_path: Optional[str] = None, verbose: int = 0, **kwargs):
+                 fps_path: Optional[str] = None, verbose: int = 0,
+                 nn_threshold: Optional[float] = None, **kwargs):
         self.libraries = [l for l in libraries]
         self.title_line = title_line
         self.delimiter = delimiter

@@ -96,7 +96,11 @@ def plot_regret(
         ax.xaxis.set_major_formatter(formatter)
         style_axis(ax)
 
-    ax0.set_ylabel('Total average')
+    label = {
+        'top-k-ave': f'Top-{k} Average',
+        'total-ave': 'Total Average'
+    }[reward]
+    ax0.set_ylabel(label)
     ax0.set_xlim(right=4*len(y_mean))
     ax0.legend(loc='lower right')
 
@@ -197,16 +201,15 @@ if __name__ == "__main__":
     parser.add_argument('-k', type=int,
                         help='the number of top scores from which to calculate performance')
     parser.add_argument('-r', '--regret',
-                        choices=('scores', 'smis', 'top-k-ave', 'total-ave'),
-                        help='the type of reward to calculate')
-    parser.add_argument('--split', type=float, default=0.004,
-                        help='the split size to plot when using model-metrics mode')
+                        choices=('top-k-ave', 'total-ave'),
+                        help='the type of regret to calculate')
     parser.add_argument('--reps', type=int, nargs='+',
                         help='the number of reps for each configuration. I.e., you passed in the arguments: --expts e1_a e1_b e1_c e2_a e2_b where there are three reps of the first configuration and two reps of the seecond. In this case, you should pass in: --reps 3 2. By default, the program assumed each experiment is a unique configuration.')
     parser.add_argument('--labels', nargs='+',
                         help='the label of each trace on the plot. Will use the metric labels if not specified. NOTE: the labels correspond the number of different configurations. I.e., if you pass in the args: --expts e1_a e1_b e1_c --reps 3, you only need to specify one label: --labels l1')
     parser.add_argument('--name',
                         help='the filepath to which the plot should be saved')
+    parser.add_argument('--dpi', type=float, default=600)
     
     args = parser.parse_args()
     args.title_line = not args.no_title_line
@@ -235,7 +238,7 @@ if __name__ == "__main__":
     plot_regret(
         reward_curvess, init_sizes, args.regret,
         true_scores, args.k, args.labels, len(smis)
-    ).savefig(args.name)
+    ).savefig(args.name, dpi=args.dpi)
 
         # plot_estimates(true_scores, len(smis)).savefig(args.names[1], dpi=600)
 

@@ -29,7 +29,10 @@ class Experiment:
                 chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
             )
             config = Experiment.read_config(self.experiment / 'config.ini')
-            self.k = int(config['top-k'])
+            try:
+                self.k = int(config['top-k'])
+            except ValueError:
+                self.k = int(float(config['top-k']) * len(d_smi_idx))
             self.metric = config['metric']
             self.beta = float(config.get('beta', 2.))
             self.xi = float(config.get('xi', 0.001))
@@ -169,7 +172,7 @@ class Experiment:
     
     def reward_curve(
         self, true_top_k: List[Point], reward: str = 'scores'
-    ):
+    ) -> np.ndarray:
         """Calculate the reward curve of a molpal run
 
         Parameters
@@ -286,8 +289,6 @@ class Experiment:
     def calculate_cluster_fraction(
         self, i: int, true_clusters: Tuple[Set, Set, Set]
     ) -> Tuple[float, float, float]:
-        # import pdb; pdb.set_trace()
-
         large, mids, singletons = true_clusters
         N = len(large) + len(mids) + len(singletons)
         
@@ -300,8 +301,9 @@ class Experiment:
         return f_large, f_mids, f_singletons
 
     @staticmethod
-    def read_scores(scores_csv: Union[Path, str],
-                    N: Optional[int] = None) -> Tuple[Dict, Dict]:
+    def read_scores(
+        scores_csv: Union[Path, str], N: Optional[int] = None
+    ) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""
         scores = {}
         failures = {}
