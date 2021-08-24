@@ -1,6 +1,5 @@
-"""This module contains the Encoder ABC and various implementations thereof.
-Encoders transform input representations into (un)compressed representations
-for use with clustering and model training/prediction."""
+"""A featurizer transforms input representations into uncompressed feature 
+representations for use with clustering and model training/prediction."""
 
 from dataclasses import dataclass
 from itertools import chain, islice
@@ -19,7 +18,7 @@ try:
 except ImportError:
     pass
 
-T = TypeVar('T')            # input identifier
+T = TypeVar('T')
 
 @dataclass
 class Featurizer:
@@ -32,6 +31,12 @@ class Featurizer:
 
     def __call__(self, smi: str) -> Optional[np.ndarray]:
         return featurize(smi, self.fingerprint, self.radius, self.length)
+
+def chunks(it: Iterable[T], chunk_size: int) -> Iterator[List]:
+    """Batch an iterable into batches of size chunk_size, with the final
+    batch potentially being smaller"""
+    it = iter(it)
+    return iter(lambda: list(islice(it, chunk_size)), [])
 
 def featurize(smi, fingerprint, radius, length) -> Optional[np.ndarray]:
     mol = Chem.MolFromSmiles(smi)
@@ -62,12 +67,6 @@ def featurize(smi, fingerprint, radius, length) -> Optional[np.ndarray]:
     X = np.empty(len(fp))
     ConvertToNumpyArray(fp, X)
     return X
-
-def chunks(it: Iterable[T], chunk_size: int) -> Iterator[List]:
-    """Batch an iterable into batches of size chunk_size, with the final
-    batch potentially being smaller"""
-    it = iter(it)
-    return iter(lambda: list(islice(it, chunk_size)), [])
 
 @ray.remote
 def featurize_chunk(smis, fingerprint, radius, length) -> List[np.ndarray]:
