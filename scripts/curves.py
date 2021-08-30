@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from itertools import repeat
+from pprint import pprint
 from typing import Iterable
 
 from matplotlib import pyplot as plt
@@ -95,14 +96,11 @@ if __name__ == "__main__":
     true_top_k = true_smis_scores[:args.N]
 
     reward_curves = []
-    # init_sizes = []
     for experiment in args.experiments:
         experiment = Experiment(experiment, d_smi_idx)
-        # init_sizes.append(experiment.init_size)
         reward_curves.append(experiment.reward_curve(true_top_k, args.reward))
 
     reward_curvess = chunk(reward_curves, args.reps or [])
-    # init_sizes = [x[0] for x in chunk(init_sizes, args.reps or [])]
 
     bs = int(args.split * len(smis))
     title = {
