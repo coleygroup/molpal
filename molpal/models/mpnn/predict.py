@@ -53,7 +53,7 @@ def predict(model, smis: Iterable[str], batch_size: int = 50, ncpu: int = 1,
     dataset = MoleculeDataset([MoleculeDatapoint([smi]) for smi in smis])
     data_loader = MoleculeDataLoader(
         dataset=dataset, batch_size=batch_size,
-        num_workers=ncpu, pin_memory=use_gpu
+        num_workers=ncpu, pin_memory=False#use_gpu
     )
     model.eval()
 

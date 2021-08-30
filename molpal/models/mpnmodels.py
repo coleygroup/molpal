@@ -3,6 +3,7 @@ their underlying model"""
 from functools import partial
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
@@ -161,26 +162,25 @@ class MPNN:
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
+        train_dataloader = MoleculeDataLoader(
+            dataset=train_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=False#self.use_gpu
+        )
+        val_dataloader = MoleculeDataLoader(
+            dataset=val_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=False#self.use_gpu
+        )
         
         if self.ddp:
-            self.train_config['steps_per_epoch'] = (
-                len(train_data) // (self.batch_size)
-            )
-            self.train_config['train_loader'] = MoleculeDataLoader(
-                dataset=train_data,
-                batch_size=self.batch_size,
-                num_workers=self.ncpu, pin_memory=self.use_gpu
-            )
-            self.train_config['val_loader'] = MoleculeDataLoader(
-                dataset=val_data,
-                batch_size=self.batch_size,
-                num_workers=self.ncpu, pin_memory=self.use_gpu
-            )
+            self.train_config['steps_per_epoch'] = (len(train_dataloader))
+            self.train_config['train_loader'] = train_dataloader
+            self.train_config['val_loader'] = val_dataloader
 
             trainer = TorchTrainer(
                 training_operator_cls=mpnn.MPNNOperator,
                 num_workers=self.num_workers, config=self.train_config,
-                use_gpu=self.use_gpu, scheduler_step_freq='batch'
+                use_gpu=self.use_gpu, scheduler_step_freq='batch',
+                initialization_hook=initialization_hook
             )
             
             with trange(self.epochs, desc='Training', unit='epoch',
@@ -199,14 +199,6 @@ class MPNN:
             
             return True
 
-        train_dataloader = MoleculeDataLoader(
-            dataset=train_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=self.use_gpu
-        )
-        val_dataloader = MoleculeDataLoader(
-            dataset=val_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=self.use_gpu
-        )
         lit_model = mpnn.LitMPNN(self.train_config)
         
         callbacks = [
@@ -510,6 +502,13 @@ class MPNUncertaintyModel(Model):
     
     def load(self, path):
         self.model.load(path)
+        
+def initialization_hook():
+    print("NCCL DEBUG SET")
+    # Need this for avoiding a connection restart issue
+    os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+    os.environ["NCCL_LL_THRESHOLD"] = "0"
+    os.environ["NCCL_DEBUG"] = "INFO"
 
 # def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):

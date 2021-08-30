@@ -130,23 +130,22 @@ class Model(ABC):
         else:
             xs = batches(xs, self.test_batch_size)
             n_batches = (size//self.test_batch_size) + 1 if size else None
-            batched_size = self.test_batch_size
 
         meanss = []
         variancess = []
 
         if mean_only:
             for batch_xs in tqdm(
-                xs, total=n_batches, desc='Inference', smoothing=0.,
-                unit='smi', unit_scale=batched_size
+                xs, total=n_batches, desc='Inference',
+                smoothing=0., unit='smi'
             ):
                 means = self.get_means(batch_xs)
                 meanss.append(means)
                 variancess.append([])
         else:
             for batch_xs in tqdm(
-                xs, total=n_batches, desc='Inference', smoothing=0.,
-                unit='smi', unit_scale=batched_size
+                xs, total=n_batches, desc='Inference',
+                smoothing=0., unit='smi'
             ):
                 means, variances = self.get_means_and_vars(batch_xs)
                 meanss.append(means)
