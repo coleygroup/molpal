@@ -1,12 +1,13 @@
 from argparse import ArgumentParser
 from collections import Counter
 from enum import auto, Enum
-from pathlib import Path
 import sys
-from typing import Iterable, List, Optional, Set, Sequence, Tuple, Union
+from typing import (
+    Iterable, List, Mapping, Set, Sequence, Tuple, Union
+)
 
+import joblib
 from matplotlib import pyplot as plt
-from matplotlib import ticker
 import numpy as np
 import ray
 from ray.util.joblib import register_ray
@@ -15,7 +16,7 @@ from rdkit.Chem import rdMolDescriptors
 from rdkit.DataStructs import ExplicitBitVect
 from rdkit.SimDivFilters import rdSimDivPickers
 import seaborn as sns
-from sklearn import cluster
+import sklearn.cluster
 import torch
 from tqdm import tqdm
 
@@ -24,111 +25,59 @@ from experiment import Experiment
 from molpal.models.chemprop.data.data import (
     MoleculeDataset, MoleculeDatapoint, MoleculeDataLoader
 )
-from utils import (
-    extract_smis, build_true_dict, chunk, style_axis, abbreviate_k_or_M
-)
+from utils import (extract_smis, build_true_dict)
 
 sns.set_theme(style='white', context='paper')
 
 ray.init('auto')
 register_ray()
 
+Fingerprint = Union[ExplicitBitVect]
+
 class Representation(Enum):
     MORGAN = auto()
     EMBEDDING = auto()
 
-def embeddings(
-    smis: Iterable[str], experiment: Experiment, i: int
-) -> np.ndarray:
+class ClusterMode(Enum):
+    DBSCAN = auto()
+    DISE = auto()
+
+def embeddings(smis: Iterable[str], model) -> np.ndarray:
     dataset = MoleculeDataset([MoleculeDatapoint([smi]) for smi in smis])
     data_loader = MoleculeDataLoader(
         dataset=dataset, batch_size=50, num_workers=8,
     )
-    model = experiment.model(i)
 
-    embeddings_batches = []
+    Z_batches = []
     with torch.no_grad():
-        for componentss, _ in tqdm(data_loader):
-            embeddings_batches.append(model.model.featurize(componentss))
-        embeddings = torch.cat(embeddings_batches)
+        for componentss, _ in tqdm(data_loader, leave=False):
+            Z_batches.append(model.featurize(componentss))
+        Z = torch.cat(Z_batches)
 
-    return embeddings.cpu().numpy()
-
-def cluster_embeddings(Z: np.ndarray) -> np.ndarray:
-    for eps in np.linspace(0.1, 0.5, num=5):
-        print(eps)
-        labels = cluster.DBSCAN(
-            eps, min_samples=1, metric='euclidean', n_jobs=-1
-        ).fit_predict(Z)
-
-        sizes = Counter(labels)
-        counts = Counter(sizes.values())
-
-        print(counts)
-
-    return labels
+    return Z.cpu().numpy()
 
 def smi_to_fp(smi: str, radius: int, length: int):
     return rdMolDescriptors.GetMorganFingerprintAsBitVect(
         Chem.MolFromSmiles(smi), radius, length, useChirality=True
     )
 
-def compute_centroids(
-    fps: Sequence[ExplicitBitVect], similarity: float = 0.35
-) -> Tuple[List[int], List[ExplicitBitVect]]:
-    """Compute the cluster centers of a list of molecular fingerprints based
-    on sphere clustering
-
-    Parameters
-    ----------
-    fps : Sequence[ExplicitBitVect]
-        the molecular fingerprints from which to identify the cluster centers
-    similarity : float, default=0.35
-        the maximum allowable similarity between cluster centroids
-
-    Returns
-    -------
-    idxs : List[int]
-        the indices of the centroids in the input list of fingerprints
-    """
+def compute_DISE_centroids(fps, similarity: float = 0.35) -> List[int]:
     distance = 1. - similarity
     lp = rdSimDivPickers.LeaderPicker()
     idxs = list(lp.LazyBitVectorPick(fps, len(fps), distance))
 
     return idxs
 
-def assign_cluster_label(
-    fp: ExplicitBitVect,
-    centroids: Sequence[ExplicitBitVect],
-    labels: Sequence[int]
-) -> int:
-    """assign the cluster label to the input fingerprint
-
-    Parameters
-    ----------
-    fp : ExplicitBitVect
-        the fingerprint to assign a label to
-    centroids : Sequence[ExplicitBitVect]
-        the cluster centroids
-    labels : Sequence[int]
-        their labels
-
-    Returns
-    -------
-    int
-        the label of the closest cluster centroid
-    """
+def assign_cluster_label(fp, centroids, labels) -> int:
     i = np.array(
         DataStructs.BulkTanimotoSimilarity(fp, centroids)
     ).argmax()
 
     return labels[i]
 
-def cluster_fps(
-    fps: Sequence[ExplicitBitVect], similarity: float = 0.35
-) -> List[int]:
+def cluster_fps_DISE(fps, similarity: float = 0.35) -> List[int]:
     """Cluster the input molecular fingerprints and return their
-    associated labels
+    associated labels using the DIrected Sphere Exclusion algorithm
 
     Parameters
     ----------
@@ -142,31 +91,78 @@ def cluster_fps(
     List[int]
         the cluster label of each fingerprint
     """
-    idxs = compute_centroids(fps, similarity)
+    idxs = compute_DISE_centroids(fps, similarity)
     centroids = [fps[i] for i in idxs]
 
-    return [assign_cluster_label(fp, centroids, idxs) for fp in fps]
+    labels = [assign_cluster_label(fp, centroids, idxs) for fp in fps]
 
-def group_mols(
-    smis: Sequence[str], radius: int = 2, length: int = 2048,
-    similarity: float = 0.35
+    return labels
+
+def cluster_array(
+    X: np.ndarray, cluster_mode: ClusterMode, eps=0.2, metric='euclidean'
+) -> np.ndarray:
+
+    with joblib.parallel_backend('ray'):
+        clustering = {
+            ClusterMode.DBSCAN: sklearn.cluster.DBSCAN(
+                eps, min_samples=1, metric=metric, n_jobs=-1
+            ),
+        }[cluster_mode]
+
+        labels = clustering.fit_predict(X)
+
+    return labels
+
+def featurize_mols(
+    smis: Iterable[str], representation: Representation,
+    radius: int = 2, length: int = 2048, model = None,
+) -> Union[np.ndarray, List[Fingerprint]]:
+    if representation == Representation.MORGAN:
+        X = [smi_to_fp(smi, radius, length) for smi in tqdm(smis)]
+    elif representation == Representation.EMBEDDING:
+        X = embeddings(smis, model)
+
+    return X
+
+def cluster_mols(
+    X_or_fps: Union[np.ndarray, List[Fingerprint]],
+    representation: Representation,
+    cluster_mode: ClusterMode, similarity: float = 0.35
+):
+    if representation != Representation.EMBEDDING:
+        fps = X_or_fps
+        X = np.empty((len(fps), len(fps[0])), dtype=bool)
+        [DataStructs.ConvertToNumpyArray(fp, x) for fp, x in zip(fps, X)]
+        metric = 'jaccard'
+        eps = 0.65
+    else:
+        X = X_or_fps
+        metric = 'euclidean'
+        eps = 0.4
+
+    if cluster_mode == ClusterMode.DISE:
+        labels = cluster_fps_DISE(fps, similarity)
+    else:
+        labels = cluster_array(X, cluster_mode, eps, metric)
+
+    print(eps, Counter(Counter(labels).values()))
+    return labels
+
+def group_clusters(
+    smis: Sequence[str], labels: Sequence
 ) -> Tuple[Set[str], Set[str], Set[str]]:
     """group molecules based on their cluster membership
-
-    The molecules are first clustered based on the input fingerprint and 
-    similarity arguments. Then, they are grouped into three based on whether 
-    they belong to the largest cluster, a mid-sized cluster, or a singleton cluster (a cluster containing no members beyond the centroid)
+    
+    Molecules are lumped into into three groups based on whether they belong to 
+    the largest cluster, a mid-sized cluster, or a singleton cluster (a cluster 
+    containing no members beyond the centroid)
     
     Parameters
     ----------
     smis : Sequence[str]
         the SMILES strings corresponding to the molecules to group
-    radius : int, default=2
-        the radius of the fingerprint used to represent molecules
-    length : int, default=2048
-        the length of the fingerprint used to represent molecules
-    similarity : float, default=0.35
-        the maximum allowable similarity between cluster centers
+    labels : Sequence
+        a parallel sequence of cluster labels for each molecule
 
     Returns
     -------
@@ -177,11 +173,8 @@ def group_mols(
     singletons : Set[str]
         all molecules belonging to singleton clusters
     """
-    fps = [smi_to_fp(smi, radius, length) for smi in smis]
-    labels = cluster_fps(fps, similarity)
     d_label_size = Counter(labels)
-
-    largest_cluster_size = d_label_size.most_common()[0][1]
+    largest_cluster_size = d_label_size.most_common(1)[1]
 
     large, mids, singletons = set(), set(), set()
     for smi, label in zip(smis, labels):
@@ -194,31 +187,46 @@ def group_mols(
             mids.add(smi)
     
     if len(large) > largest_cluster_size:
-        print(f'large size: {len(large)}')
-    elif len(large) < largest_cluster_size:
-        print('you got bugs bro')
-
+        raise RuntimeError(
+            f'too many molecules assigned to largest cluster: {len(large)}'
+        )
+    if len(large) < largest_cluster_size:
+        raise RuntimeError(
+            f'too few molecules assigned to largest cluster: {len(large)}'
+        )
     if len(singletons) + len(mids) + len(large) != len(set(smis)):
         raise RuntimeError('not every molecule was assigned a cluster group')
 
     return large, mids, singletons
 
-def cluster_mols(
-    smis: Iterable[str], representation: Representation, radius: int = 2, 
-    length: int = 2048, similarity: float = 0.35,
-    experiment: Optional[Union[str, Path]] = None
-):
-    if representation == Representation.MORGAN:
-        fps = [smi_to_fp(smi, radius, length) for smi in smis]
-        labels = cluster_fps(fps, similarity)
-    elif representation == Representation.EMBEDDING:
-        experiment = Experiment(args.experiment, d_smi_idx)
-        Z = embeddings(top_N_smis, experiment, 2)
-        labels = cluster_embeddings(Z)
+def array_from_fps(fps: Sequence[Fingerprint]) -> np.ndarray:
+    X = np.empty((len(fps), len(fps[0])), dtype=bool)
+    [DataStructs.ConvertToNumpyArray(fp, x) for fp, x in zip(fps, X)]
+    return X
 
-    return labels
+def plot_cluster_sizes(d_label_sizes: Sequence[Mapping], eps: float):
+    N = len(d_label_sizes)
+    fig, axs = plt.subplots(
+        N, 1, figsize=(5, 1.2*N), sharex=True, sharey=True
+    )
 
-if __name__ == "__main__":
+    axs = [axs] if N == 1 else axs
+
+    for i, d_label_size in enumerate(d_label_sizes):
+        axs[i].hist(
+            d_label_size.values(), bins=np.arange(0, 1000, 10),
+            log=True, edgecolor='none'
+        )
+        if N > 1:
+            axs[i].set_ylabel(i+1, rotation=0)
+        axs[i].grid(True)
+            
+    axs[-1].set_xlabel(f'Cluster size (eps={eps:0.2f})')
+
+    fig.tight_layout()
+    return fig
+
+def main():
     parser = ArgumentParser()
     parser.add_argument('-e', '--experiment', '--expt',
                         help='the top-level directory generated by the MolPAL run. I.e., the directory with the "data" and "chkpts" directories')
@@ -235,13 +243,18 @@ if __name__ == "__main__":
                         help='the number of top scores from which to calculate the reward')
     parser.add_argument('--name',
                         help='the filepath to which the plot should be saved')
-    parser.add_argument('--dpi', type=int, default=300)
-    parser.add_argument('-r', '--representation',
-                        help='the number of top scores from which to calculate the reward')
+    parser.add_argument('--dpi', type=int, default=600)
+    parser.add_argument('-r', '--representation')
+    parser.add_argument('-cm', '--cluster-mode')
+    parser.add_argument('--eps', type=float, default=0.35)
+    parser.add_argument('--metric', default='euclidean')
+    parser.add_argument('--similarity', type=float, default=0.35)
+
     args = parser.parse_args()
     args.title_line = not args.no_title_line
 
     representation = Representation[args.representation.upper()]
+    cluster_mode = ClusterMode[args.cluster_mode.upper()]
 
     smis = extract_smis(args.library, args.smiles_col, args.title_line)
     d_smi_idx = {smi: i for i, smi in enumerate(smis)}
@@ -253,9 +266,37 @@ if __name__ == "__main__":
 
     true_smis_scores = sorted(d_smi_score.items(), key=lambda kv: kv[1])[::-1]
     true_top_N = true_smis_scores[:args.N]
-    top_N_smis, top_N_scores  = zip(*true_top_N)
+    top_N_smis, _  = zip(*true_top_N)
 
     radius, length, similarity = 2, 2048, 0.35
-    labels = cluster_mols(smis, representation, radius, length, similarity)
-    # experiment = Experiment(args.experiment, d_smi_idx)
-    # Z = embeddings(top_N_smis, experiment, 2)
+    expt = Experiment(args.experiment, d_smi_idx)
+
+    if representation == Representation.EMBEDDING:
+        ds = []
+        for i in range(1, 6):
+            model = expt.model(i).model
+            X = embeddings(top_N_smis, model)
+            labels = cluster_array(X, cluster_mode, args.eps, args.metric)
+
+            d_label_size = Counter(labels)
+            ds.append(d_label_size)
+            print(args.eps, Counter(d_label_size.values()))
+
+        plot_cluster_sizes(ds, args.eps).savefig(args.name, dpi=args.dpi)
+    else:
+        fps = [smi_to_fp(smi, radius, length) for smi in tqdm(top_N_smis)]
+        if cluster_mode != ClusterMode.DISE:
+            X = array_from_fps(fps)
+            labels = cluster_array(X, cluster_mode, 1.-args.eps, 'jaccard')
+        else:
+            labels = cluster_fps_DISE(fps, similarity)
+
+        d_label_size = Counter(labels)
+        plot_cluster_sizes(
+            [d_label_size], 1.-args.eps
+        ).savefig(args.name, dpi=args.dpi)
+
+        print(args.eps, Counter(d_label_size.values()))
+
+if __name__ == "__main__":
+    main()
