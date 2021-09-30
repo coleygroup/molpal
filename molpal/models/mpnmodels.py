@@ -125,7 +125,7 @@ class MPNN:
         else:
             self.use_gpu = False
             self._predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
-            self.num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+            self.num_workers = int(ray.cluster_resources()['CPU'] // self.ncpu)
         
         self.seed = model_seed
         if model_seed is not None:
@@ -434,7 +434,7 @@ class MPNTwoOutputModel(Model):
         self.model.load(path)
 
 def initialization_hook():
-    print("NCCL DEBUG SET")
+    # print("NCCL DEBUG SET")
     # Need this for avoiding a connection restart issue
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
