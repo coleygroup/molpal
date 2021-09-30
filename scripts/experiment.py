@@ -1,14 +1,17 @@
 from collections import Counter
 import csv
 import heapq
+import json
 from itertools import islice
 from pathlib import Path
 import sys
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple, Union
+
 import numpy as np
 
 sys.path.append('../molpal')
 from molpal.acquirer import metrics
+from molpal import models
 
 Point = Tuple[str, float]
 
@@ -17,9 +20,23 @@ class Experiment:
 
     It can be queried for the progress at a given iteration, the order in which
     points were acquired, and other conveniences
+
+    Parameters
+    ----------
+    experiment : Union[str, Path]
+        the path of the output directory
+    d_smi_idx : Optional[Mapping], default=None
+        a mapping from SMILES string to index in the predictions array. This
+        must be set if attempting to order datapoints by acquisition time
+    total_size : Optional[int], default=None
+        the total number of points in the acquisition pool. Can be inferred
+        from d_smi_idx and only used to calculate the value `k` represents
+        if the config file epxressed it as a fraction of the total pool.
+        Most of the time it's not necessary to specify this.
     """
     def __init__(self, experiment: Union[Path, str],
-                 d_smi_idx: Optional[Dict] = None):
+                 d_smi_idx: Optional[Mapping] = None,
+                 total_size: Optional[int] = None):
         self.experiment = Path(experiment)
         self.d_smi_idx = d_smi_idx
 
@@ -32,10 +49,22 @@ class Experiment:
             try:
                 self.k = int(config['top-k'])
             except ValueError:
-                self.k = int(float(config['top-k']) * len(d_smi_idx))
+                if self.d_smi_idx is not None:
+                    total_size = len(self.d_smi_idx)
+                self.k = int(float(config['top-k']) * total_size)
             self.metric = config['metric']
             self.beta = float(config.get('beta', 2.))
             self.xi = float(config.get('xi', 0.001))
+
+            self.model_args = {
+                'model': config.get('model'),
+                'model_seed': int(config.get('model-seed')),
+                'init_lr': float(config.get('init-lr', 0.0001)),
+                'max_lr': float(config.get('max_lr', 0.001)),
+                'final_lr': float(config.get('final_lr', 0.0001)),
+                'conf_method': config.get('conf_method', 'mve'),
+                'precision': int(config.get('precision', 32))
+            }
 
             self.new_style = True
         except FileNotFoundError:
@@ -80,8 +109,25 @@ class Experiment:
         return len(self[0])
 
     def get(self, i: int, N: Optional[int] = None) -> Dict:
+        """get *all* the points acquired by iteration i
+        
+        Parameters
+        ----------
+        i : int
+            the iteration to retrieve points for
+        N : Optional[int], default=None
+            the number of top scores to retrieve for that iteration. If None,
+            retrieve all of the points
+        """
         scores, failures = Experiment.read_scores(self.scores_csvs[i], N)
         return {**scores, **failures}
+
+    def model(self, i: int):
+        """get the model used to acquire points for iteration i"""
+        model = models.model(**self.model_args)
+        model.load(json.load(open(self.chkpts[i] / 'state.json'))['model'])
+
+        return model.model
 
     def new_points_by_epoch(self) -> List[Dict]:
         """get the set of new points acquired at each iteration in the list of 
