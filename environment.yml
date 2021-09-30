@@ -1,4 +1,4 @@
-name: molpal
+name: dkenv
 
 channels:
   - conda-forge
@@ -6,7 +6,7 @@ channels:
 
 dependencies:
   # comment out the corresponding line for your specific CUDA version
-  # - nvidia::cudatoolkit=11.1
+  - nvidia::cudatoolkit=11.1
   # - pytorch::cudatoolkit=10.2
   # - pytorch::cpuonly
   - configargparse

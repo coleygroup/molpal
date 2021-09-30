@@ -58,3 +58,4 @@ lightning_logs
 *.data*
 *.index
 prep_glide_csv.py
+*.pt
