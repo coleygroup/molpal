@@ -9,11 +9,14 @@ from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 import ray
-from ray.util.sgd import TorchTrainer
+from ray.util.sgd.v2 import Trainer
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import torch
-from tqdm import tqdm, trange
+from tqdm import tqdm
+
+from molpal.models.mpnn.train import train
+
 
 from .chemprop.data.data import (
     MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
@@ -133,15 +136,15 @@ class MPNN:
         
         self.train_config = {
             'model': self.model,
-            'dataset_type': dataset_type,
             'uncertainty': self.uncertainty,
+            'dataset_type': dataset_type,
+            'batch_size': self.batch_size,
             'warmup_epochs': warmup_epochs,
             'max_epochs': self.epochs,
             'init_lr': init_lr,
             'max_lr': max_lr,
             'final_lr': final_lr,
             'metric': metric,
-            'use_gpu': self.use_gpu
         }
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
@@ -149,38 +152,42 @@ class MPNN:
         train_data, val_data = self.make_datasets(smis, targets)
         train_dataloader = MoleculeDataLoader(
             dataset=train_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=False#self.use_gpu
+            num_workers=self.ncpu, pin_memory=False
         )
         val_dataloader = MoleculeDataLoader(
             dataset=val_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=False#self.use_gpu
+            num_workers=self.ncpu, pin_memory=False
         )
         
         if self.ddp:
-            self.train_config['steps_per_epoch'] = (len(train_dataloader))
-            self.train_config['train_loader'] = train_dataloader
-            self.train_config['val_loader'] = val_dataloader
+            self.train_config['train_data'] = train_data
+            self.train_config['val_data'] = val_data
 
-            trainer = TorchTrainer(
-                training_operator_cls=mpnn.MPNNOperator,
-                num_workers=self.num_workers, config=self.train_config,
-                use_gpu=self.use_gpu, scheduler_step_freq='batch',
-                initialization_hook=initialization_hook
-            )
-            
-            with trange(self.epochs, desc='Training', unit='epoch',
-                        dynamic_ncols=True, leave=True) as bar:
-                for _ in bar:
-                    train_loss = trainer.train()['train_loss']
-                    val_res = trainer.validate()
-                    val_loss = val_res['val_loss']
-                    bar.set_postfix_str(
-                        f'train_loss={train_loss:0.3f}, '
-                        f'val_loss={val_loss:0.3f} '
-                    )
-
-            self.model = trainer.get_model()
+            trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+            trainer.run(mpnn.sgd.train_func, self.train_config)
             trainer.shutdown()
+            # self.train_config['steps_per_epoch'] = len(train_dataloader)
+
+            # trainer = TorchTrainer(
+            #     training_operator_cls=mpnn.MPNNOperator,
+            #     num_workers=self.num_workers, config=self.train_config,
+            #     use_gpu=self.use_gpu, scheduler_step_freq='batch',
+            #     initialization_hook=initialization_hook
+            # )
+            
+            # with trange(self.epochs, desc='Training', unit='epoch',
+            #             dynamic_ncols=True, leave=True) as bar:
+            #     for _ in bar:
+            #         train_loss = trainer.train()['train_loss']
+            #         val_res = trainer.validate()
+            #         val_loss = val_res['val_loss']
+            #         bar.set_postfix_str(
+            #             f'train_loss={train_loss:0.3f}, '
+            #             f'val_loss={val_loss:0.3f} '
+            #         )
+
+            # self.model = trainer.get_model()
+            # trainer.shutdown()
             
             return True
 

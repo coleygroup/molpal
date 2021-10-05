@@ -41,7 +41,7 @@ class LitMPNN(pl.LightningModule):
         
         preds = self.mpnn(componentss)
         mask = torch.tensor(
-            [list(map(bool, ys)) for ys in targets], device=self.device
+            [[bool(y) for y in ys] for ys in targets], device=self.device
         )
         targets = torch.tensor(
             [[y or 0 for y in ys] for ys in targets], device=self.device
