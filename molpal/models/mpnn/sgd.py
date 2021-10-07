@@ -4,10 +4,10 @@ import ray.util.sgd.v2 as sgd
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.nn.parallel import DistributedDataParallel, DistributedSampler
+from torch.nn.parallel import DistributedDataParallel
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-from torch.utils.data.dataloader import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import trange
 
 from ..chemprop.data.data import construct_molecule_batch
@@ -42,9 +42,7 @@ def train_func(config: Dict):
     model = DistributedDataParallel(
         model, device_ids=[sgd.local_rank()] if torch.cuda.is_available() else None
     )
-
-    optimizer = Adam([{"params": model.parameters(), "lr": init_lr, "weight_decay": 0}])
-
+    
     train_loader = DataLoader(
         train_data,
         batch_size,
@@ -55,11 +53,12 @@ def train_func(config: Dict):
     val_loader = DataLoader(
         val_data,
         batch_size,
-        sampler=DistributedSampler(train_data),
+        sampler=DistributedSampler(val_data),
         num_workers=ncpu,
         collate_fn=construct_molecule_batch,
     )
 
+    optimizer = Adam(model.parameters(), init_lr, weight_decay=0)
     scheduler = NoamLR(
         optimizer=optimizer,
         warmup_epochs=[warmup_epochs],
@@ -69,9 +68,7 @@ def train_func(config: Dict):
         max_lr=[max_lr],
         final_lr=[final_lr],
     )
-
     criterion = mpnn.utils.get_loss_func(dataset_type, uncertainty)
-
     metric = {
         "mse": lambda X, Y: F.mse_loss(X, Y, reduction="none"),
         "rmse": lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction="none")),
@@ -98,6 +95,7 @@ def train_func(config: Dict):
                 f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
             )
 
+    return model.module
 
 def train_epoch(
     model: nn.Module,
@@ -130,7 +128,8 @@ def train_epoch(
         losses.append(step_results["loss"])
         num_samples += step_results["num_samples"]
 
-    loss = torch.cat(losses).mean().item()
+    # print(losses)
+    loss = torch.stack(losses).mean().item()
 
     return {
         "loss": loss,
@@ -180,7 +179,7 @@ def train_step(
     optimizer.step()
     scheduler.step()
 
-    return {"train_loss": loss.item(), "num_samples": len(targets)}
+    return {"loss": loss, "num_samples": len(targets)}
 
 
 def validate_epoch(

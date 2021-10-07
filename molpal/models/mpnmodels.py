@@ -147,25 +147,25 @@ class MPNN:
             'metric': metric,
         }
 
+        self.trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+
+
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
-        train_dataloader = MoleculeDataLoader(
-            dataset=train_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=False
-        )
-        val_dataloader = MoleculeDataLoader(
-            dataset=val_data, batch_size=self.batch_size,
-            num_workers=self.ncpu, pin_memory=False
-        )
-        
         if self.ddp:
             self.train_config['train_data'] = train_data
             self.train_config['val_data'] = val_data
 
-            trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
-            trainer.run(mpnn.sgd.train_func, self.train_config)
-            trainer.shutdown()
+            print(list(self.model.parameters())[1])
+            # trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+            self.trainer.start()
+            results = self.trainer.run(mpnn.sgd.train_func, self.train_config)
+            self.trainer.shutdown()
+            print(results)
+            print(list(results[0].parameters())[1])
+
+            # print(*results[0].parameters())
             # self.train_config['steps_per_epoch'] = len(train_dataloader)
 
             # trainer = TorchTrainer(
@@ -190,6 +190,16 @@ class MPNN:
             # trainer.shutdown()
             
             return True
+
+        train_dataloader = MoleculeDataLoader(
+            dataset=train_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=False
+        )
+        val_dataloader = MoleculeDataLoader(
+            dataset=val_data, batch_size=self.batch_size,
+            num_workers=self.ncpu, pin_memory=False
+        )
+        
 
         lit_model = mpnn.LitMPNN(self.train_config)
         
