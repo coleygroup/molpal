@@ -9,19 +9,18 @@ dependencies:
   # - nvidia::cudatoolkit=11.1
   # - pytorch::cudatoolkit=10.2
   # - pytorch::cpuonly
-  - configargparse
-  - h5py
-  - importlib_resources
-  - numpy
   - python=3.8
   - pytorch::pytorch
   - rdkit
-  - scikit-learn
-  - tqdm
   - pip
   - pip:
+    - configargparse
+    - h5py
+    - numpy
     - ray[default]
     - pytorch-lightning
+    - scikit-learn
     - tensorflow
     - tensorflow-addons
     - typing-extensions
+    - tqdm

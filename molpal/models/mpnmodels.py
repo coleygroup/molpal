@@ -147,7 +147,7 @@ class MPNN:
             'metric': metric,
         }
 
-        self.trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+        # self.trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
 
 
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
@@ -158,11 +158,12 @@ class MPNN:
             self.train_config['val_data'] = val_data
 
             print(list(self.model.parameters())[1])
-            # trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
-            self.trainer.start()
-            results = self.trainer.run(mpnn.sgd.train_func, self.train_config)
-            self.trainer.shutdown()
-            print(results)
+
+            trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+
+            trainer.start()
+            results = trainer.run(mpnn.sgd.train_func, self.train_config)
+            trainer.shutdown()
             print(list(results[0].parameters())[1])
 
             # print(*results[0].parameters())
@@ -200,7 +201,6 @@ class MPNN:
             num_workers=self.ncpu, pin_memory=False
         )
         
-
         lit_model = mpnn.LitMPNN(self.train_config)
         
         callbacks = [

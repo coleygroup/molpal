@@ -74,9 +74,7 @@ def train_func(config: Dict):
         "rmse": lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction="none")),
     }[metric]
 
-    with trange(
-        max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True
-    ) as bar:
+    with trange(max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True) as bar:
         for _ in bar:
             train_res = train_epoch(
                 model,
@@ -95,7 +93,7 @@ def train_func(config: Dict):
                 f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
             )
 
-    return model.module
+    return model.module.to('cpu')
 
 def train_epoch(
     model: nn.Module,
