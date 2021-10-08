@@ -3,20 +3,16 @@ their underlying model"""
 from functools import partial
 import json
 import logging
-import os
 from pathlib import Path
-from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
+from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple
 
 import numpy as np
-import ray
-from ray.util.sgd.v2 import Trainer
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+import ray
+from ray.util.sgd.v2 import Trainer
 import torch
 from tqdm import tqdm
-
-from molpal.models.mpnn.train import train
-
 
 from .chemprop.data.data import (
     MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
@@ -28,9 +24,6 @@ from molpal.models.base import Model
 from molpal.models import mpnn, utils
 
 logging.getLogger('lightning').setLevel(logging.FATAL)
-
-T = TypeVar('T')
-T_feat = TypeVar('T_feat')
 
 class MPNN:
     """A message-passing neural network base class
@@ -147,9 +140,6 @@ class MPNN:
             'metric': metric,
         }
 
-        # self.trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
-
-
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
@@ -157,14 +147,14 @@ class MPNN:
             self.train_config['train_data'] = train_data
             self.train_config['val_data'] = val_data
 
-            print(list(self.model.parameters())[1])
+            print('before: ', list(self.model.state_dict())[1])
 
             trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
 
             trainer.start()
             results = trainer.run(mpnn.sgd.train_func, self.train_config)
             trainer.shutdown()
-            print(list(results[0].parameters())[1])
+            print('after: ', list(results[0][1])[1])
 
             # print(*results[0].parameters())
             # self.train_config['steps_per_epoch'] = len(train_dataloader)
@@ -205,7 +195,7 @@ class MPNN:
         
         callbacks = [
             EarlyStopping('val_loss', patience=10, mode='min'),
-            mpnn.callbacks.EpochAndStepProgressBar()
+            mpnn.EpochAndStepProgressBar()
         ]
         trainer = pl.Trainer(
             max_epochs=self.epochs, callbacks=callbacks,
@@ -258,7 +248,7 @@ class MPNN:
             ) for smis in smis_batches
         ]
         preds_chunks = [
-            ray.get(r) for r in tqdm(refs, desc='Prediction', leave=False)
+            ray.get(r) for r in tqdm(refs, 'Prediction', unit='chunk', leave=False)
         ]
         return np.concatenate(preds_chunks)
 
@@ -449,13 +439,6 @@ class MPNTwoOutputModel(Model):
     
     def load(self, path):
         self.model.load(path)
-
-def initialization_hook():
-    print("NCCL DEBUG SET")
-    # Need this for avoiding a connection restart issue
-    os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
-    os.environ["NCCL_LL_THRESHOLD"] = "0"
-    os.environ["NCCL_DEBUG"] = "INFO"
 
 # def combine_sds(sd1: float, mu1: float, n1: int,
 #                 sd2: float, mu2: float, n2: int):

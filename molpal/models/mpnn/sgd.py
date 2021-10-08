@@ -20,8 +20,9 @@ def train_func(config: Dict):
     model = config["model"]
     train_data = config["train_data"]
     val_data = config["val_data"]
-    uncertainty = config.get("uncertainty", "none")
-    dataset_type = config.get("dataset_type", "regression")
+    uncertainty = config["uncertainty"]
+    dataset_type = config["dataset_type"]
+    metric = config.get("metric", "rmse")
     batch_size = config.get("batch_size", 50)
     warmup_epochs = config.get("warmup_epochs", 2.0)
     max_epochs = config.get("max_epochs", 50)
@@ -29,7 +30,6 @@ def train_func(config: Dict):
     init_lr = config.get("init_lr", 1e-4)
     max_lr = config.get("max_lr", 1e-3)
     final_lr = config.get("final_lr", 1e-4)
-    metric = config.get("metric", "rmse")
     ncpu = config.get("ncpu", 1)
 
     device = torch.device(
@@ -93,7 +93,8 @@ def train_func(config: Dict):
                 f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
             )
 
-    return model.module.to('cpu')
+    # print('sgd: ', model.state_dict())
+    return model.module, model.state_dict()
 
 def train_epoch(
     model: nn.Module,
@@ -179,7 +180,7 @@ def train_step(
 
     return {"loss": loss, "num_samples": len(targets)}
 
-
+@torch.no_grad()
 def validate_epoch(
     model: nn.Module,
     val_loader: DataLoader,
@@ -192,24 +193,22 @@ def validate_epoch(
     losses = []
     num_samples = 0
 
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(val_loader):
-            batch_info = {"batch_idx": batch_idx}
+    for batch_idx, batch in enumerate(val_loader):
+        batch_info = {"batch_idx": batch_idx}
 
-            step_results = validate_step(
-                model, batch, metric, device, batch_info, uncertainty
-            )
+        step_results = validate_step(
+            model, batch, metric, device, batch_info, uncertainty
+        )
 
-            losses.append(step_results["loss"])
-            num_samples += step_results["num_samples"]
+        losses.append(step_results["loss"])
+        num_samples += step_results["num_samples"]
 
-        val_loss = torch.cat(losses).mean().item()
+    val_loss = torch.cat(losses).mean().item()
 
     return {
         "val_loss": val_loss,
         "num_samples": num_samples,
     }
-
 
 def validate_step(
     model: nn.Module,
