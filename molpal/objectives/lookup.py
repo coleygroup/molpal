@@ -18,9 +18,8 @@ class LookupObjective(Objective):
 
     Attributes
     ----------
-    self.data : str
-        the path of a file containing a Shelf object that holds a dictionary
-        mapping an input string to its objective function value
+    self.data : Dict[str, Optional[float]]
+        a dictionary containing the objective function value of each molecule
 
     Parameters
     ----------
@@ -29,9 +28,8 @@ class LookupObjective(Objective):
     **kwargs
         unused and addditional keyword arguments
     """
-
-    def __init__(self, objective_config: str, **kwargs):
-        path, delimiter, title_line, smiles_col, score_col, minimize = parse_config(
+    def __init__(self, objective_config: str, minimize: bool = True, **kwargs):
+        path, delimiter, title_line, smiles_col, score_col = parse_config(
             objective_config
         )
 
@@ -84,8 +82,6 @@ def parse_config(config: str):
         the column containing the SMILES string in the lookup file
     data_col : int
         the column containing the desired data in the lookup file
-    minimize : bool
-        whether the objective should be minized or not
     """
     parser = ArgumentParser()
     parser.add_argument("config", is_config_file=True)
@@ -94,7 +90,6 @@ def parse_config(config: str):
     parser.add_argument("--no-title-line", action="store_true", default=False)
     parser.add_argument("--smiles-col", type=int, default=0)
     parser.add_argument("--score-col", type=int, default=1)
-    parser.add_argument("--minimize", action="store_true", default=False)
 
     args = parser.parse_args(config)
     return (
@@ -103,5 +98,4 @@ def parse_config(config: str):
         not args.no_title_line,
         args.smiles_col,
         args.score_col,
-        args.minimize,
     )

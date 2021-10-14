@@ -144,8 +144,8 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('-o', '--objective', required=True,
                         choices={'lookup', 'docking'},
                         help='the objective function to use')
-    # parser.add_argument('--minimize', action='store_true', default=False,
-    #                     help='whether to minimize the objective function')
+    parser.add_argument('--minimize', action='store_true', default=False,
+                        help='whether to minimize the objective function')
     parser.add_argument('--objective-config',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 

@@ -352,7 +352,7 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes,
         )
 
-        new_scores = self.objective.calc(inputs)
+        new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
@@ -403,7 +403,7 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes, t=(self.iter-1),
         )
 
-        new_scores = self.objective.calc(inputs)
+        new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
