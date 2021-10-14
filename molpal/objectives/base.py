@@ -24,7 +24,7 @@ class Objective(ABC):
         self.c = -1 if minimize else 1
 
     def __call__(self, *args, **kwargs) -> Dict[T, Optional[float]]:
-        self.forward(*args, **kwargs)
+        return self.forward(*args, **kwargs)
 
     @abstractmethod
     def forward(self, xs: Collection[T], *args, **kwargs) -> Dict[T, Optional[float]]:

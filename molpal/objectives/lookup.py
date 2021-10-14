@@ -54,12 +54,8 @@ class LookupObjective(Objective):
 
         super().__init__(minimize=minimize)
 
-    def forward(
-        self, smis: Collection[str], *args, **kwargs
-    ) -> Dict[str, Optional[float]]:
-        return {
-            smi: self.c * self.data[smi] if smi in self.data else None for smi in smis
-        }
+    def forward(self, smis: Collection[str], *args, **kwargs) -> Dict[str, Optional[float]]:
+        return {smi: self.c * self.data[smi] if smi in self.data else None for smi in smis}
 
 
 def parse_config(config: str):

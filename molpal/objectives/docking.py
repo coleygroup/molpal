@@ -96,7 +96,7 @@ class DockingObjective(Objective):
         results = self.virtual_screen.all_results()
         self.virtual_screen.collect_files()
 
-        with open(self.docking_screener.path / "extended.csv", "w") as fid:
+        with open(self.virtual_screen.path / "extended.csv", "w") as fid:
             writer = csv.writer(fid)
             writer.writerow(field.name for field in dataclasses.fields(results[0]))
             writer.writerows(dataclasses.astuple(r) for r in results)

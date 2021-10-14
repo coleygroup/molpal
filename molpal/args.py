@@ -36,8 +36,8 @@ def gen_args(args: Optional[str] = None) -> Namespace:
 def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--config', is_config_file=True,
                         help='the filepath of the configuration file')
-    parser.add_argument('--name',
-                        help='the general name to be used for outputs')
+    parser.add_argument('--output-dir',
+                        help='the name of the output directory')
     parser.add_argument('--seed', type=int,
                         help='the random seed to use for initialization.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
@@ -53,18 +53,13 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--chkpt-freq', type=int,
                         nargs='?', default=0, const=-1,
-                        help='The number of iterations that should pass without writing a checkpoint. A value of 0 (or below) means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. Not specifying this flag will result in checkpointing every iteration. Specifying the flag with no value will result in no checkpointing at all.')
+                        help='The number of iterations that should pass without writing a checkpoint. A value of 0 means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. By default, checkpointing occurs every iteration. For convenience, passing solely the flag with no argument will result in no checkpointing at all.')
     parser.add_argument('--checkpoint-file',
                         help='the checkpoint file containing the state of a previous molpal run.')
     parser.add_argument('--previous-scores',
                         help='the path to a file containing the scores from a previous run of molpal to load in as preliminary dataset.')
     parser.add_argument('--scores-csvs', nargs='+',
                         help='Either (1) A list of filepaths containing the outputs from a previous exploration or (2) a pickle file containing this list. Will load these files in the order in which they are passed to mimic the intermediate state of a previous exploration. Specifying a single will be interpreted as passing a pickle file. If seeking to mimic the state after only one round of exploration, use the --previous-scores argument instead and leave this option empty.')
-
-    parser.add_argument('--root', default='.',
-                        help='the root directory under which to organize all program outputs')
-    parser.add_argument('--tmp-dir', default=tempfile.gettempdir(),
-                        help='the root directory under which to organize all program outputs')
 
 #####################################
 #       ENCODER ARGUMENTS           #
