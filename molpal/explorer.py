@@ -117,7 +117,7 @@ class Explorer:
         if k is less than 0
         if budget is less than 0
     """
-    def __init__(self, name: str = 'molpal', root: str = '.',
+    def __init__(self, path: Union[str, Path] = "molpal",
                  k: Union[int, float] = 0.01, window_size: int = 3,
                  delta: float = 0.01, max_iters: int = 10, 
                  budget: Union[int, float] = 1.,
@@ -128,7 +128,7 @@ class Explorer:
                  **kwargs):
         args = locals()
         
-        self.path = f'{root}/{name}'
+        self.path = path
         kwargs['path'] = self.path
         self.verbose = kwargs.get('verbose', 0)
 
@@ -352,7 +352,7 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes,
         )
 
-        new_scores = self.objective.calc(inputs)
+        new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
@@ -403,7 +403,7 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes, t=(self.iter-1),
         )
 
-        new_scores = self.objective.calc(inputs)
+        new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
