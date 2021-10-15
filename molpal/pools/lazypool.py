@@ -7,6 +7,7 @@ from molpal.featurizer import Featurizer, feature_matrix
 from molpal.pools.base import MoleculePool
 from molpal.utils import batches
 
+
 class LazyMoleculePool(MoleculePool):
     """A LazyMoleculePool does not precompute fingerprints for the pool
 
@@ -16,13 +17,14 @@ class LazyMoleculePool(MoleculePool):
         an Featurizer to generate uncompressed representations on the fly
     fps : None
         no fingerprint file is stored for a LazyMoleculePool
-    super_chunk_size : int
+    chunk_size : int
         the buffer size of calculated fingerprints during pool iteration
     cluster_ids : None
         no clustering can be performed for a LazyMoleculePool
     cluster_sizes : None
         no clustering can be performed for a LazyMoleculePool
     """
+
     def get_fp(self, idx: int) -> np.ndarray:
         smi = self.get_smi(idx)
         return self.featurizer(smi)
@@ -37,13 +39,13 @@ class LazyMoleculePool(MoleculePool):
                 yield fp
 
     def fps_batches(self) -> Iterator[np.ndarray]:
-        for smis in batches(self.smis(), self.super_chunk_size):
+        for smis in batches(self.smis(), self.chunk_size):
             yield np.array(feature_matrix(smis, self.featurizer, True))
 
     def _encode_mols(self, featurizer: Featurizer, path: Optional[str] = None):
         """Do not precompute any feature representations"""
         self.featurizer = featurizer
-        self.super_chunk_size = int(ray.cluster_resources()['CPU'] * 4096)
+        self.chunk_size = int(ray.cluster_resources()["CPU"] * 4096)
         self.fps_ = None
 
     def _cluster_mols(self, *args, **kwargs) -> None:
@@ -53,5 +55,7 @@ class LazyMoleculePool(MoleculePool):
         which is what a LazyMoleculePool is designed to avoid. If clustering
         is desired, use the base (Eager)MoleculePool
         """
-        print('WARNING: Clustering is not possible for a LazyMoleculePool.',
-              'No clustering will be performed.')
+        print(
+            "WARNING: Clustering is not possible for a LazyMoleculePool.",
+            "No clustering will be performed.",
+        )
