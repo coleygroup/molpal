@@ -17,7 +17,7 @@ def get_metric(metric: str) -> Callable[..., float]:
     try:
         return {
             'random': random,
-            'threshold': random_threshold,
+            'threshold': threshold,
             'greedy': greedy,
             'noisy': noisy,
             'ucb': ucb,
@@ -45,13 +45,13 @@ def get_needs(metric: str) -> Set[str]:
     }.get(metric, set())
 
 def calc(metric: str, Y_mean: np.ndarray, Y_var: np.ndarray,
-         current_max: float, threshold: float,
+         current_max: float, t: float,
          beta: int, xi: float, stochastic: bool) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
     if metric == 'random':
         return random(Y_mean)
     if metric == 'threshold':
-        return random_threshold(Y_mean, threshold)
+        return threshold(Y_mean, t)
     if metric == 'greedy':
         return greedy(Y_mean)
     if metric == 'noisy':
@@ -86,14 +86,14 @@ def random(Y_mean: np.ndarray) -> np.ndarray:
     """
     return RG.random(len(Y_mean))
 
-def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
+def threshold(Y_mean: np.ndarray, t: float) -> float:
     """Random acquisition score [0, 1) if at or above threshold. Otherwise,
     return -1.
     
     Parameters
     ----------
     Y_mean : np.ndarray
-    threshold : float
+    t : float
         the threshold value below which to assign acquisition scores as -1 and 
         above or equal to which to assign random acquisition scores in the 
         range (0, 1]
@@ -103,7 +103,7 @@ def random_threshold(Y_mean: np.ndarray, threshold: float) -> float:
     np.ndarray
         the random threshold acquisition scores
     """
-    return np.where(Y_mean >= threshold, RG.random(Y_mean.shape), -1.)
+    return np.where(Y_mean >= t, RG.random(Y_mean.shape), -1.)
 
 def greedy(Y_mean: np.ndarray) -> np.ndarray:
     """Greedy acquisition score
