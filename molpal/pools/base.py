@@ -14,8 +14,8 @@ from rdkit import Chem, RDLogger
 from tqdm import tqdm
 
 from molpal.featurizer import Featurizer
-from molpal.pools.cluster import cluster_fps_h5
-from molpal.pools import fingerprints
+from molpal.pools import cluster, fingerprints
+from molpal.utils import batches
 
 RDLogger.DisableLog('rdApp.*')
 
@@ -112,6 +112,13 @@ class MoleculePool(Sequence):
                  invalid_idxs: Optional[Iterable[int]] = None,
                  cluster: bool = False, ncluster: int = 100,
                  fps_path: Optional[str] = None, verbose: int = 0, **kwargs):
+        if not ray.is_initialized():
+            print("No ray cluster detected! attempting to connect!")
+            try:
+                ray.init("auto")
+            except ConnectionError:
+                ray.init()
+
         self.libraries = list(libraries)
         self.title_line = title_line
         self.delimiter = delimiter
@@ -511,14 +518,8 @@ class MoleculePool(Sequence):
         (sets) self.cluster_sizes : Counter[int, int]
             a mapping from cluster ID to the number of molecules in that cluster
         """
-        self.cluster_ids_ = cluster_fps_h5(self.fps_, ncluster=ncluster)
+        self.cluster_ids_ = cluster.cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
-
-def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
-    """Batch an iterable into batches of size chunk_size, with the final
-    batch potentially being smaller"""
-    it = iter(it)
-    return iter(lambda: list(islice(it, chunk_size)), [])
 
 @ray.remote
 def _validate_smis(smis):
