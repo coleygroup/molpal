@@ -121,7 +121,7 @@ class MPNN:
         else:
             self.use_gpu = False
             self._predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
-            self.num_workers = ray.cluster_resources()['CPU'] // self.ncpu
+            self.num_workers = int(ray.cluster_resources()['CPU'] // self.ncpu)
         
         self.seed = model_seed
         if model_seed is not None:
