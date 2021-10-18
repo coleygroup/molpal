@@ -445,7 +445,7 @@ class Explorer:
         k = min(k, len(self.scores))
 
         if k == len(self.scores):
-            return sum(score for score in self.scores.items()) / k
+            return sum(score for _, score in self.scores.items()) / k
         
         return sum(score for _, score in self.top_explored(k)) / k
 

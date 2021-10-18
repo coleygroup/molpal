@@ -33,7 +33,6 @@ def main():
         if 'redis_password' in os.environ:
             ray.init(
                 address=os.environ["ip_head"],
-                _node_ip_address=os.environ["ip_head"].split(":")[0], 
                 _redis_password=os.environ['redis_password']
             )
         else:

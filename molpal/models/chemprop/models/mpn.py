@@ -1,15 +1,13 @@
 from argparse import Namespace
-from sys import base_exec_prefix
 from typing import List, Optional, Tuple, Union
 from functools import reduce
 
-import numpy as np
 from rdkit import Chem
 import torch
 from torch import FloatTensor, LongTensor
 import torch.nn as nn
 
-from ..features import BatchMolGraph, get_atom_fdim, get_bond_fdim, mol2graph
+from ..features import get_atom_fdim, get_bond_fdim, mol2graph
 from ..nn_utils import index_select_ND, get_activation_function
 
 class MPNEncoder(nn.Module):
