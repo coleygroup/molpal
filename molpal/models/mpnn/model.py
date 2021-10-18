@@ -4,8 +4,8 @@ from typing import Optional
 import torch
 from torch import nn
 
-from ..chemprop.models.mpn import MPN
-from ..chemprop.nn_utils import get_activation_function, initialize_weights
+from molpal.models.chemprop.models.mpn import MPN
+from molpal.models.chemprop.nn_utils import get_activation_function, initialize_weights
 
 class EvaluationDropout(nn.Dropout):
     def forward(self, input):

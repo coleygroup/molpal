@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 
 from molpal.models.mpnn.model import MoleculeModel
-from ..chemprop.data import (
+from molpal.models.chemprop.data import (
     StandardScaler,
     MoleculeDataLoader,
     MoleculeDataset,
@@ -62,7 +62,7 @@ def predict(
     data_loader = MoleculeDataLoader(dataset, batch_size, ncpu)
 
     pred_batches = []
-    # with torch.inference_mode():
+
     for batch in tqdm(
         data_loader, desc="Inference", unit="batch", leave=False, disable=disable
     ):
