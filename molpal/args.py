@@ -1,16 +1,7 @@
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
-import os
 from pathlib import Path
-import tempfile
 from typing import Optional, Union
 
-# os.sched_getaffinity(0) returns the set of CPUs this process can use,
-# but it is defined only for some UNIX platforms, so try to use it and, failing
-# that, assume this process can use all system CPUs
-try:
-    MAX_CPU = len(os.sched_getaffinity(0))
-except AttributeError:
-    MAX_CPU = os.cpu_count()
 
 def gen_args(args: Optional[str] = None) -> Namespace:
     parser = ArgumentParser()
@@ -25,7 +16,6 @@ def gen_args(args: Optional[str] = None) -> Namespace:
 
     args = parser.parse_args(args)
 
-    # modify_objective_args(args)
     cleanup_args(args)
 
     return args
@@ -89,15 +79,13 @@ def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library files')
     parser.add_argument('--cxsmiles', default=False, action='store_true',
-                        help='whether the file uses CXSMILES strings')
-    parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
+                        help='whether the files use CXSMILES strings')
+    parser.add_argument('--fps', metavar='FPS_HDF5',
                         help='an HDF5 file containing the precalculated feature representation of each molecule in the pool')
     parser.add_argument('--cluster', action='store_true', default=False,
                         help='whether to cluster the MoleculePool')
     parser.add_argument('--cache', action='store_true', default=False,
-                        help='whether to store the full MoleculePool in memory')
-    parser.add_argument('--validated', action='store_true', default=False,
-                        help='DEPRECATED. whether the pool has been manually validated and invalid SMILES strings have been removed.')
+                        help='whether to store the SMILES strings of the MoleculePool in memory')
     parser.add_argument('--invalid-idxs', '--invalid-lines',
                         type=int, nargs='*',
                         help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')

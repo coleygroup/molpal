@@ -150,8 +150,6 @@ class MoleculePool(Sequence):
         if cluster:
             self._cluster_mols(ncluster)
 
-        self._mol_generator = None
-
     def __len__(self) -> int:
         """The number of valid pool inputs"""
         return self.size
@@ -165,6 +163,9 @@ class MoleculePool(Sequence):
         return zip(self.smis(), self.fps(), self.cluster_ids() or repeat(None))
 
     def __contains__(self, smi: str) -> bool:
+        if self.smis_ is not None:
+            return smi in set(self.smis_)
+
         for smi_ in self.smis():
             if smi_ == smi:
                 return True
@@ -386,7 +387,7 @@ class MoleculePool(Sequence):
         with h5py.File(self.fps_, "r") as h5f:
             fps = h5f["fps"]
             for i in range(0, len(fps), self.chunk_size):
-                yield fps[i:i+self.chunk_size]
+                yield fps[i : i + self.chunk_size]
 
     def cluster_ids(self) -> Optional[Iterator[int]]:
         """If the pool is clustered, return a generator over pool inputs'

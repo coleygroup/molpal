@@ -249,7 +249,7 @@ class Acquirer:
 
         U = metrics.calc(
             self.metric, Y_mean=Y_mean, Y_var=Y_var, current_max=current_max, 
-            threshold=self.threshold, beta=self.beta, xi=self.xi,
+            t=self.threshold, beta=self.beta, xi=self.xi,
             stochastic=self.stochastic_preds
         )
 
