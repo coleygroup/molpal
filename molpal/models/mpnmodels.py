@@ -144,44 +144,17 @@ class MPNN:
     def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
+        
         if self.ddp:
             self.train_config['train_data'] = train_data
             self.train_config['val_data'] = val_data
 
-            print('before: ', list(self.model.parameters())[1])
-
             trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
-
             trainer.start()
             results = trainer.run(mpnn.sgd.train_func, self.train_config)
             trainer.shutdown()
 
             self.model = results[0]
-            print('after: ', list(self.model.parameters())[1])
-
-            # print(*results[0].parameters())
-            # self.train_config['steps_per_epoch'] = len(train_dataloader)
-
-            # trainer = TorchTrainer(
-            #     training_operator_cls=mpnn.MPNNOperator,
-            #     num_workers=self.num_workers, config=self.train_config,
-            #     use_gpu=self.use_gpu, scheduler_step_freq='batch',
-            #     initialization_hook=initialization_hook
-            # )
-            
-            # with trange(self.epochs, desc='Training', unit='epoch',
-            #             dynamic_ncols=True, leave=True) as bar:
-            #     for _ in bar:
-            #         train_loss = trainer.train()['train_loss']
-            #         val_res = trainer.validate()
-            #         val_loss = val_res['val_loss']
-            #         bar.set_postfix_str(
-            #             f'train_loss={train_loss:0.3f}, '
-            #             f'val_loss={val_loss:0.3f} '
-            #         )
-
-            # self.model = trainer.get_model()
-            # trainer.shutdown()
             
             return True
 
