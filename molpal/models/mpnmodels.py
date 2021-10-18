@@ -147,14 +147,16 @@ class MPNN:
             self.train_config['train_data'] = train_data
             self.train_config['val_data'] = val_data
 
-            print('before: ', list(self.model.state_dict())[1])
+            print('before: ', list(self.model.parameters())[1])
 
             trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
 
             trainer.start()
             results = trainer.run(mpnn.sgd.train_func, self.train_config)
             trainer.shutdown()
-            print('after: ', list(results[0][1])[1])
+
+            self.model = results[0]
+            print('after: ', list(self.model.parameters())[1])
 
             # print(*results[0].parameters())
             # self.train_config['steps_per_epoch'] = len(train_dataloader)

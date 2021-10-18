@@ -93,8 +93,7 @@ def train_func(config: Dict):
                 f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
             )
 
-    # print('sgd: ', model.state_dict())
-    return model.module, model.state_dict()
+    return model.module.to("cpu")
 
 def train_epoch(
     model: nn.Module,
