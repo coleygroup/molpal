@@ -1,13 +1,12 @@
 """This module contains the Model abstract base class. All custom models must
 implement this interface in order to interact properly with an Explorer"""
 from abc import ABC, abstractmethod
-from typing import (Callable, Iterable, List, Optional,
-                    Sequence, Set, Tuple, TypeVar)
+from typing import Callable, Iterable, Optional, Sequence, Set, Tuple, TypeVar
 
 import numpy as np
 from tqdm import tqdm
 
-from molpal.models.utils import batches
+from molpal.utils import batches
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -119,7 +118,6 @@ class Model(ABC):
             the variance in the predicted means, empty if mean_only is True
         """
         if self.type_ == 'mpn':
-            # MPNs predict directly on the input identifier
             xs = x_ids
             batched_size = None
         else:

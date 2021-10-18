@@ -21,7 +21,8 @@ from .chemprop.data.scaler import StandardScaler
 from .chemprop.data.utils import split_data
 
 from molpal.models.base import Model
-from molpal.models import mpnn, utils
+from molpal.models import mpnn
+from molpal.utils import batches
 
 logging.getLogger('lightning').setLevel(logging.FATAL)
 
@@ -239,15 +240,13 @@ class MPNN:
         np.ndarray
             the array of predictions with shape NxO, where N is the number of
             inputs and O is the number of tasks."""
-        smis_batches = utils.batches(smis, 20000)
-
         model = ray.put(self.model)
         scaler = ray.put(self.scaler)
         refs = [
             self._predict.remote(
                 model, smis, self.batch_size, self.ncpu,
                 self.uncertainty, scaler, self.use_gpu, True
-            ) for smis in smis_batches
+            ) for smis in batches(smis, 20000)
         ]
         preds_chunks = [
             ray.get(r) for r in tqdm(refs, 'Prediction', unit='chunk', leave=False)
