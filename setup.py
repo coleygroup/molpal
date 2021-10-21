@@ -1,7 +1,8 @@
 """
-pyscreener
-pythonic interface to virtual screening software
+molpal
+active learning to accelerate virtual drug discovery
 """
+import sys
 from setuptools import setup, find_packages
 import versioneer
 
@@ -15,31 +16,29 @@ except:
 
 
 setup(
-    name='molpal',
-    author='david graff',
-    author_email='deg711@g.harvard.edu',
+    name="molpal",
+    author="david graff",
+    author_email="deg711@g.harvard.edu",
     description=short_description[0],
     long_description=long_description,
     long_description_content_type="text/markdown",
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
-    license='MIT',
+    license="MIT",
     packages=find_packages(),
     include_package_data=True,
     setup_requires=[],
-    url='https://github.com/coleygroup/molpal',
-    platforms=['Linux', 'Mac OS-X', 'Unix'],
+    url="https://github.com/coleygroup/molpal",
+    platforms=["Linux", "Mac OS-X", "Unix"],
     python_requires=">=3.7",
     install_requires=[
         "configargparse",
         "h5py",
         "numpy",
-        "ray[default]",
-        "pytorch-lightning",
-        "scikit-learn",
+        "ray[default] >= 1.7",
+        "scikit_learn",
         "tensorflow",
-        "tensorflow-addons",
-        "typing-extensions",
-        "tqdm"
-    ]
+        "tensorflow_addons",
+        "tqdm",
+    ],
 )
