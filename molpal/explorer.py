@@ -14,7 +14,8 @@ import numpy as np
 from molpal import acquirer, featurizer, models, objectives, pools
 from molpal.exceptions import IncompatibilityError, InvalidExplorationError
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 class Explorer:
     """An Explorer explores a pool of inputs using Bayesian optimization
@@ -68,7 +69,7 @@ class Explorer:
     recent_avgs : List[float]
         a list containing the recent top-k averages
     delta : float
-        the minimum acceptable fractional difference between the current 
+        the minimum acceptable fractional difference between the current
         average and the moving average in order to continue exploration
     max_iters : int
         the maximum number of batches to explore
@@ -109,7 +110,7 @@ class Explorer:
         from the bool.)
     verbose : int, default=0
     **kwargs
-        keyword arguments to initialize an Encoder, MoleculePool, Acquirer, 
+        keyword arguments to initialize an Encoder, MoleculePool, Acquirer,
         Model, and Objective classes
 
     Raises
@@ -118,32 +119,42 @@ class Explorer:
         if k is less than 0
         if budget is less than 0
     """
-    def __init__(self, path: Union[str, Path] = "molpal",
-                 k: Union[int, float] = 0.01, window_size: int = 3,
-                 delta: float = 0.01, max_iters: int = 10, 
-                 budget: Union[int, float] = 1.,
-                 write_final: bool = True, write_intermediate: bool = False,
-                 chkpt_freq: int = 0, checkpoint_file: Optional[str] = None,
-                 retrain_from_scratch: bool = False,
-                 previous_scores: Optional[str] = None,
-                 **kwargs):
+
+    def __init__(
+        self,
+        path: Union[str, Path] = "molpal",
+        k: Union[int, float] = 0.01,
+        window_size: int = 3,
+        delta: float = 0.01,
+        max_iters: int = 10,
+        budget: Union[int, float] = 1.0,
+        prune_threshold: Optional[Union[int, float]] = None,
+        write_final: bool = True,
+        write_intermediate: bool = False,
+        chkpt_freq: int = 0,
+        checkpoint_file: Optional[str] = None,
+        retrain_from_scratch: bool = False,
+        previous_scores: Optional[str] = None,
+        **kwargs,
+    ):
         args = locals()
-        
+
         self.path = path
-        kwargs['path'] = self.path
-        self.verbose = kwargs.get('verbose', 0)
+        kwargs["path"] = self.path
+        self.verbose = kwargs.get("verbose", 0)
 
         self.featurizer = featurizer.Featurizer(
-            fingerprint=kwargs['fingerprint'],
-            radius=kwargs['radius'], length=kwargs['length']
+            fingerprint=kwargs["fingerprint"],
+            radius=kwargs["radius"],
+            length=kwargs["length"],
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
-        if self.acquirer.metric == 'thompson':
-            kwargs['dropout_size'] = 1
+        if self.acquirer.metric == "thompson":
+            kwargs["dropout_size"] = 1
         self.model = models.model(input_size=len(self.featurizer), **kwargs)
-        self.acquirer.stochastic_preds = 'stochastic' in self.model.provides
+        self.acquirer.stochastic_preds = "stochastic" in self.model.provides
         self.retrain_from_scratch = retrain_from_scratch
 
         self.objective = objectives.objective(**kwargs)
@@ -152,16 +163,16 @@ class Explorer:
 
         # stopping attributes
         self.k = k
-        self.delta = delta
-        self.budget = budget
-        self.max_iters = max_iters
         self.window_size = window_size
+        self.delta = delta
+        self.max_iters = max_iters
+        self.budget = budget
 
         # logging attributes
         self.write_final = write_final
         self.write_intermediate = write_intermediate
-        self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float('inf')
-        self.previous_chkpt_iter = -float('inf')
+        self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float("inf")
+        self.previous_chkpt_iter = -float("inf")
 
         # stateful attributes (not including model)
         self.iter = 0
@@ -177,21 +188,21 @@ class Explorer:
         if previous_scores:
             self.load_scores(previous_scores)
 
-        args.pop('self')
-        args.update(**args.pop('kwargs'))
-        args['fps'] = self.pool.fps_
-        args['invalid_idxs'] = list(self.pool.invalid_idxs)
-        args.pop('config', None)
+        args.pop("self")
+        args.update(**args.pop("kwargs"))
+        args["fps"] = self.pool.fps_
+        args["invalid_idxs"] = list(self.pool.invalid_idxs)
+        args.pop("config", None)
         self.write_config(args)
 
         if checkpoint_file:
             self.load(checkpoint_file)
 
     def __len__(self) -> int:
-        """The total expended budget expressed in terms of the number of 
+        """The total expended budget expressed in terms of the number of
         objective evaluations"""
         return self.num_explored
-    
+
     @property
     def num_explored(self) -> int:
         """The total number of inputs this Explorer has explored adjusted
@@ -202,7 +213,7 @@ class Explorer:
     def path(self) -> Path:
         """The directory containing all automated output of this Explorer"""
         return self.__path
-    
+
     @path.setter
     def path(self, path: Union[str, Path]):
         self.__path = Path(path)
@@ -213,41 +224,40 @@ class Explorer:
         """the number of top-scoring inputs from which to calculate an
         average"""
         k = self.__k
-            
+
         return min(k, len(self.pool))
 
     @k.setter
     def k(self, k: Union[int, float]):
         """Set k either as an integer or as a fraction of the pool.
-        
-        NOTE: Specifying either a fraction greater than 1 or or a number 
+
+        NOTE: Specifying either a fraction greater than 1 or or a number
         larger than the pool size will default to using the full pool.
         """
         if isinstance(k, float):
             k = int(k * len(self.pool))
         if k <= 0:
-            raise ValueError(f'k(={k}) must be greater than 0!')
+            raise ValueError(f"k(={k}) must be greater than 0!")
 
         self.__k = k
 
     @property
     def budget(self) -> int:
-        """the maximum budget expressed in terms of the number of allowed 
+        """the maximum budget expressed in terms of the number of allowed
         objective function evaluations"""
         return self.__budget
-    
+
     @budget.setter
     def budget(self, budget: Union[int, float]):
         """Set budget either as an integer or as a fraction of the pool.
-        
-        NOTE: Specifying either a fraction greater than 1 or or a number 
+
+        NOTE: Specifying either a fraction greater than 1 or or a number
         larger than the pool size will default to using the full pool.
         """
         if isinstance(budget, float):
             budget = int(budget * len(self.pool))
-        if budget <= 0.:
-            raise ValueError(
-                f'budget(={budget}) must be greater than 0!')
+        if budget <= 0.0:
+            raise ValueError(f"budget(={budget}) must be greater than 0!")
 
         self.__budget = budget
 
@@ -262,18 +272,18 @@ class Explorer:
 
     @property
     def status(self) -> str:
-        """The current status of the exploration in string format"""        
+        """The current status of the exploration in string format"""
         if self.top_k_avg:
-            ave = f'{self.top_k_avg:0.3f}' 
+            ave = f"{self.top_k_avg:0.3f}"
         else:
             if len(self.scores) > 0:
-                ave = f'N/A (only {len(self.scores)} scores)'
+                ave = f"N/A (only {len(self.scores)} scores)"
             else:
-                ave = 'N/A (no scores)'
+                ave = "N/A (no scores)"
         return (
-            f'ITER: {self.iter}/{self.max_iters} | '
-            f'TOP-{self.k} AVE: {ave} | '
-            f'BUDGET: {len(self)}/{self.budget}'
+            f"ITER: {self.iter}/{self.max_iters} | "
+            f"TOP-{self.k} AVE: {ave} | "
+            f"BUDGET: {len(self)}/{self.budget}"
         )
 
     @property
@@ -304,7 +314,7 @@ class Explorer:
         if len(self.recent_avgs) < self.window_size:
             return False
 
-        sma = sum(self.recent_avgs[-self.window_size:]) / self.window_size
+        sma = sum(self.recent_avgs[-self.window_size :]) / self.window_size
         return (self.top_k_avg - sma) / sma <= self.delta
 
     def explore(self):
@@ -313,32 +323,34 @@ class Explorer:
     def run(self):
         """Explore the MoleculePool until the stopping condition is met"""
         if self.iter == 0:
-            print('Starting exploration...')
-            print(f'{self.status}.', flush=True)
+            print("Starting exploration...")
+            print(f"{self.status}.", flush=True)
             self.explore_initial()
         else:
-            print('Resuming exploration...')
-            print(f'{self.status}.', flush=True)
+            print("Resuming exploration...")
+            print(f"{self.status}.", flush=True)
             self.explore_batch()
 
         while not self.completed:
-            print(f'{self.status}. Continuing...', flush=True)
+            print(f"{self.status}. Continuing...", flush=True)
             self.explore_batch()
 
-        print('Finished exploring!')
-        print(f'FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | '
-              f'FINAL BUDGET: {len(self)}/{self.budget}.')
-        print(f'Final averages')
-        print(f'--------------')
+        print("Finished exploring!")
+        print(
+            f"FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | "
+            f"FINAL BUDGET: {len(self)}/{self.budget}."
+        )
+        print(f"Final averages")
+        print(f"--------------")
         for k in [0.0001, 0.0005, 0.001, 0.005]:
-            print(f'TOP-{k:0.2%}: {self.avg(k):0.3f}')
-        
+            print(f"TOP-{k:0.2%}: {self.avg(k):0.3f}")
+
         if self.write_final:
             self.write_scores(final=True)
 
     def explore_initial(self) -> float:
         """Perform an initial round of exploration
-        
+
         Must be called before explore_batch()
 
         Returns
@@ -385,7 +397,7 @@ class Explorer:
         """
         if self.iter == 0:
             raise InvalidExplorationError(
-                'Cannot explore a batch before initialization!'
+                "Cannot explore a batch before initialization!"
             )
 
         if self.num_explored >= len(self.pool):
@@ -394,12 +406,17 @@ class Explorer:
 
         self._update_model()
         self._update_predictions()
+        if self.prune and self.iter == 1:
+            pass
 
         inputs = self.acquirer.acquire_batch(
-            xs=self.pool.smis(), y_means=self.Y_pred, y_vars=self.Y_var,
+            xs=self.pool.smis(),
+            y_means=self.Y_pred,
+            y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes, t=(self.iter-1),
+            cluster_sizes=self.pool.cluster_sizes,
+            t=(self.iter - 1),
         )
 
         new_scores = self.objective(inputs)
@@ -410,24 +427,24 @@ class Explorer:
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
-        
+
         self.iter += 1
 
         valid_scores = [y for y in new_scores.values() if y is not None]
-        return sum(valid_scores)/len(valid_scores)
+        return sum(valid_scores) / len(valid_scores)
 
     def avg(self, k: Union[int, float, None] = None) -> float:
         """Calculate the average of the top k molecules
-        
+
         Parameter
         ---------
         k : Union[int, float, None], default = None)
             the number of molecules to consider when calculating the
-            average, expressed either as a specific number or as a 
-            fraction of the pool. If the value specified is greater than the 
-            number of successfully evaluated inputs, return the average of all 
+            average, expressed either as a specific number or as a
+            fraction of the pool. If the value specified is greater than the
+            number of successfully evaluated inputs, return the average of all
             succesfully evaluated inputs. If None, use self.k
-        
+
         Returns
         -------
         float
@@ -440,24 +457,24 @@ class Explorer:
 
         if k == len(self.scores):
             return sum(score for _, score in self.scores.items()) / k
-        
+
         return sum(score for _, score in self.top_explored(k)) / k
 
     def top_explored(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the top-k explored molecules
-        
+
         Parameter
         ---------
         k : Union[int, float, None], default=None
-            the number of top-scoring molecules to get, expressed either as a 
-            specific number or as a fraction of the pool. If the value 
-            specified is greater than the number of successfully evaluated 
+            the number of top-scoring molecules to get, expressed either as a
+            specific number or as a fraction of the pool. If the value
+            specified is greater than the number of successfully evaluated
             inputs, return all explored inputs. If None, use self.k
-        
+
         Returns
         -------
         top_explored : List[Tuple[T, float]]
-            a list of tuples containing the identifier and score of the 
+            a list of tuples containing the identifier and score of the
             top-k inputs, sorted by their score
         """
         k = k or self.k
@@ -467,21 +484,21 @@ class Explorer:
 
         if k / len(self.scores) < 0.8:
             return heapq.nlargest(k, self.scores.items(), key=itemgetter(1))
-        
+
         return sorted(self.scores.items(), key=itemgetter(1), reverse=True)[:k]
 
     def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the current top predicted molecules and their scores
-        
+
         Parameter
         ---------
         k : Union[int, float, None], default=None
             see documentation for avg()
-        
+
         Returns
         -------
         top_preds : List[Tuple[T, float]]
-            a list of tuples containing the identifier and predicted score of 
+            a list of tuples containing the identifier and predicted score of
             the top-k predicted inputs, sorted by their predicted score
         """
         k = k or self.k
@@ -498,9 +515,12 @@ class Explorer:
 
         return [(x, y) for y, x in selected]
 
-    def write_scores(self, m: Union[int, float] = 1., 
-                     final: bool = False,
-                     include_failed: bool = False) -> None:
+    def write_scores(
+        self,
+        m: Union[int, float] = 1.0,
+        final: bool = False,
+        include_failed: bool = False,
+    ) -> None:
         """Write the top M scores to a CSV file
 
         Writes a CSV file of the top-k explored inputs with the input ID and
@@ -524,31 +544,31 @@ class Explorer:
             m = int(m * len(self))
         m = min(m, len(self))
 
-        p_data = self.path / 'data'
+        p_data = self.path / "data"
         p_data.mkdir(parents=True, exist_ok=True)
 
         if final:
             m = len(self)
-            p_scores = p_data / f'all_explored_final.csv'
+            p_scores = p_data / f"all_explored_final.csv"
             include_failed = True
         else:
-            p_scores = p_data / f'top_{m}_explored_iter_{self.iter}.csv'
+            p_scores = p_data / f"top_{m}_explored_iter_{self.iter}.csv"
 
         top_m = self.top_explored(m)
 
-        with open(p_scores, 'w') as fid:
+        with open(p_scores, "w") as fid:
             writer = csv.writer(fid)
-            writer.writerow(['smiles', 'score'])
+            writer.writerow(["smiles", "score"])
             writer.writerows(top_m)
             if include_failed:
                 writer.writerows(self.failures.items())
-        
+
         if self.verbose > 0:
             print(f'Results were written to "{p_scores}"')
 
     def load_scores(self, previous_scores: str) -> None:
         """Load the scores CSV located at saved_scores.
-        
+
         If this is being called during initialization, treat the data as the
         initialization batch.
 
@@ -562,64 +582,64 @@ class Explorer:
             as a failure.
         """
         if self.verbose > 0:
-            print(f'Loading scores from "{previous_scores}" ... ', end='')
+            print(f'Loading scores from "{previous_scores}" ... ', end="")
 
         scores, failures = self._read_scores(previous_scores)
         self.adjustment += len(scores) + len(failures)
 
         self.scores.update(scores)
         self.failures.update(failures)
-        
+
         if self.iter == 0:
             self.iter = 1
-        
+
         if self.verbose > 0:
-            print('Done!')
+            print("Done!")
 
     def checkpoint(self, path: Optional[str] = None) -> str:
         """write a checkpoint file for the explorer's current state and return
         the corresponding filepath
-        
+
         Parameters
         ----------
         path : Optional[str], default=None
             the directory to under which all checkpoint files should be written
-        
+
         Returns
         -------
         str
             the path of the JSON file containing all state information
         """
-        path = path or self.path / 'chkpts' / f'iter_{self.iter}'
+        path = path or self.path / "chkpts" / f"iter_{self.iter}"
         chkpt_dir = Path(path)
         chkpt_dir.mkdir(parents=True, exist_ok=True)
-        
-        scores_pkl = chkpt_dir / 'scores.pkl'
-        pickle.dump(self.scores, open(scores_pkl, 'wb'))
 
-        failures_pkl =  chkpt_dir / 'failures.pkl'
-        pickle.dump(self.failures, open(failures_pkl, 'wb'))
+        scores_pkl = chkpt_dir / "scores.pkl"
+        pickle.dump(self.scores, open(scores_pkl, "wb"))
 
-        new_scores_pkl =  chkpt_dir / 'new_scores.pkl'
-        pickle.dump(self.new_scores, open(new_scores_pkl, 'wb'))
+        failures_pkl = chkpt_dir / "failures.pkl"
+        pickle.dump(self.failures, open(failures_pkl, "wb"))
 
-        preds_npz = chkpt_dir / 'preds.npz'
+        new_scores_pkl = chkpt_dir / "new_scores.pkl"
+        pickle.dump(self.new_scores, open(new_scores_pkl, "wb"))
+
+        preds_npz = chkpt_dir / "preds.npz"
         np.savez(preds_npz, Y_pred=self.Y_pred, Y_var=self.Y_var)
 
         state = {
-            'iter': self.iter,
-            'scores': str(scores_pkl.absolute()),
-            'failures': str(failures_pkl.absolute()),
-            'new_scores': str(new_scores_pkl.absolute()),
-            'adjustment': self.adjustment,
-            'updated_model': self.updated_model,
-            'recent_avgs': self.recent_avgs,
-            'preds': str(preds_npz.absolute()),
-            'model': self.model.save(chkpt_dir / 'model')
+            "iter": self.iter,
+            "scores": str(scores_pkl.absolute()),
+            "failures": str(failures_pkl.absolute()),
+            "new_scores": str(new_scores_pkl.absolute()),
+            "adjustment": self.adjustment,
+            "updated_model": self.updated_model,
+            "recent_avgs": self.recent_avgs,
+            "preds": str(preds_npz.absolute()),
+            "model": self.model.save(chkpt_dir / "model"),
         }
 
-        p_chkpt = chkpt_dir / 'state.json'
-        json.dump(state, open(p_chkpt, 'w'), indent=4)
+        p_chkpt = chkpt_dir / "state.json"
+        json.dump(state, open(p_chkpt, "w"), indent=4)
 
         if self.verbose > 1:
             print(f'Checkpoint file saved to "{p_chkpt}".')
@@ -630,51 +650,51 @@ class Explorer:
         """Load in the state of a previous Explorer's checkpoint"""
 
         if self.verbose > 0:
-            print(f'Loading in previous state ... ', end='')
+            print(f"Loading in previous state ... ", end="")
 
         state = json.load(open(chkpt_file))
 
-        self.iter = state['iter']
+        self.iter = state["iter"]
 
-        self.scores = pickle.load(open(state['scores'], 'rb'))
-        self.failures = pickle.load(open(state['failures'], 'rb'))
-        self.new_scores = pickle.load(open(state['new_scores'], 'rb'))
-        self.adjustment = state['adjustment']
-        
-        self.updated_model = state['updated_model']
-        self.recent_avgs.extend(state['recent_avgs'])
+        self.scores = pickle.load(open(state["scores"], "rb"))
+        self.failures = pickle.load(open(state["failures"], "rb"))
+        self.new_scores = pickle.load(open(state["new_scores"], "rb"))
+        self.adjustment = state["adjustment"]
 
-        preds_npz = np.load(state['preds'])
-        self.Y_pred = preds_npz['Y_pred']
-        self.Y_var = preds_npz['Y_var']
+        self.updated_model = state["updated_model"]
+        self.recent_avgs.extend(state["recent_avgs"])
 
-        self.model.load(state['model'])
+        preds_npz = np.load(state["preds"])
+        self.Y_pred = preds_npz["Y_pred"]
+        self.Y_var = preds_npz["Y_var"]
+
+        self.model.load(state["model"])
 
         if self.verbose > 0:
-            print('Done!')
-    
+            print("Done!")
+
     def write_config(self, args) -> str:
-        args['top-k'] = args.pop('k')
-        args['no_title_line'] = not args.pop('title_line')
+        args["top-k"] = args.pop("k")
+        args["no_title_line"] = not args.pop("title_line")
 
         for k, v in list(args.items()):
             if v is None:
                 args.pop(k)
-        
-        config_file = self.path / 'config.ini'
-        with open(config_file, 'w') as fid:
+
+        config_file = self.path / "config.ini"
+        with open(config_file, "w") as fid:
             for k, v in args.items():
                 if v is None or v == False:
                     continue
                 if isinstance(v, Iterable) and not isinstance(v, str):
                     v = map(str, v)
-                    v = '[' + ', '.join(v) + ']'
+                    v = "[" + ", ".join(v) + "]"
                 fid.write(f'{k.replace("_", "-")} = {v}\n')
 
         return str(config_file)
 
     def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
-        """Remove the None entries from new_scores and update the attributes 
+        """Remove the None entries from new_scores and update the attributes
         new_scores, scores, and failed accordingly
 
         Parameter
@@ -722,7 +742,9 @@ class Explorer:
             xs, ys = zip(*self.new_scores.items())
 
         self.model.train(
-            xs, ys, retrain=self.retrain_from_scratch,
+            xs,
+            ys,
+            retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
         )
         self.new_scores = {}
@@ -740,31 +762,36 @@ class Explorer:
             a list of floats parallel to the pool inputs containing the
             predicted variance for each input
         (sets) self.updated_model : bool
-            sets self.updated_model to False, indicating that the predictions 
+            sets self.updated_model to False, indicating that the predictions
             are now up-to-date with the current model
         """
         if not self.updated_model and self.Y_pred.size > 0:
             if self.verbose > 1:
-                print('Model has not been updated since the last time ',
-                     'predictions were set. Skipping update!')
+                print(
+                    "Model has not been updated since the last time ",
+                    "predictions were set. Skipping update!",
+                )
             return
 
         self.Y_pred, self.Y_var = self.model.apply(
-            x_ids=self.pool.smis(), x_feats=self.pool.fps(), 
-            batched_size=None, size=len(self.pool), 
-            mean_only='vars' not in self.acquirer.needs
+            x_ids=self.pool.smis(),
+            x_feats=self.pool.fps(),
+            batched_size=None,
+            size=len(self.pool),
+            mean_only="vars" not in self.acquirer.needs,
         )
 
         self.updated_model = False
-        
+
     def _validate_acquirer(self):
         """Ensure that the model provides values the Acquirer needs"""
         if self.acquirer.needs > self.model.provides:
             raise IncompatibilityError(
-                f'{self.acquirer.metric} metric needs: '
-                + f'{self.acquirer.needs} '
-                + f'but {self.model.type_} only provides: '
-                + f'{self.model.provides}')
+                f"{self.acquirer.metric} metric needs: "
+                + f"{self.acquirer.needs} "
+                + f"but {self.model.type_} only provides: "
+                + f"{self.model.provides}"
+            )
 
     def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""
@@ -778,5 +805,5 @@ class Explorer:
                     scores[row[0]] = float(row[1])
                 except:
                     failures[row[0]] = None
-        
+
         return scores, failures
