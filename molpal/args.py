@@ -1,5 +1,4 @@
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
-from pathlib import Path
 from typing import Optional, Union
 
 
@@ -51,6 +50,7 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--scores-csvs', nargs='+',
                         help='Either (1) A list of filepaths containing the outputs from a previous exploration or (2) a pickle file containing this list. Will load these files in the order in which they are passed to mimic the intermediate state of a previous exploration. Specifying a single will be interpreted as passing a pickle file. If seeking to mimic the state after only one round of exploration, use the --previous-scores argument instead and leave this option empty.')
 
+#TODO(degraff): this should be "featurizer"
 #####################################
 #       ENCODER ARGUMENTS           #
 #####################################
@@ -89,7 +89,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--invalid-idxs', '--invalid-lines',
                         type=int, nargs='*',
                         help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
-
+    parser.add_argument('--prune-threshold', type=restricted_float_or_int, help="the number or fraction of top-predicted molecules to keep after the first round of exploration")
 #####################################
 #       ACQUISITION ARGUMENTS       #
 #####################################
@@ -132,6 +132,7 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('--objective-config',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 
+    #TODO(degraff): delete this
     # DockingObjective args
     # parser.add_argument('--software', default='vina',
     #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
@@ -291,6 +292,3 @@ def restricted_float(arg: str) -> float:
         raise ArgumentTypeError(f'{value} must be in [0,1]')
     
     return value
-
-def optional_int(arg: str):
-    pass

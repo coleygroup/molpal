@@ -44,7 +44,6 @@ class LazyMoleculePool(MoleculePool):
 
     def _encode_mols(self, featurizer: Featurizer, path: Optional[str] = None):
         """Do not precompute any feature representations"""
-        self.featurizer = featurizer
         self.chunk_size = int(ray.cluster_resources()["CPU"] * 4096)
         self.fps_ = None
 

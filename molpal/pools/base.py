@@ -11,6 +11,7 @@ import h5py
 import numpy as np
 import ray
 from rdkit import Chem, RDLogger
+from scipy.stats import norm
 from tqdm import tqdm
 
 from molpal.featurizer import Featurizer
@@ -113,12 +114,12 @@ class MoleculePool(Sequence):
         smiles_col: int = 0,
         cxsmiles: bool = False,
         fps: Optional[str] = None,
+        fps_path: Optional[str] = None,
         featurizer: Featurizer = Featurizer(),
         cache: bool = False,
         invalid_idxs: Optional[Iterable[int]] = None,
         cluster: bool = False,
         ncluster: int = 100,
-        fps_path: Optional[str] = None,
         verbose: int = 0,
         **kwargs,
     ):
@@ -138,6 +139,8 @@ class MoleculePool(Sequence):
 
         self.smis_ = None
         self.fps_ = fps
+        self.fps_path = fps_path
+        self.featurizer = featurizer
 
         self.invalid_idxs = set(invalid_idxs) if invalid_idxs is not None else None
         self.size = None
@@ -209,6 +212,60 @@ class MoleculePool(Sequence):
         raise TypeError(
             f"pool indices must be integers, slices, or tuples thereof. Received: {type(idx)}"
         )
+
+    def prune(self, k: Union[int, float], Y_mean: np.ndarray, Y_var: np.ndarray) -> float:
+        """prune the library
+
+        Parameters
+        ----------
+        k : Union[int, float]
+            the number of top-k molecules to keep by predicted means expressed either as a number
+            or as a fraction of the pool
+        Y_mean : np.ndarray
+            the predicted mean for each molecule
+        Y_var : np.ndarray
+            the predicted variance for each molecule
+        
+        Returns
+        -------
+        float
+            the expected number of false negatives, where a "negative" constitutes a molecule with
+            a predicted mean below the cutoff threshold
+        """
+        if isinstance(k, float):
+            k = int(k*len(self))
+        if k < 1:
+            raise ValueError(f"Prune threshold must be positive! got: {k}")
+            
+        top_k_idxs = np.argsort(Y_mean)[::-1][:k]
+        self.smis_ = self.get_smis(top_k_idxs)
+
+        full_fps_path = Path(self.fps_)
+        pruned_fps_path = full_fps_path.with_name(f"{full_fps_path.stem}_pruned")
+
+        self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
+            self.smis_,
+            k,
+            featurizer=self.featurizer,
+            name=pruned_fps_path.stem,
+            path=pruned_fps_path.parent,
+        )
+
+        with h5py.File(self.fps_, "r") as h5f:
+            fps = h5f["fps"]
+            self.size = len(fps)
+            self.chunk_size = fps.chunks[0]
+
+        cutoff = Y_mean[top_k_idxs[-1]]
+        mask = np.ones(Y_mean.size, bool)
+        mask[top_k_idxs] = False
+
+        I = Y_mean - cutoff
+        with np.errstate(divide='ignore'):
+            Z = I / np.sqrt(Y_var)
+        P = norm.cdf(Z[mask])
+
+        return P.sum()
 
     def get_smi(self, idx: int) -> str:
         if idx < 0 or idx >= len(self):

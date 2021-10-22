@@ -168,6 +168,8 @@ class Explorer:
         self.max_iters = max_iters
         self.budget = budget
 
+        self.prune_threshold = prune_threshold
+
         # logging attributes
         self.write_final = write_final
         self.write_intermediate = write_intermediate
@@ -406,8 +408,12 @@ class Explorer:
 
         self._update_model()
         self._update_predictions()
-        if self.prune and self.iter == 1:
-            pass
+        if self.prune_threshold is not None and self.iter == 1:
+            false_negatives = self.pool.prune(self.prune_threshold, self.Y_pred, self.Y_var)
+            if self.verbose >= 1:
+                print(f"Pruned pool to {len(self.pool)} molecules!")
+                print(f"Expected number of false pruned molecules: {false_negatives}")
+                pass
 
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(),
