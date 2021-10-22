@@ -5,6 +5,7 @@ import gzip
 from itertools import chain, islice
 import os
 from pathlib import Path
+import sys
 from typing import Iterable, Iterator, List, Optional, Set, Tuple
 
 import h5py
@@ -14,10 +15,13 @@ from rdkit import Chem, DataStructs
 from rdkit.Chem import rdMolDescriptors as rdmd
 from tqdm import tqdm
 
+sys.path.append('../molpal')
+from molpal import featurizer as features
+
 try:
     if 'redis_password' in os.environ:
         ray.init(
-            address=os.environ["ip_head"],#'auto',
+            address=os.environ["ip_head"],
             _node_ip_address=os.environ["ip_head"].split(":")[0], 
             _redis_password=os.environ['redis_password']
         )
@@ -26,20 +30,50 @@ try:
 except ConnectionError:
     ray.init(num_cpus=len(os.sched_getaffinity(0)))
 
+def get_smis(libaries: Iterable[str], title_line: bool = True,
+             delimiter: str = ',', smiles_col: int = 0) -> Iterator[str]:
+    for library in libaries:
+        if Path(library).suffix == '.gz':
+            open_ = partial(gzip.open, mode='rt')
+        else:
+            open_ = open
+
+        with open_(library) as fid:
+            reader = csv.reader(fid, delimiter=delimiter)
+            if title_line:
+                next(reader)
+
+            for row in reader:
+                yield row[smiles_col]
+
 def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
     """Consume an iterable in batches of size chunk_size"""
     it = iter(it)
     return iter(lambda: list(islice(it, chunk_size)), [])
 
-def smi_to_fp(smi: str, fingerprint: str,
-              radius: int = 2, length: int = 2048) -> Optional[np.ndarray]:
+@ray.remote
+def _smis_to_mols(smis: Iterable) -> List[Optional[Chem.Mol]]:
+    return [Chem.MolFromSmiles(smi) for smi in smis]
+
+def smis_to_mols(smis: Iterable[str]) -> List[Optional[Chem.Mol]]:
+    chunksize = int(ray.cluster_resources()['CPU']) * 2
+    refs = [
+        _smis_to_mols.remote(smis_chunk)
+        for smis_chunk in batches(smis, chunksize)
+    ]
+    mols_chunks = [ray.get(r) for r in refs]
+    return list(chain(*mols_chunks))
+
+@ray.remote
+def _mols_to_fps(mols: Iterable[Chem.Mol], fingerprint: str = 'pair',
+                 radius: int = 2, length: int = 2048) -> np.ndarray:
     """fingerprint functions must be wrapped in a static function
     so that they may be pickled for parallel processing
         
     Parameters
     ----------
-    smi : str
-        the SMILES string of the molecule to encode
+    mols : Iterable[Chem.Mol]
+        the molecules to encode
     fingerprint : str
         the the type of fingerprint to generate
     radius : int
@@ -52,45 +86,41 @@ def smi_to_fp(smi: str, fingerprint: str,
     T_comp
         the compressed feature representation of the molecule
     """
-    mol = Chem.MolFromSmiles(smi)
-    if mol is None:
-        return None
-
     if fingerprint == 'morgan':
-        fp = rdmd.GetMorganFingerprintAsBitVect(
-            mol, radius=radius, nBits=length, useChirality=True)
+        fps = [rdmd.GetMorganFingerprintAsBitVect(
+            mol, radius=radius, nBits=length, useChirality=True
+        ) for mol in mols]
+
     elif fingerprint == 'pair':
-        fp = rdmd.GetHashedAtomPairFingerprintAsBitVect(
-            mol, minLength=1, maxLength=1+radius, nBits=length)
+        fps = [rdmd.GetHashedAtomPairFingerprintAsBitVect(
+            mol, minLength=1, maxLength=1+radius, nBits=length
+        ) for mol in mols]
     elif fingerprint == 'rdkit':
-        fp = rdmd.RDKFingerprint(
-            mol, minPath=1, maxPath=1+radius, fpSize=length)
+        fps = [rdmd.RDKFingerprint(
+            mol, minPath=1, maxPath=1+radius, fpSize=length
+        ) for mol in mols]
     elif fingerprint == 'maccs':
-        fp = rdmd.GetMACCSKeysFingerprint(mol)
+        fps = [rdmd.GetMACCSKeysFingerprint(mol) for mol in mols]
+    elif fingerprint == 'map4':
+        fps = [map4.MAP4Calculator(
+            dimensions=length, radius=radius, is_folded=True
+        ).calculate(mol) for mol in mols]
     else:
-        raise NotImplementedError(
-            f'Unrecognized fingerprint: "{fingerprint}"')
+        raise NotImplementedError(f'Unrecognized fingerprint: "{fingerprint}"')
 
-    x = np.empty(len(fp))
-    DataStructs.ConvertToNumpyArray(fp, x)
-    return x
+    X = np.empty((len(mols), length))
+    [DataStructs.ConvertToNumpyArray(fp, x) for fp, x in zip (fps, X)]
 
-@ray.remote
-def _smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
-                 radius: int = 2,
-                 length: int = 2048) -> List[Optional[np.ndarray]]:
-    fps = [smi_to_fp(smi, fingerprint, radius, length) for smi in smis]
-    return fps
+    return X
 
-def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
-                radius: int = 2,
-                length: int = 2048) -> List[Optional[np.ndarray]]:
-    """Calculate the Morgan fingerprint of each molecule in smis
+def mols_to_fps(mols: Iterable[Chem.Mol], fingerprint: str = 'pair',
+                radius: int = 2, length: int = 2048) -> np.ndarray:
+    """Calculate the Morgan fingerprint of each molecule
 
     Parameters
     ----------
-    smis : Iterable[str]
-        the SMILES strings of the molecules
+    mols : Iterable[Chem.Mol]
+        the molecules
     radius : int, default=2
         the radius of the fingerprint
     length : int, default=2048
@@ -101,19 +131,16 @@ def smis_to_fps(smis: Iterable[str], fingerprint: str = 'pair',
     List
         a list of the corresponding morgan fingerprints in bit vector form
     """
-    chunksize = int(ray.cluster_resources()['CPU'] * 64)
+    chunksize = int(ray.cluster_resources()['CPU'] * 16)
     refs = [
-        _smis_to_fps.remote(smis_chunk, fingerprint, radius, length)
-        for smis_chunk in batches(smis, chunksize)
+        _mols_to_fps.remote(mols_chunk, fingerprint, radius, length)
+        for mols_chunk in batches(mols, chunksize)
     ]
-    fps_chunks = [
-        ray.get(r)
-        for r in tqdm(refs, desc='Calculating fingerprints',
-                      unit='chunk', leave=False)
-    ]
-    fps = list(chain(*fps_chunks))
+    fps_chunks = [ray.get(r) for r in tqdm(
+        refs, desc='Calculating fingerprints', unit='chunk', leave=False
+    )]
 
-    return fps
+    return np.vstack(fps_chunks)
 
 def fps_hdf5(smis: Iterable[str], size: int,
              fingerprint: str = 'pair', radius: int = 2, length: int = 2048,
@@ -145,31 +172,33 @@ def fps_hdf5(smis: Iterable[str], size: int,
         the set of invalid indices in the input SMILES strings
     """
     with h5py.File(filepath, 'w') as h5f:
-        CHUNKSIZE = 512
+        CHUNKSIZE = 1024
 
         fps_dset = h5f.create_dataset(
-            'fps', (size, length),
-            chunks=(CHUNKSIZE, length), dtype='int8'
+            'fps', (size, length), chunks=(CHUNKSIZE, length), dtype='int8'
         )
         
-        batchsize = 262144
-        n_batches = size//batchsize + 1
+        batch_size = 4 * CHUNKSIZE * int(ray.cluster_resources()['CPU'])
+        n_batches = size//batch_size + 1
 
         invalid_idxs = set()
         i = 0
-        offset = 0
 
-        for smis_batch in tqdm(batches(smis, batchsize), total=n_batches,
-                               desc='Precalculating fps', unit='batch'):
-            fps = smis_to_fps(smis_batch, fingerprint, radius, length)
-            for fp in tqdm(fps, total=batchsize, leave=False, desc='Writing'):
-                if fp is None:
-                    invalid_idxs.add(i + offset)
-                    offset += 1
-                    continue
+        for smis_batch in tqdm(
+            batches(smis, batch_size), total=n_batches,
+            desc='Precalculating fps', unit='batch', unit_scale=batch_size
+        ):
+            mols = smis_to_mols(smis_batch)
+            invalid_idxs.update({
+                i+j for j, mol in enumerate(mols) if mol is None
+            })
+            fps = mols_to_fps(
+                [mol for mol in mols if mol is not None],
+                fingerprint, radius, length
+            )
 
-                fps_dset[i] = fp
-                i += 1
+            fps_dset[i:i+len(fps)] = fps
+            i += len(mols)
 
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
@@ -179,7 +208,7 @@ def fps_hdf5(smis: Iterable[str], size: int,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', default='.',
+    parser.add_argument('--path', type=Path,
                         help='the path under which to write the fingerprints file')
     parser.add_argument('--name',
                         help='what to name the fingerprints file. If no suffix is provided, will add ".h5". If no name is provided, output file will be name <library>.h5')
@@ -190,9 +219,8 @@ def main():
                         help='the radius or path length to use for fingerprints')
     parser.add_argument('--length', type=int, default=2048,
                         help='the length of the fingerprint')
-
-    parser.add_argument('--library', required=True, metavar='LIBRARY_FILEPATH',
-                        help='the file containing members of the MoleculePool')
+    parser.add_argument('-l', '--libraries', required=True, nargs='+',
+                        help='the files containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
                         help='whether there is no title line in the library file')
     parser.add_argument('--total-size', type=int,
@@ -203,48 +231,29 @@ def main():
                         help='the column containing the SMILES string in the library file')
     args = parser.parse_args()
     args.title_line = not args.no_title_line
-
-    print(args)
     
-    if args.name is None:
-        args.name = Path(args.library).stem
-    
-    filepath = Path(args.path) / args.name
-    if Path(filepath).suffix == '.h5':
-        pass
-    else:
-        filepath.with_suffix('.h5')
-        
-    if Path(args.library).suffix == '.gz':
-        open_ = partial(gzip.open, mode='rt')
-    else:
-        open_ = open
+    path = args.path or Path(args.library).parent
+    name = args.name or Path(args.library).stem
+    filepath = (path / name).with_suffix('.h5')
 
     print('Precalculating feature matrix ...', end=' ')
-    with open_(args.library) as fid:
-        reader = csv.reader(fid, delimiter=args.delimiter)
-        if args.total_size is None:
-            total_size = sum(1 for _ in fid)
-            fid.seek(0)
-        else:
-            total_size = args.total_size
-            
-        if args.title_line:
-            total_size -= 1; next(reader)
 
-        smis = (row[args.smiles_col] for row in reader)
-        fps, invalid_lines = fps_hdf5(
-            smis, total_size, args.fingerprint,
-            args.radius, args.length, filepath
-        )
+    total_size = sum(1 for _ in get_smis(
+        args.libraries, args.title_line, args.delimiter, args.smiles_col
+    ))
+    smis = get_smis(
+        args.libraries, args.title_line, args.delimiter, args.smiles_col
+    )
+    fps, invalid_lines = fps_hdf5(
+        smis, total_size, args.fingerprint,
+        args.radius, args.length, filepath
+    )
 
     print('Done!')
     print(f'Feature matrix was saved to "{fps}"', flush=True)
-
-    if len(invalid_lines) == 0:
-        print('Detected no invalid lines! When using this fingerprints file,',
-              'you can pass the --validated flag to MolPAL to speed up pool',
-              'construction.')
+    print('When using this fingerprints file, you should add '
+          f'"--invalid-lines" {", ".join(invalid_lines)} to the command line '
+          'or the configuration file to speed up pool construction')
 
 if __name__ == "__main__":
     main()

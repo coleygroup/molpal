@@ -1,19 +1,20 @@
-from concurrent.futures import ProcessPoolExecutor
-from itertools import islice
-from typing import Iterator, Sequence, Type
+from typing import Iterator, Optional, Sequence
 
 import numpy as np
+import ray
 
-from molpal.featurizer import Featurizer
-from molpal.pools.base import MoleculePool, Mol
+from molpal.featurizer import Featurizer, feature_matrix
+from molpal.pools.base import MoleculePool
+from molpal.utils import batches
+
 
 class LazyMoleculePool(MoleculePool):
     """A LazyMoleculePool does not precompute fingerprints for the pool
 
     Attributes (only differences with EagerMoleculePool are shown)
     ----------
-    encoder : Encoder
-        an encoder to generate uncompressed representations on the fly
+    featurizer : Featurizer
+        an Featurizer to generate uncompressed representations on the fly
     fps : None
         no fingerprint file is stored for a LazyMoleculePool
     chunk_size : int
@@ -23,67 +24,29 @@ class LazyMoleculePool(MoleculePool):
     cluster_sizes : None
         no clustering can be performed for a LazyMoleculePool
     """
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            'This class is currently broken- use an EagerPool instead!'
-        )
-        super().__init__(*args, **kwargs)
-
-        self.chunk_size = 100 * self.ncpu
-
-    def __iter__(self) -> Iterator[Mol]:
-        """Return an iterator over the molecule pool.
-
-        Not recommended for use in open constructs. I.e., don't explicitly
-        call this method unless you plan to exhaust the full iterator.
-        """
-        self._mol_generator = zip(self.smis(), self.fps())
-        
-        return self
-
-    def __next__(self) -> Mol:
-        if self._mol_generator is None:
-            raise StopIteration
-
-        return next(self._mol_generator)
 
     def get_fp(self, idx: int) -> np.ndarray:
         smi = self.get_smi(idx)
-        return self.encoder.encode_and_uncompress(smi)
+        return self.featurizer(smi)
 
     def get_fps(self, idxs: Sequence[int]) -> np.ndarray:
         smis = self.get_smis(idxs)
-        return np.array([self.encoder.encode_and_uncompress(smi)
-                         for smi in smis])
+        return np.array([self.featurizer(smi) for smi in smis])
 
     def fps(self) -> Iterator[np.ndarray]:
-        for fps_chunk in self.fps_batches():
-            for fp in fps_chunk:
+        for fps_batch in self.fps_batches():
+            for fp in fps_batch:
                 yield fp
 
     def fps_batches(self) -> Iterator[np.ndarray]:
-        # buffer of chunk of fps into memory for faster iteration
-        job_chunk_size = self.chunk_size // self.ncpu
-        smis = iter(self.smis())
-        smis_chunks = iter(lambda: list(islice(smis, self.chunk_size)), [])
+        for smis in batches(self.smis(), self.chunk_size):
+            yield np.array(feature_matrix(smis, self.featurizer, True))
 
-        with ProcessPoolExecutor(max_workers=self.ncpu) as pool:
-            for smis_chunk in smis_chunks:
-                fps_chunk = pool.map(self.encoder.encode_and_uncompress, 
-                                     smis_chunk, chunksize=job_chunk_size)
-                yield fps_chunk
-
-    def _encode_mols(self, featurizer: Featurizer, ncpu: int, **kwargs) -> None:
-        """
-        Side effects
-        ------------
-        (sets) self.encoder : Type[Encoder]
-            the encoder used to generate molecular fingerprints
-        (sets) self.ncpu : int
-            the number of jobs to parallelize fingerprint buffering over
-        """
+    def _encode_mols(self, featurizer: Featurizer, path: Optional[str] = None):
+        """Do not precompute any feature representations"""
         self.featurizer = featurizer
-        self.ncpu = ncpu
+        self.chunk_size = int(ray.cluster_resources()["CPU"] * 4096)
+        self.fps_ = None
 
     def _cluster_mols(self, *args, **kwargs) -> None:
         """A LazyMoleculePool can't cluster molecules
@@ -92,5 +55,7 @@ class LazyMoleculePool(MoleculePool):
         which is what a LazyMoleculePool is designed to avoid. If clustering
         is desired, use the base (Eager)MoleculePool
         """
-        print('WARNING: Clustering is not possible for a LazyMoleculePool.',
-              'No clustering will be performed.')
+        print(
+            "WARNING: Clustering is not possible for a LazyMoleculePool.",
+            "No clustering will be performed.",
+        )

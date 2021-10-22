@@ -2,7 +2,7 @@
 model is used to predict an input's objective function based on prior
 training data."""
 
-from typing import Optional, Type
+from typing import Optional, Set, Type
 
 from molpal.models.base import Model
 
@@ -10,6 +10,7 @@ def model(model: str, **kwargs) -> Type[Model]:
     """Model factory function"""
     if model == 'rf':
         from molpal.models.sklmodels import RFModel
+
         return RFModel(**kwargs)
 
     if model == 'gp':
@@ -62,3 +63,6 @@ def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     except KeyError:
         raise NotImplementedError(
             f'Unrecognized MPN confidence method: "{conf_method}"')
+
+def model_types() -> Set[str]:
+    return {'rf', 'gp', 'nn', 'mpn'}

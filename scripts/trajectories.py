@@ -441,6 +441,42 @@ def plot_single_batch(
     fig.tight_layout()
     return fig
 
+def plot_singles(
+        results, size: int, N: int, split: float,
+        model: str = 'mpn', metric: str = 'greedy', reward='scores'
+    ):
+    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(4, 4))
+
+    colors = sns.color_palette('Greens', len(results['retrain']))
+    ms = 5
+    capsize = 2
+    
+    for i, split_ in enumerate(results['retrain']):
+        xs = [int(size*split_), int(size*split_)+int(size*split)]
+
+        ys, y_sds = zip(*results['retrain'][split_][model][metric][reward])
+        ys = [y*100 for y in ys]
+        y_sds = [y*100 for y in y_sds]
+
+        if len(xs) != len(ys):
+            continue
+
+        ax.errorbar(
+            xs, ys, yerr=y_sds, fmt='o-', color=colors[i], 
+            ms=ms, mec='black', capsize=capsize, label=split_
+        )
+
+    ax.set_ylabel(f'Percentage of Top-{N} {reward.capitalize()} Found')
+    ax.legend(loc='upper left', title='Init fraction')
+
+    style_axis(ax)
+
+    formatter = ticker.FuncFormatter(abbreviate_k_or_M)
+    ax.xaxis.set_major_formatter(formatter)
+
+    fig.tight_layout()
+    return fig
+
 def plot_convergence(
         results, size: int, N: int, metric: str = 'greedy', reward='scores'
     ):
@@ -561,7 +597,8 @@ if __name__ == "__main__":
                         help='the metric to plot when use split-models mode')
     parser.add_argument('--mode', required=True,
                         choices=('model-metrics', 'split-models', 
-                                 'split-metrics', 'si', 'single-batch', 'convergence', 'csv', 'errors', 
+                                 'split-metrics', 'si', 'single-batch', 'singles',
+                                 'convergence', 'csv', 'errors', 
                                  'diversity', 'intersection'),
                         help='what figure to generate. For "x-y" modes, this corresponds to the figure structure, where there will be a separate panel for each "x" and in each panel there will be traces corresponding to each independent "y". E.g., "model-metrics" makes a figure with three sepearate panels, one for each model and inside each panel a trace for each metric. "si" will make the trajectory plots present in the SI.')
     # parser.add_argument('--name', default='.')
@@ -587,7 +624,7 @@ if __name__ == "__main__":
         true_data = true_data[:args.N]
 
     if args.mode in ('model-metrics', 'split-models',
-                     'split-metrics', 'si',
+                     'split-metrics', 'si', 'singles',
                      'single-batch', 'convergence', 'csv'):
         results = gather_all_rewards(
             args.parent_dir, true_data, args.N, args.overwrite, args.maximize
@@ -643,6 +680,18 @@ if __name__ == "__main__":
         name = input('Figure name: ')
         fig.savefig(f'paper/figures/{name}.pdf')
     
+    elif args.mode == 'singles':
+        # single_batch_results = gather_all_rewards(
+        #     args.parent_dir_sb, true_data, args.N,
+        #     args.overwrite, args.maximize
+        # )
+        fig = plot_singles(
+            results, size, args.N, args.split, 'mpn', 'greedy', 'scores'
+        )
+
+        name = input('Figure name: ')
+        fig.savefig(f'paper/figures/{name}.pdf')
+
     elif args.mode == 'convergence':
         fig = plot_convergence(results, size, args.N, 'greedy', 'scores')
 

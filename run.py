@@ -1,3 +1,4 @@
+import datetime
 import os
 import signal
 import sys
@@ -32,13 +33,12 @@ def main():
         if 'redis_password' in os.environ:
             ray.init(
                 address=os.environ["ip_head"],
-                _node_ip_address=os.environ["ip_head"].split(":")[0], 
                 _redis_password=os.environ['redis_password']
             )
         else:
             ray.init(address='auto')
     except ConnectionError:
-        ray.init(num_cpus=args.MAX_CPU, _temp_dir=params['tmp_dir'])
+        ray.init()
     except PermissionError:
         print('Failed to create a temporary directory for ray')
         raise
@@ -47,13 +47,16 @@ def main():
     print(ray.cluster_resources())
     print(flush=True)
 
-    explorer = Explorer(**params)
+    path = params.pop("output_dir")
+    explorer = Explorer(path, **params)
 
     start = time()
     try:
         explorer.run()
     except BaseException:
-        state_file = explorer.save()
+        d_chkpts = f'{path}/chkpts'
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        state_file = explorer.checkpoint(f'{d_chkpts}/iter_{explorer.iter}_{timestamp}')
         print(f'Exception raised! Intemediate state saved to "{state_file}"')
         raise
     stop = time()

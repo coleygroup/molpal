@@ -3,10 +3,9 @@ from collections import Counter
 from functools import partial
 import gzip
 from itertools import islice, repeat
+import re
 from pathlib import Path
-from typing import (
-    Iterable, Iterator, List, Optional, Sequence, Tuple, Type, Union
-)
+from typing import Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
 import h5py
 import numpy as np
@@ -15,15 +14,17 @@ from rdkit import Chem, RDLogger
 from tqdm import tqdm
 
 from molpal.featurizer import Featurizer
-from molpal.pools.cluster import cluster_fps_h5
-from molpal.pools import fingerprints
+from molpal.pools import cluster, fingerprints
+from molpal.utils import batches
 
-RDLogger.DisableLog('rdApp.*')
+RDLogger.DisableLog("rdApp.*")
 
-# a Mol is a SMILES string, a fingerprint, and an optional cluster ID
 Mol = Tuple[str, np.ndarray, Optional[int]]
 
-class MoleculePool(Sequence[Mol]):
+CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
+
+
+class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
 
     By default, a MoleculePool eagerly calculates the uncompressed feature
@@ -38,21 +39,25 @@ class MoleculePool(Sequence[Mol]):
 
     Attributes
     ----------
-    library : str
-        the filepath of a (compressed) CSV containing the virtual library
+    libraries : str
+        the filepaths of (compressed) CSVs containing the pool members. NOTE: each file must be
+        in the same format. That is, if the first file is a TSV of CXSMILES strings with no
+        title line, then the second file must also be a TSV of CXSMILES strings with no
+        title line, and so on for each successive file.
     size : int
-        the number of molecules in the pool
-    invalid_lines : Set[int]
-        the set of invalid lines in the libarary file. Will be None until the 
-        pool is validated
+        the total number of molecules in the pool
+    invalid_idxs : Set[int]
+        the set of invalid indices in the libarary files. Will be None until
+        the pool is validated
     title_line : bool
-        whether there is a title line in the library file
+        whether there is a title line in each library file
     delimiter : str
-        the column delimiter in the library file
+        the column delimiters in the library files
     smiles_col : int
-        the column containing the SMILES strings in the library file
+        the column containing the SMILES strings in the library files
     fps : str
-        the filepath of an hdf5 file containing the precomputed fingerprints
+        the filepath of an HDF5 file containing the precomputed fingerprint
+        for each pool member
     smis_ : Optional[List[str]]
         a list of SMILES strings in the pool. None if no caching
     cluster_ids_ : Optional[List[int]]
@@ -60,77 +65,90 @@ class MoleculePool(Sequence[Mol]):
     cluster_sizes : Dict[int, int]
         the size of each cluster in the pool. None if not clustered
     chunk_size : int
-        the size of each chunk in the hdf5 file
-    open_ : Callable[..., TextIO]
-        an alias for open or gzip.open, depending on the format of the library 
+        the size of each chunk in the HDF5 file
     verbose : int
         the level of output the pool should print while initializing
 
     Parameters
     ----------
-    library : str
-    title_line : bool (Default = True)
-    delimiter : str (Default = ',')
-    smiles_col : int (Default = 0)
-    fps : Optional[str] (Default = None)
+    library : Iterable[str]
+    title_line : bool, default=True
+    delimiter : str, default=','
+    smiles_col : int, default=0
+    fps : Optional[str], default=None
         the filepath of an hdf5 file containing the precomputed fingerprints.
         If specified, a user assumes the following:
         1. the ordering of the fingerprints matches the ordering in the
             library file
         2. the featurizer used to generate the fingerprints is the same
             as the one passed to the model
-        If None, the MoleculePool will generate this file automatically 
+        If None, the MoleculePool will generate this file automatically
     featurizer : Featurizer, default=Featurizer()
         the featurizer to use when calculating fingerprints
-    cache : bool (Default = False)
+    cache : bool, default=False
         whether to cache the SMILES strings in memory
-    validated : bool (Default = False)
+    validated : bool, default=False
         whether the pool has been validated already. If True, the user
         accepts the risk of an invalid molecule raising an exception later
         on. Mostly useful for multiple runs on a pool that has been
         manually validated and pruned.
-    cluster : bool (Default = False)
+    cluster : bool, default=False
         whether to cluster the library
-    ncluster : int (Default = 100)
+    ncluster : int, default=100
         the number of clusters to form. Only used if cluster is True
-    path : str
-        the path under which the h5 file should be written
-    verbose : int (Default = 0)
+    fps_path : Optional[str], default=None
+        the path under which the HDF5 file should be written. By default,
+        will write the fingerprints HDF5 file under the same directory as the
+        first library file
+    verbose : int , default=0
     **kwargs
         additional and unused keyword arguments
     """
-    def __init__(self, library: str, title_line: bool = True,
-                 delimiter: str = ',', smiles_col: int = 0,
-                 fps: Optional[str] = None,
-                 featurizer: Featurizer = Featurizer(),
-                 cache: bool = False, validated: bool = False,
-                 cluster: bool = False, ncluster: int = 100,
-                 path: str = '.', verbose: int = 0, **kwargs):
-        self.library = library
+
+    def __init__(
+        self,
+        libraries: Iterable[str],
+        title_line: bool = True,
+        delimiter: str = ",",
+        smiles_col: int = 0,
+        cxsmiles: bool = False,
+        fps: Optional[str] = None,
+        featurizer: Featurizer = Featurizer(),
+        cache: bool = False,
+        invalid_idxs: Optional[Iterable[int]] = None,
+        cluster: bool = False,
+        ncluster: int = 100,
+        fps_path: Optional[str] = None,
+        verbose: int = 0,
+        **kwargs,
+    ):
+        if not ray.is_initialized():
+            print("No ray cluster detected! attempting to connect!")
+            try:
+                ray.init("auto")
+            except ConnectionError:
+                ray.init()
+
+        self.libraries = list(libraries)
         self.title_line = title_line
         self.delimiter = delimiter
         self.smiles_col = smiles_col
+        self.cxsmiles = cxsmiles
         self.verbose = verbose
 
-        if Path(library).suffix == '.gz':
-            self.open_ = partial(gzip.open, mode='rt')
-        else:
-            self.open_ = open
-
-        self.fps_ = fps
-        self.invalid_lines = None
-
         self.smis_ = None
+        self.fps_ = fps
+
+        self.invalid_idxs = set(invalid_idxs) if invalid_idxs is not None else None
+        self.size = None
+        self.chunk_size = None
+        self._encode_mols(featurizer, fps_path)
+        self._validate_and_cache_smis(cache)
+
         self.cluster_ids_ = None
         self.cluster_sizes = None
-        
-        self.chunk_size = self._encode_mols(featurizer, path)
-        self.size = self._validate_and_cache_smis(cache, validated)
-
         if cluster:
             self._cluster_mols(ncluster)
-
-        self._mol_generator = None
 
     def __len__(self) -> int:
         """The number of valid pool inputs"""
@@ -139,26 +157,15 @@ class MoleculePool(Sequence[Mol]):
     def __iter__(self) -> Iterator[Mol]:
         """Return an iterator over the molecule pool.
 
-        Not recommended for use in open constructs.
-        I.e., don't explicitly call this method unless you plan to exhaust the 
-        full iterator.
+        NOTE: Not recommended for use in open constructs. I.e., don't
+        explicitly call this method unless you plan to exhaust the full iterator.
         """
-        self._mol_generator = zip(
-            self.smis(),
-            self.fps(),
-            self.cluster_ids() or repeat(None)
-        )
-        return self
-
-    def __next__(self) -> Mol:
-        """Iterate to the next molecule in the pool. Only usable after
-        calling iter()"""
-        if self._mol_generator:
-            return next(self._mol_generator)
-
-        raise StopIteration
+        return zip(self.smis(), self.fps(), self.cluster_ids() or repeat(None))
 
     def __contains__(self, smi: str) -> bool:
+        if self.smis_ is not None:
+            return smi in set(self.smis_)
+
         for smi_ in self.smis():
             if smi_ == smi:
                 return True
@@ -197,49 +204,33 @@ class MoleculePool(Sequence[Mol]):
             return self.get_mols(idxs)
 
         if isinstance(idx, (int, str)):
-            return (
-                self.get_smi(idx),
-                self.get_fp(idx),
-                self.get_cluster_id(idx)
-            )
+            return (self.get_smi(idx), self.get_fp(idx), self.get_cluster_id(idx))
 
-        raise TypeError('pool indices must be integers, slices, '
-                        + f'or tuples thereof. Received: {type(idx)}')
+        raise TypeError(
+            f"pool indices must be integers, slices, or tuples thereof. Received: {type(idx)}"
+        )
 
     def get_smi(self, idx: int) -> str:
         if idx < 0 or idx >= len(self):
-            raise IndexError(f'pool index(={idx}) out of range')
+            raise IndexError(f"pool index(={idx}) out of range")
 
         if self.smis_:
             return self.smis_[idx]
 
-        while idx in self.invalid_lines:
-            # external indices correspond internally to the line immediately
-            # following the invalid line(s)
-            idx += 1
-
-        # should test out using islice to advance instead of manually
-        for i, smi in enumerate(self.smis()):
-            if i==idx:
-                return smi
-
-        assert False    # shouldn't reach this point
+        return next(islice(self.smis(), idx, idx + 1))
 
     def get_fp(self, idx: int) -> np.ndarray:
-        idx = idx
-
         if idx < 0 or idx >= len(self):
-            raise IndexError(f'pool index(={idx}) out of range')
+            raise IndexError(f"pool index(={idx}) out of range")
 
-        with h5py.File(self.fps_, mode='r') as h5fid:
-            fps = h5fid['fps']
-            return fps[idx]
+        with h5py.File(self.fps_, mode="r") as h5f:
+            fps_dset = h5f["fps"]
 
-        assert False    # shouldn't reach this point
+            return fps_dset[idx]
 
     def get_cluster_id(self, idx: int) -> Optional[int]:
         if idx < 0 or idx >= len(self):
-            raise IndexError(f'pool index(={idx}) out of range')
+            raise IndexError(f"pool index(={idx}) out of range")
 
         if self.cluster_ids_:
             return self.cluster_ids_[idx]
@@ -247,11 +238,13 @@ class MoleculePool(Sequence[Mol]):
         return None
 
     def get_mols(self, idxs: Sequence[int]) -> List[Mol]:
-        return list(zip(
-            self.get_smis(idxs),
-            self.get_fps(idxs),
-            self.get_cluster_ids(idxs) or repeat(None)
-        ))
+        return list(
+            zip(
+                self.get_smis(idxs),
+                self.get_fps(idxs),
+                self.get_cluster_ids(idxs) or repeat(None),
+            )
+        )
 
     def get_smis(self, idxs: Sequence[int]) -> List[str]:
         """Get the SMILES strings for the given indices
@@ -264,7 +257,7 @@ class MoleculePool(Sequence[Mol]):
             the indices for which to retrieve the SMILES strings
         """
         if min(idxs) < 0 or max(idxs) >= len(self):
-            raise IndexError(f'Pool index out of range: {idxs}')
+            raise IndexError(f"Pool index out of range: {idxs}")
 
         if self.smis:
             idxs = sorted(idxs)
@@ -286,14 +279,13 @@ class MoleculePool(Sequence[Mol]):
             the indices for which to retrieve the SMILES strings
         """
         if min(idxs) < 0 or max(idxs) >= len(self):
-            raise IndexError(f'Pool index out of range: {idxs}')
+            raise IndexError(f"Pool index out of range: {idxs}")
 
         idxs = sorted(idxs)
-        with h5py.File(self.fps_, 'r') as h5fid:
-            fps = h5fid['fps']
-            enc_mols = fps[idxs]
+        with h5py.File(self.fps_, "r") as h5f:
+            fps = h5f["fps"]
 
-        return enc_mols
+            return fps[idxs]
 
     def get_cluster_ids(self, idxs: Sequence[int]) -> Optional[List[int]]:
         """Get the cluster_ids for the given indices, if the pool is
@@ -307,7 +299,7 @@ class MoleculePool(Sequence[Mol]):
             the indices for which to retrieve the SMILES strings
         """
         if min(idxs) < 0 or max(idxs) >= len(self):
-            raise IndexError(f'Pool index out of range: {idxs}')
+            raise IndexError(f"Pool index out of range: {idxs}")
 
         if self.cluster_ids:
             idxs = sorted(idxs)
@@ -317,7 +309,7 @@ class MoleculePool(Sequence[Mol]):
 
     def smis(self) -> Iterator[str]:
         """A generator over pool molecules' SMILES strings
-        
+
         Yields
         ------
         smi : str
@@ -327,177 +319,201 @@ class MoleculePool(Sequence[Mol]):
             for smi in self.smis_:
                 yield smi
         else:
-            with self.open_(self.library) as fid:
-                reader = csv.reader(fid, delimiter=self.delimiter)
-                if self.title_line:
-                    next(reader)
-
-                if self.invalid_lines:
-                    for i, row in enumerate(reader):
-                        if i in self.invalid_lines:
-                            continue
-                        yield row[self.smiles_col]
+            for library in self.libraries:
+                if self.cxsmiles:
+                    for smi in self.read_libary(library):
+                        yield CXSMILES_PATTERN.split(smi)[0]
                 else:
-                    for row in reader:
-                        yield row[self.smiles_col]
+                    for smi in self.read_libary(library):
+                        yield smi
+
+    def read_libary(self, library) -> Iterator[str]:
+        """Iterate through the SMILES string in the library using this pool's parsing parameters
+
+        Parameters
+        ----------
+        library : Union[str, Path]
+            the filepath of the library
+
+        Yields
+        -------
+        Iterator[str]
+            the SMILES strings in the library
+        """
+        if Path(library).suffix == ".gz":
+            open_ = partial(gzip.open, mode="rt")
+        else:
+            open_ = open
+
+        with open_(library) as fid:
+            reader = csv.reader(fid, delimiter=self.delimiter)
+            if self.title_line:
+                next(reader)
+
+            if self.invalid_idxs:
+                for i, row in enumerate(reader):
+                    if i in self.invalid_idxs:
+                        continue
+                    yield row[self.smiles_col]
+            else:
+                for row in reader:
+                    yield row[self.smiles_col]
 
     def fps(self) -> Iterator[np.ndarray]:
         """Return a generator over pool molecules' feature representations
-        
+
         Yields
         ------
         fp : np.ndarray
             a molecule's fingerprint
         """
-        with h5py.File(self.fps_, 'r') as h5fid:
-            fps = h5fid['fps']
+        with h5py.File(self.fps_, "r") as h5f:
+            fps = h5f["fps"]
             for fp in fps:
                 yield fp
 
     def fps_batches(self) -> Iterator[np.ndarray]:
         """Return a generator over batches of pool molecules' feature
         representations
-        
-        If operating on batches of fingerpints, it is likely more preferable
-        to use this method in order to ensure efficient chunk access from the
-        internal HDF5 file
+
+        Itt is preferable to use this method when operating on batches of
+        fingerprints
 
         Yields
         ------
         fps_batch : np.ndarray
             a batch of molecular fingerprints
         """
-        with h5py.File(self.fps_, 'r') as h5fid:
-            fps = h5fid['fps']
+        with h5py.File(self.fps_, "r") as h5f:
+            fps = h5f["fps"]
             for i in range(0, len(fps), self.chunk_size):
-                yield fps[i:i+self.chunk_size]
+                yield fps[i : i + self.chunk_size]
 
     def cluster_ids(self) -> Optional[Iterator[int]]:
         """If the pool is clustered, return a generator over pool inputs'
         cluster IDs. Otherwise, return None"""
         if self.cluster_ids_:
-            def return_gen(cids):
-                for cid in cids:
+
+            def return_gen():
+                for cid in self.cluster_ids_:
                     yield cid
-            return return_gen(self.cluster_ids_)
+
+            return return_gen()
 
         return None
 
-    def _encode_mols(self, featurizer: Featurizer, 
-                     path: str) -> int:
+    def _encode_mols(self, featurizer: Featurizer, path: Optional[str] = None):
         """Precalculate the fingerprints of the library members, if necessary.
 
         Parameters
         ----------
         featurizer : Featurizer
-            the featurizer to use for generating the fingerprints
-        path : str
+            the featurizer to use for calculating the fingerprints
+        path : Optional[str], default=None
             the path to which the fingerprints file should be written
-        
-        Returns
-        -------
-        chunk_size : int
-            the length of each chunk in the HDF5 file
-        
+
         Side effects
         ------------
-        (sets) self.fps_ : str
-            the filepath of the h5 file containing the fingerprints
-        (sets) self.invalid_lines : Set[int]
-            the set of invalid lines in the library file
         (sets) self.size : int
-            the number of valid SMILES strings in the library
+            the total number of fingerprints in the fingerprints HDF5 file
+        (sets) self.chunk_size : int
+            the length of each chunk in the HDF5 file
+        (sets) self.fps_ : str
+            the filepath of the HDF5 file containing the fingerprints
+        (sets) self.invalid_idxs : Set[int]
+            the set of invalid lines in the library file
         """
         if self.fps_ is None:
             if self.verbose > 0:
-                print('Precalculating feature matrix ...', end=' ')
+                print("Precalculating feature matrix ...", end=" ")
 
             total_size = sum(1 for _ in self.smis())
-            self.fps_, self.invalid_lines = fingerprints.feature_matrix_hdf5(
-                self.smis(), total_size, featurizer=featurizer,
-                name=Path(self.library).stem, path=path
+
+            filename = Path(self.libraries[0])
+            while filename.suffix:
+                filename = filename.with_suffix("")
+            path = path or Path(self.libraries[0]).parent
+
+            self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
+                self.smis(),
+                total_size,
+                featurizer=featurizer,
+                name=filename.stem,
+                path=path,
             )
             if self.verbose > 0:
-                print('Done!')
+                print("Done!")
                 print(f'Feature matrix was saved to "{self.fps_}"', flush=True)
-                print(f'Detected {len(self.invalid_lines)} invalid SMILES!')
+                print(f"Detected {len(self.invalid_idxs)} invalid SMILES!")
         else:
             if self.verbose > 0:
                 print(f'Using feature matrix from "{self.fps_}"', flush=True)
 
-        with h5py.File(self.fps_, 'r') as h5f:
-            fps = h5f['fps']
-            chunk_size = fps.chunks[0]
+        with h5py.File(self.fps_, "r") as h5f:
+            fps = h5f["fps"]
             self.size = len(fps)
+            self.chunk_size = fps.chunks[0]
 
-        return chunk_size
-
-    def _validate_and_cache_smis(self, cache: bool = False,
-                                 validated: bool = False) -> int:
+    def _validate_and_cache_smis(self, cache: bool = False) -> int:
         """Validate all the SMILES strings in the pool and return the length
         of the validated pool
 
         Parameters
         ----------
-        cache : bool (Default = False)
-            whether to cache the SMILES strings as well
-        validated : bool (Default = False)
-            whether the pool has been validated already. If True, the user 
-            accepts the risk of an invalid molecule raising an exception later
-            on. Mostly useful for multiple runs on a pool that has been
-            previously validated and pruned.
+        cache : bool, default=False
+            whether to cache the SMILES strings
 
-        Returns
-        -------
-        size : int
-            the size of the validated pool
-        
         Side effects
         ------------
         (sets) self.smis_ : List[str]
             if cache is True
-        (sets) self.invalid_lines
-            if cache is False and was not previously set by _encode_mols()
+        (sets) self.size : int
+        (sets) self.invalid_idxs : Set[int]
         """
-        if self.invalid_lines is not None and not cache:
-            return len(self)
-
-        if self.verbose > 0:
-            print('Validating SMILES strings ...', end=' ')
-
-        self.invalid_lines = set()
-        smis = self.smis()
-
-        if validated:
-            if cache:
-                self.smis_ = [smi for smi in tqdm(smis, desc='Caching')]
-        else:
-            valid_smis = validate_smis(smis)
-            if cache:
-                smis = [
-                    smi for smi in tqdm(
-                        valid_smis, desc='Validating', 
-                        unit='smi', smoothing=0.
-                    )
-                ]
-                self.smis_ = [smi for smi in smis if smi is not None]
-                self.invalid_lines = {
-                    i for i, smi in enumerate(smis) if smi is None
-                }
+        if self.invalid_idxs is not None:
+            if len(self.invalid_idxs) == 0:
+                if cache:
+                    self.smis_ = [smi for smi in self.smis()]
+                    self.size = len(self.smis_)
+                else:
+                    self.size = self.size or sum(1 for _ in self.smis())
             else:
-                self.invalid_lines = {
-                    i for i, smi in tqdm(
-                        enumerate(valid_smis), desc='Validating',
-                        unit='smi', smoothing=0.
-                    ) if smi is None
-                }
+                if cache:
+                    self.smis_ = [
+                        smi
+                        for i, smi in enumerate(self.smis())
+                        if i not in self.invalid_idxs
+                    ]
+                    self.size = len(self.smis_)
+                else:
+                    if self.size is None:
+                        n_total_smis = sum(1 for _ in self.smis())
+                        self.size = n_total_smis - len(self.invalid_idxs)
+        else:
+            if self.verbose > 0:
+                print("Validating SMILES strings ...", end=" ", flush=True)
 
-        if self.verbose > 0:
-            print('Done!', flush=True)
-        if self.verbose > 1:
-            print(f'Detected {len(self.invalid_lines)} invalid SMILES')
+            valid_smis = validate_smis(self.smis())
+            invalid_idxs = set()
+            if cache:
+                self.smis_ = []
+                for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
+                    if smi is None:
+                        self.invalid_idxs.add(i)
+                    else:
+                        self.smis_.append(smi)
+            else:
+                for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
+                    if smi is None:
+                        invalid_idxs.add(i)
 
-        return sum(1 for _ in self.smis()) - len(self.invalid_lines)
+            self.size = (i + 1) - len(invalid_idxs)
+            self.invalid_idxs = invalid_idxs
+
+            if self.verbose > 0:
+                print("Done!", flush=True)
+            if self.verbose > 1:
+                print(f"Detected {len(self.invalid_idxs)} invalid SMILES")
 
     def _cluster_mols(self, ncluster: int) -> None:
         """Cluster the molecules in the library.
@@ -506,7 +522,7 @@ class MoleculePool(Sequence[Mol]):
         ----------
         ncluster : int
             the number of clusters to form
-        
+
         Side effects
         ------------
         (sets) self.cluster_ids : List[int]
@@ -514,32 +530,23 @@ class MoleculePool(Sequence[Mol]):
         (sets) self.cluster_sizes : Counter[int, int]
             a mapping from cluster ID to the number of molecules in that cluster
         """
-        self.cluster_ids_ = cluster_fps_h5(self.fps_, ncluster=ncluster)
+        self.cluster_ids_ = cluster.cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
 
-def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
-    """Batch an iterable into batches of size chunk_size, with the final
-    batch potentially being smaller"""
-    it = iter(it)
-    return iter(lambda: list(islice(it, chunk_size)), [])
-
-def validate_smi(smi):
-    return smi if Chem.MolFromSmiles(smi) else None
 
 @ray.remote
 def _validate_smis(smis):
-    RDLogger.DisableLog('rdApp.*')
+    RDLogger.DisableLog("rdApp.*")
     return [smi if Chem.MolFromSmiles(smi) else None for smi in smis]
 
+
 def validate_smis(smis) -> Iterator[Optional[str]]:
-    refs = [
-        _validate_smis.remote(smis_batch)
-        for smis_batch in batches(smis, 4096)
-    ]
+    refs = [_validate_smis.remote(smis_batch) for smis_batch in batches(smis, 4096)]
     for ref in refs:
         batch = ray.get(ref)
         for smi in batch:
             yield smi
+
 
 class EagerMoleculePool(MoleculePool):
     """Alias for a MoleculePool"""
