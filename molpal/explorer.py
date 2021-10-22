@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple, TypeVar, Union
 import numpy as np
 
 from molpal import acquirer, featurizer, models, objectives, pools
+from molpal.exceptions import IncompatibilityError, InvalidExplorationError
 
 T = TypeVar('T')
 
@@ -321,7 +322,6 @@ class Explorer:
             self.explore_batch()
 
         while not self.completed:
-            # if self.verbose > 0:
             print(f'{self.status}. Continuing...', flush=True)
             self.explore_batch()
 
@@ -780,9 +780,3 @@ class Explorer:
                     failures[row[0]] = None
         
         return scores, failures
-
-class InvalidExplorationError(Exception):
-    pass
-
-class IncompatibilityError(Exception):
-    pass
