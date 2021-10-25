@@ -14,7 +14,8 @@ dependencies:
     - configargparse
     - h5py
     - numpy
-    - ray[default] >= 1.7
+    - ray >= 1.7
+    - ray[tune]
     - pytorch-lightning
     - scikit-learn
     - tensorflow
