@@ -4,7 +4,6 @@ import signal
 import sys
 from timeit import default_timer as time
 
-# import pytorch_lightning
 import ray
 
 from molpal import args, Explorer

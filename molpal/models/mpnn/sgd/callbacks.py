@@ -5,6 +5,42 @@ from typing import Dict, List
 from ray.util.sgd.v2 import SGDCallback
 from tqdm import tqdm
 
+class EarlyStoppingCallback(SGDCallback):
+    def __init__(
+        self,
+        monitor: str,
+        min_delta: float = 0.0,
+        patience: int = 10,
+        minimize: bool = True,
+        verbose: bool = False
+    ):
+        self.monitor = monitor
+        self.min_delta = min_delta
+        self.patience = patience
+        self.wait_count = 0
+        self.minimize = minimize
+        self.verbose = verbose
+
+        super().__init__()
+    
+    def handle_result(self, results: List[Dict], **info):
+        avg_result = sum(results[self.monitor]) / len(results)
+
+        delta = avg_result - self.curr_best
+        delta = -1 * delta if self.minimize else delta
+
+        if delta > self.min_delta:
+            self.curr_best = avg_result
+            self.wait_count = 0
+        else:
+            self.wait_count += 1
+
+        if self.wait_count > self.patience:
+            print("STOP") if self.verbose else None
+
+    def start_training(self, logdir: str, **info):
+        self.curr_best = float("inf") if self.minimize else float("-inf")
+
 class PrintingCallback(SGDCallback):
     def handle_result(self, results: List[Dict], **info):
         print(results)
