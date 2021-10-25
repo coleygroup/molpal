@@ -238,27 +238,27 @@ def train_func(config: Dict):
         "rmse": lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction="none")),
     }[metric]
 
-    with trange(
-        max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True
-    ) as bar:
-        for i in bar:
-            train_res = train_epoch(
-                train_loader,
-                model,
-                criterion,
-                optimizer,
-                scheduler,
-                device,
-                uncertainty,
-            )
-            val_res = validate_epoch(val_loader, model, metric, device, uncertainty)
+    # with trange(
+    #     max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True
+    # ) as bar:
+    for i in range(max_epochs):
+        train_res = train_epoch(
+            train_loader,
+            model,
+            criterion,
+            optimizer,
+            scheduler,
+            device,
+            uncertainty,
+        )
+        val_res = validate_epoch(val_loader, model, metric, device, uncertainty)
 
-            train_loss = train_res["loss"]
-            val_loss = val_res["loss"]
+        train_loss = train_res["loss"]
+        val_loss = val_res["loss"]
 
-            bar.set_postfix_str(
-                f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
-            )
-            sgd.report(epoch=i)
-            
+        # bar.set_postfix_str(
+        #     f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
+        # )
+        sgd.report(epoch=i, train_loss=train_loss, val_loss=val_loss)
+
     return model.module.to("cpu")
