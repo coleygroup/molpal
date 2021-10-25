@@ -31,69 +31,85 @@ def train_epoch(
 
     for i, batch in enumerate(train_loader):
         # batch_info = {"batch_idx": batch_idx}
+        componentss, targets = batch
+        componentss = [
+            [X.to(device) if torch.is_tensor(X) else X for X in components]
+            for components in componentss
+        ]
 
-        step_results = train_step(
-            batch,
-            model,
-            criterion,
-            optimizer,
-            scheduler,
-            device,
-            uncertainty,
-        )
+        mask = torch.tensor([[bool(y) for y in ys] for ys in targets], device=device)
+        targets = torch.tensor([[y or 0 for y in ys] for ys in targets], device=device)
+        class_weights = torch.ones(targets.shape, device=device)
 
-        losses.append(step_results["loss"])
-        num_samples += step_results["num_samples"]
+        preds = model(componentss)
+
+        if uncertainty == "mve":
+            pred_means = preds[:, 0::2]
+            pred_vars = preds[:, 1::2]
+            loss = criterion(pred_means, pred_vars, targets)
+        else:
+            loss = criterion(preds, targets) * class_weights * mask
+
+        loss = loss.sum() / mask.sum()
+
+        optimizer.zero_grad()
+        loss.backward()
+
+        optimizer.step()
+        scheduler.step()
+
+        losses.append(loss)
+        num_samples += len(targets)
 
     loss = torch.stack(losses).mean().item()
 
     return {"loss": loss, "num_samples": num_samples}
 
 
-def train_step(
-    batch: Tuple,
-    model: nn.Module,
-    criterion: nn.Module,
-    optimizer: Optimizer,
-    scheduler: _LRScheduler,
-    device: torch.device,
-    uncertainty: str = "none",
-):
-    componentss, targets = batch
+# def train_step(
+#     batch: Tuple,
+#     model: nn.Module,
+#     criterion: nn.Module,
+#     optimizer: Optimizer,
+#     scheduler: _LRScheduler,
+#     device: torch.device,
+#     uncertainty: str = "none",
+# ):
+#     componentss, targets = batch
 
-    optimizer.zero_grad()
+#     optimizer.zero_grad()
 
-    componentss = [
-        [
-            X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X
-            for X in components
-        ]
-        for components in componentss
-    ]
+#     componentss = [
+#         [
+#             X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X
+#             for X in components
+#         ]
+#         for components in componentss
+#     ]
 
-    mask = torch.tensor([[bool(y) for y in ys] for ys in targets], device=device)
-    targets = torch.tensor([[y or 0 for y in ys] for ys in targets], device=device)
-    class_weights = torch.ones(targets.shape, device=device)
+#     mask = torch.tensor([[bool(y) for y in ys] for ys in targets], device=device)
+#     targets = torch.tensor([[y or 0 for y in ys] for ys in targets], device=device)
+#     class_weights = torch.ones(targets.shape, device=device)
 
-    preds = model(componentss)
+#     preds = model(componentss)
 
-    if uncertainty == "mve":
-        pred_means = preds[:, 0::2]
-        pred_vars = preds[:, 1::2]
+#     if uncertainty == "mve":
+#         pred_means = preds[:, 0::2]
+#         pred_vars = preds[:, 1::2]
 
-        loss = criterion(pred_means, pred_vars, targets)
-    else:
-        loss = criterion(preds, targets) * class_weights * mask
+#         loss = criterion(pred_means, pred_vars, targets)
+#     else:
+#         loss = criterion(preds, targets) * class_weights * mask
 
-    loss = loss.sum() / mask.sum()
+#     loss = loss.sum() / mask.sum()
 
-    loss.backward()
-    optimizer.step()
-    scheduler.step()
+#     loss.backward()
+#     optimizer.step()
+#     scheduler.step()
 
-    return {"loss": loss, "num_samples": len(targets)}
+#     return {"loss": loss, "num_samples": len(targets)}
 
-
+@torch.no_grad()
 def validate_epoch(
     val_loader: DataLoader,
     model: nn.Module,
@@ -108,46 +124,60 @@ def validate_epoch(
 
     for i, batch in enumerate(val_loader):
         # batch_info = {"batch_idx": batch_idx}
+        # step_results = validate_step(batch, model, metric, device, uncertainty)
+        # losses.append(step_results["loss"])
+        # num_samples += step_results["num_samples"]
+        componentss, targets = batch
 
-        step_results = validate_step(batch, model, metric, device, uncertainty)
+        model = model
+        metric = metric
 
-        losses.append(step_results["loss"])
-        num_samples += step_results["num_samples"]
+        componentss = [
+            [X.to(device) if torch.is_tensor(X) else X for X in components]
+            for components in componentss
+        ]
+        targets = torch.tensor(targets, device=device)
+
+        with torch.no_grad():
+            preds = model(componentss)
+
+        if uncertainty == "mve":
+            preds = preds[:, 0::2]
+
+        loss = metric(preds, targets)
+        losses.append(loss)
+        num_samples += len(targets)
 
     loss = torch.cat(losses).mean().item()
 
     return {"loss": loss, "num_samples": num_samples}
 
 
-def validate_step(
-    batch: Tuple,
-    model: nn.Module,
-    metric: nn.Module,
-    device: torch.device,
-    uncertainty: str = "none",
-):
-    componentss, targets = batch
+# def validate_step(
+#     batch: Tuple,
+#     model: nn.Module,
+#     metric: nn.Module,
+#     device: torch.device,
+#     uncertainty: str = "none",
+# ):
+#     componentss, targets = batch
+#     componentss = [
+#         [
+#             X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X
+#             for X in components
+#         ]
+#         for components in componentss
+#     ]
+#     targets = torch.tensor(targets, device)
 
-    model = model
-    metric = metric
+#     with torch.no_grad():
+#         preds = model(componentss)
 
-    componentss = [
-        [
-            X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X
-            for X in components
-        ]
-        for components in componentss
-    ]
-    targets = torch.tensor(targets, device=device)
+#     if uncertainty == "mve":
+#         preds = preds[:, 0::2]
 
-    with torch.no_grad():
-        preds = model(componentss)
-
-    if uncertainty == "mve":
-        preds = preds[:, 0::2]
-
-    loss = metric(preds, targets)
-    return {"loss": loss, "num_samples": len(targets)}
+#     loss = metric(preds, targets)
+#     return {"loss": loss, "num_samples": len(targets)}
 
 
 def train_func(config: Dict):
@@ -166,18 +196,16 @@ def train_func(config: Dict):
     final_lr = config.get("final_lr", 1e-4)
     ncpu = config.get("ncpu", 1)
 
-    device = torch.device(
-        f"cuda:{sgd.local_rank()}" if torch.cuda.is_available() else "cpu"
-    )
     if torch.cuda.is_available():
+        device = torch.device(f"cuda:{sgd.local_rank()}")
         torch.cuda.set_device(device)
+    else:
+        device = torch.device("cpu")
 
     model = model.to(device)
     model = DistributedDataParallel(
         model, device_ids=[sgd.local_rank()] if torch.cuda.is_available() else None
     )
-
-    # print(list(model.parameters())[1])
 
     train_loader = DataLoader(
         train_data,
@@ -213,7 +241,7 @@ def train_func(config: Dict):
     with trange(
         max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True
     ) as bar:
-        for _ in bar:
+        for i in bar:
             train_res = train_epoch(
                 train_loader,
                 model,
@@ -231,5 +259,6 @@ def train_func(config: Dict):
             bar.set_postfix_str(
                 f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
             )
-
+            sgd.report(epoch=i)
+            
     return model.module.to("cpu")
