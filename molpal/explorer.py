@@ -410,6 +410,9 @@ class Explorer:
         self._update_predictions()
         if self.prune_threshold is not None and self.iter == 1:
             false_negatives = self.pool.prune(self.prune_threshold, self.Y_pred, self.Y_var)
+            self.Y_pred = np.array([])
+            self._update_predictions()
+
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
                 print(f"Expected number of false pruned molecules: {false_negatives}")
