@@ -260,6 +260,9 @@ class MoleculePool(Sequence):
         mask = np.ones(Y_mean.size, bool)
         mask[top_k_idxs] = False
 
+        if Y_var.shape != Y_mean.shape:
+            return 0
+            
         I = Y_mean - cutoff
         with np.errstate(divide='ignore'):
             Z = I / np.sqrt(Y_var)
@@ -271,7 +274,7 @@ class MoleculePool(Sequence):
         if idx < 0 or idx >= len(self):
             raise IndexError(f"pool index(={idx}) out of range")
 
-        if self.smis_:
+        if self.smis_ is not None:
             return self.smis_[idx]
 
         return next(islice(self.smis(), idx, idx + 1))
@@ -316,7 +319,7 @@ class MoleculePool(Sequence):
         if min(idxs) < 0 or max(idxs) >= len(self):
             raise IndexError(f"Pool index out of range: {idxs}")
 
-        if self.smis:
+        if self.smis_ is not None:
             idxs = sorted(idxs)
             smis = [self.smis_[i] for i in sorted(idxs)]
         else:
