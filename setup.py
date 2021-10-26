@@ -35,9 +35,8 @@ setup(
         "configargparse",
         "h5py",
         "numpy",
-        "ray >= 1.7",
-        "ray[tune]"
-        "scikit_learn",
+        "ray[tune] >= 1.7",
+        "scikit-learn",
         "tensorflow",
         "tensorflow_addons",
         "tqdm",
