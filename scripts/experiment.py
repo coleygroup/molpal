@@ -44,9 +44,9 @@ class Experiment:
         final_csv = data_dir / "all_explored_final.csv"
         final_scores, final_failures = Experiment.read_scores(final_csv)
         self.__size = len({**final_scores, **final_failures})
-
         scores_csvs = [p for p in data_dir.iterdir() if "final" not in p.stem]
         self.scores_csvs = sorted(scores_csvs, key=lambda p: int(p.stem.split("_")[-1]))
+        self.__sizes = [len(self[i]) for i in range(self.num_iters)]
 
     def __len__(self) -> int:
         """the total number of inputs sampled in this experiment"""
@@ -73,7 +73,13 @@ class Experiment:
     @property
     def init_size(self) -> int:
         """the size of this experiment's initialization batch"""
-        return len(self[0])
+        return self.__sizes[0]
+
+    @property
+    def num_acquired(self) -> List[int]:
+        """The total number of points acquired *by* iteration i, where i=0 is the
+        initialization batch"""
+        return self.__sizes
 
     def get(self, i: int, N: Optional[int] = None) -> Dict:
         """get the top-N scores for iteration i"""
