@@ -8,9 +8,11 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
 
 import joblib
 import numpy as np
+import ray
 from ray.util.joblib import register_ray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
+from tqdm import tqdm
 
 from molpal.featurizer import feature_matrix
 from molpal.models.base import Model
@@ -39,7 +41,7 @@ class RFModel(Model):
                  test_batch_size: Optional[int] = 65536,
                  model_seed: Optional[int] = None,
                  **kwargs):
-        test_batch_size = test_batch_size or 65536
+        test_batch_size = test_batch_size or 65536 // 2
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators, max_depth=max_depth,
@@ -67,8 +69,8 @@ class RFModel(Model):
             Y_pred = self.model.predict(X)
 
         errors = Y_pred - Y
-        logging.info(f'  training MAE: {np.mean(np.abs(errors)):.2f},'
-                     f'MSE: {np.mean(errors**2):.2f}')
+        logging.info(f'  training MAE: {np.mean(np.abs(errors)):0.2f},'
+                     f'MSE: {(errors**2).mean():0.2f}')
         return True
 
     def get_means(self, xs: Sequence) -> np.ndarray:
@@ -78,13 +80,12 @@ class RFModel(Model):
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         X = np.vstack(xs)
-        preds = np.zeros((len(X), len(self.model.estimators_)))
+        X = ray.put(X)
+        
+        refs = [RFModel.subtree_predict.remote(tree, X) for tree in self.model.estimators_]
+        predss = np.array(ray.get(refs))
 
-        with joblib.parallel_backend('ray'):
-            for j, submodel in enumerate(self.model.estimators_):
-                preds[:, j] = submodel.predict(xs)
-
-        return np.mean(preds, axis=1), np.var(preds, axis=1)
+        return np.mean(predss, 0), np.var(predss, 0)
 
     def save(self, path) -> str:
         path = Path(path)
@@ -97,6 +98,11 @@ class RFModel(Model):
     
     def load(self, path):
         self.model = pickle.load(open(path, 'rb'))
+
+    @staticmethod
+    @ray.remote
+    def subtree_predict(tree, xs):
+        return tree.predict(xs)
 
 class GPModel(Model):
     """Gaussian process model
