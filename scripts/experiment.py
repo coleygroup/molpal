@@ -24,9 +24,10 @@ class Experiment:
 
         try:
             chkpts_dir = self.experiment / "chkpts"
-            self.chkpts = sorted(
-                chkpts_dir.iterdir(), key=lambda p: int(p.stem.split("_")[-1])
-            )
+            chkpt_dirs = [
+                d for d in chkpts_dir.iterdir() if len(d.stem.split("_")) <= 2
+            ]
+            self.chkpt_dirs = sorted(chkpt_dirs, key=lambda d: int(d.stem.split("_")[1]))
             config = Experiment.read_config(self.experiment / "config.ini")
             try:
                 self.k = int(config["top-k"])
@@ -119,7 +120,7 @@ class Experiment:
         """
         if i not in range(1, self.num_iters):
             raise ValueError(f"arg: i must be in {{1..{self.num_iters}}}. got {i}")
-        preds_npz = np.load(self.chkpts[i] / "preds.npz")
+        preds_npz = np.load(self.chkpt_dirs[i] / "preds.npz")
 
         return preds_npz["Y_pred"], preds_npz["Y_var"]
 

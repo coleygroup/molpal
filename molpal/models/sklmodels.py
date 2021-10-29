@@ -94,11 +94,10 @@ class RFModel(Model):
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         X = np.vstack(xs)
-        X = ray.put(X)
 
-        refs = [
-            RFModel.subtree_predict.remote(tree, X) for tree in self.model.estimators_
-        ]
+        X = ray.put(X)
+        trees = [ray.put(tree) for tree in self.model.estimators_]
+        refs = [RFModel.subtree_predict.remote(tree, X) for tree in trees]
         predss = np.array(ray.get(refs))
 
         return np.mean(predss, 0), np.var(predss, 0)

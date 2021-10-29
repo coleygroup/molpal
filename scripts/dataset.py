@@ -14,19 +14,19 @@ class Dataset:
     metric: str
     N: int
     num_acquired: List[int]
-    avgs: np.ndarray
+    avg: np.ndarray
     smis: np.ndarray
     scores: np.ndarray
     reps: int = field(init=False)
     num_iters: int = field(init=False)
 
     def __post_init__(self):
-        self.reps = len(self.avgs)
+        self.reps = len(self.avg)
         self.num_iters = len(self.num_acquired)
 
-        avgs = self.avgs
-        self.avgs = np.empty((avgs.shape[1], 2))
-        self.avgs[:, 0], self.avgs[:, 1] = avgs.mean(0), avgs.std(0)
+        avg = self.avg
+        self.avg = np.empty((avg.shape[1], 2))
+        self.avg[:, 0], self.avg[:, 1] = avg.mean(0), avg.std(0)
 
         smis = self.smis
         self.smis = np.empty((smis.shape[1], 2))
@@ -46,7 +46,7 @@ class Dataset:
             f"{'Points acquired': >0{width}}: {', '.join(map(str, self.num_acquired))}"
         )
         rows.append(
-            f"{'Average': >0{width}}: {Dataset.format_reward_array(self.avgs, 2)}"
+            f"{'Average': >0{width}}: {Dataset.format_reward_array(self.avg, 2)}"
         )
         rows.append(f"{'SMILES': >0{width}}: {Dataset.format_reward_array(self.smis)}")
         rows.append(
@@ -55,6 +55,16 @@ class Dataset:
 
         return "\n".join((border, header, border, *rows))
 
+    def get_reward(self, reward: str) -> np.ndarray:
+        try:
+            return {
+                "AVG": self.avg,
+                "SCORES": self.scores,
+                "SMILES": self.smis
+            }[reward.upper()]
+        except KeyError:
+            raise ValueError(f"Invalid reward! got: {reward}")
+            
     def save(self):
         pkl_file = f"{self.split:0.3f}-{self.model}-{self.metric}-top{self.N}.pkl"
         pickle.dump(self, open(pkl_file, "wb"))
@@ -126,8 +136,8 @@ if __name__ == "__main__":
         rewardss.append(
             [e.calculate_reward(i, true_top_k, True) for i in range(e.num_iters)]
         )
-
     rewardss = np.array(rewardss)
+
     d = Dataset(
         args.split,
         args.model,

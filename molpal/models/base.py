@@ -143,7 +143,7 @@ class Model(ABC):
         else:
             for batch_xs in tqdm(
                 xs, total=n_batches, desc='Inference',
-                smoothing=0., unit='smi'
+                smoothing=0., unit='chunk'
             ):
                 means, variances = self.get_means_and_vars(batch_xs)
                 meanss.append(means)
