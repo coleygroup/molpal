@@ -129,6 +129,7 @@ class Explorer:
         max_iters: int = 10,
         budget: Union[int, float] = 1.0,
         prune_threshold: Optional[Union[int, float]] = None,
+        prune_max_fp: Optional[Union[int, float]] = None,
         write_final: bool = True,
         write_intermediate: bool = False,
         chkpt_freq: int = 0,
@@ -169,7 +170,8 @@ class Explorer:
         self.budget = budget
 
         self.prune_threshold = prune_threshold
-
+        self.prune_max_fp = prune_max_fp
+        
         # logging attributes
         self.write_final = write_final
         self.write_intermediate = write_intermediate
@@ -316,8 +318,13 @@ class Explorer:
         if len(self.recent_avgs) < self.window_size:
             return False
 
-        sma = sum(self.recent_avgs[-self.window_size :]) / self.window_size
+        sma = sum(self.recent_avgs[-self.window_size:]) / self.window_size
         return (self.top_k_avg - sma) / sma <= self.delta
+
+    @property
+    def should_chkpt(self) -> bool:
+        """whether it is time to checkpoint"""
+        return (self.iter - self.previous_chkpt_iter) > self.chkpt_freq
 
     def explore(self):
         self.run()
@@ -377,7 +384,7 @@ class Explorer:
 
         self.iter += 1
 
-        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+        if self.should_chkpt:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
@@ -408,14 +415,16 @@ class Explorer:
 
         self._update_model()
         self._update_predictions()
-        if self.prune_threshold is not None and self.iter == 1:
-            false_negatives = self.pool.prune(self.prune_threshold, self.Y_pred, self.Y_var)
+        if (self.prune_threshold is not None or self.prune_max_fp is not None) and self.iter == 1:
+            expected_fp = self.pool.prune(
+                self.k, self.Y_pred, self.Y_var, self.prune_max_fp, self.prune_threshold
+            )
             self.Y_pred = np.array([])
             self._update_predictions()
 
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
-                print(f"Expected number of false pruned molecules: {false_negatives}")
+                print(f"Expected number of retained false positives: {expected_fp}")
                 pass
 
         inputs = self.acquirer.acquire_batch(
@@ -438,6 +447,10 @@ class Explorer:
             self.write_scores(include_failed=True)
 
         self.iter += 1
+
+        if self.should_chkpt:
+            self.checkpoint()
+            self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)

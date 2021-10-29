@@ -90,6 +90,8 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         type=int, nargs='*',
                         help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
     parser.add_argument('--prune-threshold', type=restricted_float_or_int, help="the number or fraction of top-predicted molecules to keep after the first round of exploration")
+    parser.add_argument('--prune-max-fp', type=restricted_float_or_int)
+    
 #####################################
 #       ACQUISITION ARGUMENTS       #
 #####################################
