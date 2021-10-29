@@ -16,7 +16,6 @@ import seaborn as sns
 
 from dataset import Dataset
 from experiment import Experiment
-from molpal.models.chemprop import data
 
 sns.set_theme(style='white', context='paper')
 
