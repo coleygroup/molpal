@@ -1,11 +1,14 @@
 import csv
 from collections import Counter
+from enum import auto
 from functools import partial
 import gzip
 from itertools import islice, repeat
 import re
 from pathlib import Path
+import tempfile
 from typing import Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+import uuid
 
 import h5py
 import numpy as np
@@ -16,7 +19,7 @@ from tqdm import tqdm
 
 from molpal.featurizer import Featurizer
 from molpal.pools import cluster, fingerprints
-from molpal.utils import batches
+from molpal.utils import AutoName, batches
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -24,6 +27,10 @@ Mol = Tuple[str, np.ndarray, Optional[int]]
 
 CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
 
+class PruneMethod(AutoName):
+    EFP = auto()
+    PROB = auto()
+    TOP = auto()
 
 class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
@@ -218,8 +225,11 @@ class MoleculePool(Sequence):
         k: Union[int, float],
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
+        prune_method: PruneMethod = PruneMethod.TOP,
+        l: Optional[Union[int, float]] = None,
+        beta: float = 2.,
         max_fp: Optional[Union[int, float]] = None,
-        l: Optional[Union[int, float]] = None
+        min_hit_prob: float = 0.025
     ) -> float:
         """prune the library to the top-k predicted compounds based on their predicted means
 
@@ -229,54 +239,55 @@ class MoleculePool(Sequence):
         Parameters
         ----------
         k : Union[int, float]
-            the fraction of number of top-scoring molecules in the pool above which molecules are
-            classified as predicted "hits" or "positives"
+            the percentile or rank above which molecules are classified as "hits" or "positives" 
         Y_mean : np.ndarray
             the predicted mean for each molecule
         Y_var : np.ndarray
             the predicted variance for each molecule
-        max_fp : Optional[Union[int, float]], default=None
-            the maximal allowable number of false positives for risk-based pruning, expressed as
-            either a number or fraction of the pool size. If l is specified, pruning will be
-            cutoff-based, regardless of whether the maximal risk is specified
+        prune_method : PruneMethod, default=PruneMethod.TOP
+            the method by which to prune the pool:
+            * PruneMethod.TOP: retain the top-k compounds by predicted mean + beta * predicted
+                uncertainty.
+            * PruneMethod.EFN: retain a maximal number of expected false positives up to some input
+                threshold
+            * PruneMethod.PROB: retain all molecules that have probability p > p* of being a "hit"
         l : Union[int, float], default=None
-            the number or fraction of the pool to retain after pruning. If None, compounds will be
-            pruned until the expected number of false positives retained is below the specified
-            threshold.
+            the number or fraction of the pool to retain after TOP pruning.
+        beta : float, default=2.
+            the amount by which to multiply the predicted uncertainty before adding to the
+            predicted mean
+        max_fp : Union[int, float], default=0.01
+            the maximal expected number of true negatives to retain for EFN pruning, expressed as
+            either a number or fraction of the pool size.
+        min_hit_prob : float, default=0.025
+            the minimum probability that a compound is a hit for it to be retained in PROB pruning
 
         Returns
         -------
         float
-            the expected number of expected false positives, where a "positive" constitutes a molecule with a predicted mean inside the top-k
+            the expected number of true positives pruned, where a "positive" constitutes a molecule 
+            with a predicted mean inside the top-k
         """
         if isinstance(k, float):
-            k = int(k*len(self))
+            k = int(k * len(Y_mean))
         if k < 1:
             raise ValueError(f"hit threshold (k) must be positive! got: {k}")
 
-        if l is None and max_fp is None:
-            raise ValueError("No pruning method was specified!")
-            
-        sorted_idxs = np.argsort(Y_mean)[::-1]
-        Y_mean = Y_mean[sorted_idxs]
-        Y_var = Y_var[sorted_idxs]
-
-        if l is not None:
-            l, E_FP = self.prune_cutoff(k, Y_mean, Y_var, l)
-        else:
-            l, E_FP = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
-
-        self.smis_ = self.get_smis(sorted_idxs[:l])
-
-        full_fps_path = Path(self.fps_)
-        pruned_fps_path = full_fps_path.with_name(f"{full_fps_path.stem}_pruned")
+        if prune_method == PruneMethod.TOP:
+            idxs = self.prune_top(Y_mean, Y_var, l, beta)
+        elif prune_method == PruneMethod.EFP:
+            idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
+        elif prune_method == PruneMethod.PROB:
+            idxs = self.prune_prob(Y_mean, Y_var, l, min_hit_prob)
+        
+        self.smis_ = self.get_smis(idxs)
 
         self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
             self.smis_,
             l,
             featurizer=self.featurizer,
-            name=pruned_fps_path.stem,
-            path=pruned_fps_path.parent,
+            name=f"{Path(self.fps_).stem}_pruned_{uuid.uuid4()}",
+            path=tempfile.gettempdir()
         )
 
         with h5py.File(self.fps_, "r") as h5f:
@@ -284,7 +295,7 @@ class MoleculePool(Sequence):
             self.size = len(fps)
             self.chunk_size = fps.chunks[0]
 
-        return E_FP
+        return MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, idxs)
 
     def get_smi(self, idx: int) -> str:
         if idx < 0 or idx >= len(self):
@@ -609,45 +620,102 @@ class MoleculePool(Sequence):
         self.cluster_ids_ = cluster.cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
 
-    def prune_cutoff(
-        self,
-        k: int,
+    @staticmethod
+    def prune_top(
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        l: Union[int, float] = None
+        l: Union[int, float],
+        beta: float = 2.
     ) -> Tuple[int, float]:
         if isinstance(l, float):
-            l = int(l*len(self))
+            l = int(l * len(Y_mean))
         if l < 1:
             raise ValueError(f"l must be positive! got: {l}")
 
-        if Y_mean.shape != Y_var.shape:
-            E_FP = l
-        else:
-            E_FP = MoleculePool.expected_FP(Y_mean, Y_var, k, l)
-        
-        return l, E_FP
+        Y_ub = Y_mean + beta * np.sqrt(Y_var) if Y_mean.shape == Y_var.shape else Y_mean
+        prune_cutoff = np.partition(Y_ub, -l)[-l]
+        idxs = np.arange(len(Y_mean))[Y_ub >= prune_cutoff]
+
+        return idxs
     
+    @staticmethod
+    def prune_prob(
+        Y_mean: np.ndarray,
+        Y_var: np.ndarray,
+        l: Union[int, float],
+        min_hit_prob: float = 0.025,
+    ) -> Tuple[int, float]:
+        if isinstance(l, float):
+            l = int(l * len(Y_mean))
+        if l < 1:
+            raise ValueError(f"l must be positive! got: {l}")
+            
+        prune_cutoff = np.partition(Y_mean, -l)[-l]
+        P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
+        idxs = np.arange(len(Y_mean))[P >= min_hit_prob]
+
+        return idxs
+
+    @staticmethod
     def prune_max_fp(
-        self,
-        k: Union[int, float],
+        k: int,
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
         max_fp: Optional[Union[int, float]] = None,
     ) -> Tuple[int, float]:
         if isinstance(max_fp, float):
-            max_fp *= len(self)
+            max_fp *= len(Y_mean)
         if max_fp < 1:
             raise ValueError(f"max_fp must be positive! got: {max_fp}")
 
-        if Y_mean.shape != Y_var.shape:
-            E_FP = l = int(max_fp)
+        sorted_idxs = np.argsort(Y_mean)[::-1]
+        Y_mean = Y_mean[sorted_idxs]
+        Y_var = Y_var[sorted_idxs]
+
+        l = MoleculePool.maximize_fp(k, max_fp, Y_mean, Y_var)
+        
+        return sorted_idxs[:l]
+
+    @staticmethod
+    def expected_positives_pruned(k: int, Y_mean: np.ndarray, Y_var: np.ndarray, idxs: np.ndarray):
+        """the number of expected positives that will be pruned
+
+        Parameters
+        ----------
+        k : int
+            the rank above which to classify molecules as hits
+        Y_mean : np.ndarray
+            the predicted means
+        Y_var : np.ndarray
+            the predicted variances
+        idxs : np.ndarray
+            the molecules to retain after pruning
+
+        Returns
+        -------
+        float
+            the expected number of positives that will be pruned
+        """
+        hit_cutoff = np.partition(Y_mean, -k)[-k]
+
+        if Y_mean.shape == Y_var.shape:
+            P = MoleculePool.prob_above(Y_mean, Y_var, hit_cutoff)
         else:
-            l = MoleculePool.maximize_fp(k, max_fp, Y_mean, Y_var)
-            E_FP = MoleculePool.expected_FP(Y_mean, Y_var, k, l)
+            P = Y_mean >= hit_cutoff
+
+        mask = np.zeros(len(Y_mean), bool)
+        mask[idxs] = True
         
-        return l, E_FP
-        
+        return P[~mask].sum()
+
+    @staticmethod
+    def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, cutoff: float):
+        I = Y_mean - cutoff
+        with np.errstate(divide='ignore'):
+            Z = I / np.sqrt(Y_var)
+
+        return norm.cdf(Z)
+
     @staticmethod
     def maximize_fp(k: int, max_fp: float, Y_mean: np.ndarray, Y_var: np.ndarray) -> int:
         """Return the number of molecules to select beyond the top-k such that the expected number 
@@ -658,7 +726,7 @@ class MoleculePool(Sequence):
         k : int
             the threshold above which to classify a molecule as a "postive" or "hit"
         max_fp : float
-            the maximum allowable number of expected false positives
+            the maximum allowable number of expected true positives
         Y_mean : np.ndarray
             the predicted mean of each molecule in the pool **sorted** by predicted mean
         Y_var : np.ndarray
@@ -674,8 +742,8 @@ class MoleculePool(Sequence):
 
         while lo < hi:
             mid = int(lo + hi) // 2
-            E_FP = MoleculePool.expected_FP(Y_mean, Y_var, k, mid)
-            if E_FP > max_fp:
+            E_TP = MoleculePool.expected_TP(Y_mean, Y_var, k, mid)
+            if E_TP > max_fp:
                 hi = mid
             else:
                 lo = mid + 1
@@ -683,8 +751,8 @@ class MoleculePool(Sequence):
         return mid-1
 
     @staticmethod
-    def expected_FP(Y_mean, Y_var, k: int, l: int):
-        """the expected number of false positives between the k-th and l-th best predictions, where
+    def expected_TP(Y_mean, Y_var, k: int, l: int):
+        """the expected number of true positives between the k-th and l-th best predictions, where
         a positive is defined as a prediction being among the k best"""
         I = Y_mean - Y_mean[k-1]
         with np.errstate(divide='ignore'):
