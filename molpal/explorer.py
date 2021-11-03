@@ -13,6 +13,7 @@ import numpy as np
 
 from molpal import acquirer, featurizer, models, objectives, pools
 from molpal.exceptions import IncompatibilityError, InvalidExplorationError
+from molpal.pools.base import PruneMethod
 
 T = TypeVar("T")
 
@@ -128,8 +129,11 @@ class Explorer:
         delta: float = 0.01,
         max_iters: int = 10,
         budget: Union[int, float] = 1.0,
-        prune_threshold: Optional[Union[int, float]] = None,
-        prune_max_fp: Optional[Union[int, float]] = None,
+        prune_method: Optional[PruneMethod] = None,
+        prune_threshold: Union[int, float] = 0.1,
+        prune_beta: float = 2.,
+        prune_max_fp: Union[int, float] = 0.01,
+        prune_min_hit_prob: float = 0.025,
         write_final: bool = True,
         write_intermediate: bool = False,
         chkpt_freq: int = 0,
@@ -169,9 +173,13 @@ class Explorer:
         self.max_iters = max_iters
         self.budget = budget
 
+        # pruning attributes
+        self.prune_method = PruneMethod.from_str(prune_method)
         self.prune_threshold = prune_threshold
+        self.prune_beta = prune_beta
         self.prune_max_fp = prune_max_fp
-        
+        self.prune_min_hit_prob = prune_min_hit_prob
+
         # logging attributes
         self.write_final = write_final
         self.write_intermediate = write_intermediate
@@ -318,7 +326,7 @@ class Explorer:
         if len(self.recent_avgs) < self.window_size:
             return False
 
-        sma = sum(self.recent_avgs[-self.window_size:]) / self.window_size
+        sma = sum(self.recent_avgs[-self.window_size :]) / self.window_size
         return (self.top_k_avg - sma) / sma <= self.delta
 
     @property
@@ -415,17 +423,25 @@ class Explorer:
 
         self._update_model()
         self._update_predictions()
-        if (self.prune_threshold is not None or self.prune_max_fp is not None) and self.iter == 1:
-            expected_fp = self.pool.prune(
-                self.k, self.Y_pred, self.Y_var, self.prune_max_fp, self.prune_threshold
+
+        if self.prune_method is not None and self.iter == 1:
+            expected_tp = self.pool.prune(
+                self.k,
+                self.Y_pred,
+                self.Y_var,
+                self.prune_method,
+                self.prune_threshold,
+                self.prune_beta,
+                self.prune_max_fp,
+                self.prune_min_hit_prob,
             )
+            if self.verbose >= 1:
+                print(f"Pruned pool to {len(self.pool)} molecules!")
+                print(f"Expected number of pruned true positives: {expected_tp}")
+
             self.Y_pred = np.array([])
             self._update_predictions()
 
-            if self.verbose >= 1:
-                print(f"Pruned pool to {len(self.pool)} molecules!")
-                print(f"Expected number of retained false positives: {expected_fp}")
-                pass
 
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(),

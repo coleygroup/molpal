@@ -8,6 +8,7 @@ def gen_args(args: Optional[str] = None) -> Namespace:
     add_general_args(parser)
     add_encoder_args(parser)
     add_pool_args(parser)
+    add_prune_args(parser)
     add_acquisition_args(parser)
     add_objective_args(parser)
     add_model_args(parser)
@@ -89,9 +90,21 @@ def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--invalid-idxs', '--invalid-lines',
                         type=int, nargs='*',
                         help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
-    parser.add_argument('--prune-threshold', type=restricted_float_or_int, help="the number or fraction of top-predicted molecules to keep after the first round of exploration")
+
+#################################
+#       PRUNING ARGUMENTS       #
+#################################
+def add_prune_args(parser):
+    parser.add_argument('--prune-method', choices=('efp', 'prob', 'top'))
+    parser.add_argument(
+        '--prune-threshold',
+        type=restricted_float_or_int,
+        help="the number or fraction of top-predicted molecules to keep after the first round of exploration"
+    )
+    parser.add_argument('--prune-beta', type=float)
     parser.add_argument('--prune-max-fp', type=restricted_float_or_int)
-    
+    parser.add_argument('--prune-min-hit-prob', type=restricted_float)
+
 #####################################
 #       ACQUISITION ARGUMENTS       #
 #####################################

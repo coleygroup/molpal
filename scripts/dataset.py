@@ -1,11 +1,13 @@
 from argparse import ArgumentParser
 from dataclasses import dataclass, field
-from experiment import Experiment
+from pathlib import Path
 import pickle
-from utils import *
+from typing import Optional, Union
 
 import numpy as np
 
+from experiment import Experiment
+from utils import *
 
 @dataclass
 class Dataset:
@@ -64,12 +66,6 @@ class Dataset:
             }[reward.upper()]
         except KeyError:
             raise ValueError(f"Invalid reward! got: {reward}")
-            
-    def save(self):
-        pkl_file = f"{self.split:0.3f}-{self.model}-{self.metric}-top{self.N}.pkl"
-        pickle.dump(self, open(pkl_file, "wb"))
-
-        return pkl_file
 
     @staticmethod
     def format_reward_array(X: np.ndarray, precision: int = 1) -> str:
@@ -81,6 +77,11 @@ class Dataset:
             ]
         )
 
+def save_dataset(d: Dataset, filepath: Optional[Union[str, Path]] = None):
+    pkl_file = filepath or f"{d.split:0.3f}-{d.model}-{d.metric}-top{d.N}.pkl"
+    pickle.dump(d, open(pkl_file, "wb"))
+
+    return pkl_file
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -116,6 +117,7 @@ if __name__ == "__main__":
         type=int,
         help="the number of top scores from which to calculate the reward",
     )
+    parser.add_argument("-o", "--output", help="the output filepath")
 
     args = parser.parse_args()
     args.title_line = not args.no_title_line
@@ -132,10 +134,14 @@ if __name__ == "__main__":
 
     rewardss = []
     for expt_dir in args.experiments:
-        e = Experiment(expt_dir, d_smi_idx)
-        rewardss.append(
-            [e.calculate_reward(i, true_top_k, True) for i in range(e.num_iters)]
-        )
+        try:
+            e = Experiment(expt_dir, d_smi_idx)
+            rewardss.append(
+                [e.calculate_reward(i, true_top_k, True) for i in range(e.num_iters)]
+            )
+        except Exception as e:
+            print(e)
+            pass
     rewardss = np.array(rewardss)
 
     d = Dataset(
@@ -144,10 +150,10 @@ if __name__ == "__main__":
         args.metric,
         args.N,
         e.num_acquired,
-        rewardss[:, :, 0],
-        rewardss[:, :, 1],
-        rewardss[:, :, 2],
+        rewardss[:,:,0],
+        rewardss[:,:,1],
+        rewardss[:,:,2],
     )
 
     print(d)
-    print(f"Saved dataset to {d.save()}")
+    print(f"Saved dataset to {save_dataset(d, args.output)}")
