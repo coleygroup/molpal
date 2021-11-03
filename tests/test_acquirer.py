@@ -94,23 +94,4 @@ def test_aquire_batch_epsilon(acq, xs, Y_mean, Y_var, epsilon):
         assert batch_xs_0 == batch_xs_1
     else:
         assert batch_xs_0 != batch_xs_1
-#     def test_acquire_batch_epsilon(self):
-#         """There is roughly a  1-in-5*10^6 (= nCr(26, 10)) chance that a random
-#         batch is the same as the calculated top-m batch, causing this test to
-#         report a failure. There is a roughly 1-in-2.5E13 chance this test
-#         fails twice in arow. If that happens, it is safe to assume that the
-#         test is genuinely failing."""
-#         acq = Acquirer(
-#             size=len(self.xs), init_size=self.init_size,
-#             batch_size=self.batch_size, metric='greedy', epsilon=1., seed=0
-#         )
-#         explored = {}
-
-#         batch_xs = acq.acquire_batch(
-#             self.xs, self.y_means, self.y_vars, explored=explored
-#         )
-#         self.assertNotEqual(set(batch_xs),
-#                          set(self.xs[:self.batch_size]))
-
-# if __name__ == "__main__":
-#     unittest.main()
+        
