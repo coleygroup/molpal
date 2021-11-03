@@ -621,12 +621,60 @@ class MoleculePool(Sequence):
         self.cluster_sizes = Counter(self.cluster_ids_)
 
     @staticmethod
-    def prune_top(
+    def prune_greedy(Y_mean: np.ndarray, l: Union[int, float]) -> np.ndarray:
+        """prune all predictions with mean less than a given threshold
+        
+        Parameters
+        ----------
+        Y_mean : np.ndarray
+            the predicted means
+        l : Union[int, float]
+            the percentile or rank of the predicted means from which to calculate a pruning 
+            threshold
+
+        Returns
+        -------
+        np.ndarray
+            the indices of the predictions to retain
+
+        Raises
+        ------
+        ValueError
+            if l is a float below 0 or an int less than 1
+        """
+        return MoleculePool.prune_ucb(Y_mean, np.array([]), l, 0.)
+
+    @staticmethod
+    def prune_ucb(
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
         l: Union[int, float],
         beta: float = 2.
-    ) -> Tuple[int, float]:
+    ) -> np.ndarray:
+        """prune all predictions with mean + beta * sqrt(var) less than a given threshold
+
+        Parameters
+        ----------
+        Y_mean : np.ndarray
+            the predicted means
+        Y_var : np.ndarray
+            the predicted variances
+        l : Union[int, float]
+            the percentile or rank of the predicted means from which to calculate a pruning 
+            threshold 
+        beta : float, default=2
+            the number of confidence intervals to add to each predicted mean
+
+        Returns
+        -------
+        np.ndarray
+            the indices of the predictions to retain
+
+        Raises
+        ------
+        ValueError
+            if l is a float below 0 or an int less than 1
+        """
         if isinstance(l, float):
             l = int(l * len(Y_mean))
         if l < 1:
@@ -644,7 +692,27 @@ class MoleculePool(Sequence):
         Y_var: np.ndarray,
         l: Union[int, float],
         min_hit_prob: float = 0.025,
-    ) -> Tuple[int, float]:
+    ) -> np.ndarray:
+        """Prune all predictions with a probabilty less than min_hit_prob of being above a given
+        threshold
+
+        Parameters
+        ----------
+        Y_mean : np.ndarray
+            the predicted means
+        Y_var : np.ndarray
+            the predicted variances
+        l : Union[int, float]
+            the percentile or rank of the predicted means from which to calculate a pruning 
+            threshold 
+        min_hit_prob : float
+            the minimum probability necessary to avoid pruning
+
+        Returns
+        -------
+        np.ndarray
+            the indices of the predictions to retain
+        """
         if isinstance(l, float):
             l = int(l * len(Y_mean))
         if l < 1:
@@ -662,7 +730,7 @@ class MoleculePool(Sequence):
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
         max_fp: Optional[Union[int, float]] = None,
-    ) -> Tuple[int, float]:
+    ) -> np.ndarray:
         if isinstance(max_fp, float):
             max_fp *= len(Y_mean)
         if max_fp < 1:
@@ -677,7 +745,12 @@ class MoleculePool(Sequence):
         return sorted_idxs[:l]
 
     @staticmethod
-    def expected_positives_pruned(k: int, Y_mean: np.ndarray, Y_var: np.ndarray, idxs: np.ndarray):
+    def expected_positives_pruned(
+        k: int,
+        Y_mean: np.ndarray,
+        Y_var: np.ndarray,
+        idxs: np.ndarray
+    ) -> float:
         """the number of expected positives that will be pruned
 
         Parameters
@@ -705,12 +778,27 @@ class MoleculePool(Sequence):
 
         mask = np.zeros(len(Y_mean), bool)
         mask[idxs] = True
-        
+
         return P[~mask].sum()
 
     @staticmethod
-    def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, cutoff: float):
-        I = Y_mean - cutoff
+    def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, threshold: float) -> np.ndarray:
+        """the probability that each prediction is above the input threshold
+
+        Parameters
+        ----------
+        Y_mean : np.ndarray
+            the mean of each prediction
+        Y_var : np.ndarray
+            the variance of each prediction
+        cutoff : float
+            the cutoff value
+
+        Returns
+        -------
+        np.ndarray
+        """
+        I = Y_mean - threshold
         with np.errstate(divide='ignore'):
             Z = I / np.sqrt(Y_var)
 
