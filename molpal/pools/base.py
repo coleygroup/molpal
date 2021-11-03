@@ -226,7 +226,7 @@ class MoleculePool(Sequence):
         k: Union[int, float],
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        prune_method: PruneMethod = PruneMethod.TOP,
+        prune_method: PruneMethod = PruneMethod.GREEDY,
         l: Optional[Union[int, float]] = None,
         beta: float = 2.,
         max_fp: Optional[Union[int, float]] = None,
@@ -245,15 +245,16 @@ class MoleculePool(Sequence):
             the predicted mean for each molecule
         Y_var : np.ndarray
             the predicted variance for each molecule
-        prune_method : PruneMethod, default=PruneMethod.TOP
+        prune_method : PruneMethod, default=PruneMethod.GREEDY
             the method by which to prune the pool:
-            * PruneMethod.TOP: retain the top-k compounds by predicted mean + beta * predicted
-                uncertainty.
+            * PruneMethod.GREEDY: retain the top-l compounds by predicted mean
+            * PruneMethod.UCB: retain the top-l compounds by
+                predicted_mean + beta * sqrt(predicted_variance)
             * PruneMethod.EFN: retain a maximal number of expected false positives up to some input
                 threshold
             * PruneMethod.PROB: retain all molecules that have probability p > p* of being a "hit"
         l : Union[int, float], default=None
-            the number or fraction of the pool to retain after TOP pruning.
+            the number or fraction of the pool to retain after GREEDY/UCB pruning.
         beta : float, default=2.
             the amount by which to multiply the predicted uncertainty before adding to the
             predicted mean
@@ -277,7 +278,7 @@ class MoleculePool(Sequence):
         if prune_method == PruneMethod.GREEDY:
             idxs = self.prune_greedy(Y_mean, l)
         elif prune_method == PruneMethod.UCB:
-            idxs = self.prune_top(Y_mean, Y_var, l, beta)
+            idxs = self.prune_ucb(Y_mean, Y_var, l, beta)
         elif prune_method == PruneMethod.EFP:
             idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
         elif prune_method == PruneMethod.PROB:
@@ -287,7 +288,7 @@ class MoleculePool(Sequence):
 
         self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
             self.smis_,
-            l,
+            len(idxs),
             featurizer=self.featurizer,
             name=f"{Path(self.fps_).stem}_pruned_{uuid.uuid4()}",
             path=tempfile.gettempdir()
@@ -654,7 +655,7 @@ class MoleculePool(Sequence):
         l: Union[int, float],
         beta: float = 2.
     ) -> np.ndarray:
-        """prune all predictions with mean + beta * sqrt(var) less than a given threshold
+        """prune to the top-l compounds by mean + beta * sqrt(var)
 
         Parameters
         ----------
@@ -663,8 +664,7 @@ class MoleculePool(Sequence):
         Y_var : np.ndarray
             the predicted variances
         l : Union[int, float]
-            the percentile or rank of the predicted means from which to calculate a pruning 
-            threshold 
+            the fraction or number of predictions to retain
         beta : float, default=2
             the number of confidence intervals to add to each predicted mean
 

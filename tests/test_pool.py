@@ -82,23 +82,16 @@ def test_maximize_fp(k, max_fp, Y_mean, Y_var):
     l = MoleculePool.maximize_fp(k, max_fp, Y_mean, Y_var)
     assert MoleculePool.expected_TP(Y_mean, Y_var, k, l) <= max_fp
 
-def test_prune_top_no_var(k, Y_mean, l, beta):
-    k = int(k * len(Y_mean))
+def test_prune_greedy(Y_mean, l):
     l = int(l * len(Y_mean))
 
-    idxs = MoleculePool.prune_top(Y_mean, np.array([]), l, beta)
-
-    mask = np.zeros(len(Y_mean), bool)
-    mask[idxs] = True
+    idxs = MoleculePool.prune_greedy(Y_mean, l)
 
     assert len(idxs) == l
 
-def test_prune_top(Y_mean, Y_var, l, beta):
+def test_prune_ucb(Y_mean, Y_var, l, beta):
     l = int(l * len(Y_mean))
-    idxs = MoleculePool.prune_top(Y_mean, Y_var, l, beta)
-
-    mask = np.zeros(Y_mean.shape, bool)
-    mask[idxs] = True
+    idxs = MoleculePool.prune_ucb(Y_mean, Y_var, l, beta)
 
     Y_ub = Y_mean + beta*np.sqrt(Y_var)
     prune_cutoff = np.partition(Y_mean, -l)[-l]
