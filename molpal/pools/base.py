@@ -29,8 +29,9 @@ CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
 
 class PruneMethod(AutoName):
     EFP = auto()
+    GREEDY = auto()
     PROB = auto()
-    TOP = auto()
+    UCB = auto()
 
 class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
@@ -273,7 +274,9 @@ class MoleculePool(Sequence):
         if k < 1:
             raise ValueError(f"hit threshold (k) must be positive! got: {k}")
 
-        if prune_method == PruneMethod.TOP:
+        if prune_method == PruneMethod.GREEDY:
+            idxs = self.prune_greedy(Y_mean, l)
+        elif prune_method == PruneMethod.UCB:
             idxs = self.prune_top(Y_mean, Y_var, l, beta)
         elif prune_method == PruneMethod.EFP:
             idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
