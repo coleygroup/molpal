@@ -1,11 +1,11 @@
-from typing import Iterator, Optional, Sequence
+from typing import Iterator, Optional, Sequence, Union
 
 import numpy as np
 import ray
 
-from molpal.featurizer import Featurizer, feature_matrix
-from molpal.pools.base import MoleculePool
 from molpal.utils import batches
+from molpal.featurizer import Featurizer, feature_matrix
+from molpal.pools.base import MoleculePool, PruneMethod
 
 
 class LazyMoleculePool(MoleculePool):
@@ -42,7 +42,37 @@ class LazyMoleculePool(MoleculePool):
         for smis in batches(self.smis(), self.chunk_size):
             yield np.array(feature_matrix(smis, self.featurizer, True))
 
-    def _encode_mols(self, featurizer: Featurizer, path: Optional[str] = None):
+    def prune(
+        self,
+        k: Union[int, float],
+        Y_mean: np.ndarray,
+        Y_var: np.ndarray,
+        prune_method: PruneMethod = PruneMethod.GREEDY,
+        l: Optional[Union[int, float]] = None,
+        beta: float = 2.,
+        max_fp: Optional[Union[int, float]] = None,
+        min_hit_prob: float = 0.025
+    ) -> float:
+        if isinstance(k, float):
+            k = int(k * len(Y_mean))
+        if k < 1:
+            raise ValueError(f"hit threshold (k) must be positive! got: {k}")
+
+        if prune_method == PruneMethod.GREEDY:
+            idxs = self.prune_greedy(Y_mean, l)
+        elif prune_method == PruneMethod.UCB:
+            idxs = self.prune_ucb(Y_mean, Y_var, l, beta)
+        elif prune_method == PruneMethod.EFP:
+            idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
+        elif prune_method == PruneMethod.PROB:
+            idxs = self.prune_prob(Y_mean, Y_var, l, min_hit_prob)
+        
+        self.smis_ = self.get_smis(idxs)
+        self.size = len(self.smis_)
+
+        return MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, idxs)
+
+    def _encode_mols(self, *args, **kwargs):
         """Do not precompute any feature representations"""
         self.chunk_size = int(ray.cluster_resources()["CPU"] * 4096)
         self.fps_ = None

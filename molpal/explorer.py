@@ -149,9 +149,7 @@ class Explorer:
         self.verbose = kwargs.get("verbose", 0)
 
         self.featurizer = featurizer.Featurizer(
-            fingerprint=kwargs["fingerprint"],
-            radius=kwargs["radius"],
-            length=kwargs["length"],
+            kwargs["fingerprint"], kwargs["radius"], kwargs["length"],
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
@@ -437,11 +435,10 @@ class Explorer:
             )
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
-                print(f"Expected number of pruned true positives: {expected_tp}")
+                print(f"Expected number of pruned true positives: {expected_tp:0.2f}")
 
             self.Y_pred = np.array([])
             self._update_predictions()
-
 
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(),
