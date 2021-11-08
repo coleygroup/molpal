@@ -50,10 +50,14 @@ class MoleculeModel(nn.Module):
     ):
         super().__init__()
 
-        self.uncertainty = {
-            "dropout": UncertaintyType.DROPOUT,
-            "mve": UncertaintyType.MVE
-        }[uncertainty.lower()]
+        if uncertainty is not None:
+            self.uncertainty = {
+                "dropout": UncertaintyType.DROPOUT,
+                "mve": UncertaintyType.MVE
+            }[uncertainty.lower()]
+        else:
+            self.uncertainty = None
+            
         self.classification = dataset_type.lower() == "classification"
         if self.classification:
             self.sigmoid = nn.Sigmoid()
