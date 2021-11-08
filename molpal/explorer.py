@@ -406,7 +406,6 @@ class Explorer:
         new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
-        # self.top_k_avg = self.avg()
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.avg())
 
@@ -415,9 +414,9 @@ class Explorer:
         
         self.iter += 1
 
-        # if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
-        #     self.checkpoint()
-        #     self.previous_chkpt_iter = self.iter
+        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+            self.checkpoint()
+            self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores)/len(valid_scores)
@@ -728,7 +727,7 @@ class Explorer:
             xs, ys = zip(*self.new_scores.items())
 
         self.model.train(
-            xs, ys, retrain=self.retrain_from_scratch,
+            xs, np.array(ys), retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
         )
         self.new_scores = {}
