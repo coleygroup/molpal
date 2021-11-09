@@ -172,7 +172,7 @@ class Explorer:
         self.budget = budget
 
         # pruning attributes
-        self.prune_method = PruneMethod.from_str(prune_method)
+        self.prune_method = PruneMethod.from_str(prune_method) if prune_method is not None else None
         self.prune_threshold = prune_threshold
         self.prune_beta = prune_beta
         self.prune_max_fp = prune_max_fp
