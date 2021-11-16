@@ -176,7 +176,7 @@ class MPNN:
         trainer = pl.Trainer(
             max_epochs=self.epochs, callbacks=callbacks,
             gpus=1 if self.use_gpu else 0, precision=self.precision,
-            weights_summary=None, log_every_n_steps=len(train_dataloader)
+            enable_model_summary=False, log_every_n_steps=len(train_dataloader)
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
         
