@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple
+import warnings
 
 import numpy as np
 import pytorch_lightning as pl
@@ -14,17 +15,20 @@ from ray.util.sgd.v2 import Trainer
 import torch
 from tqdm import tqdm
 
-from .chemprop.data.data import (
+from molpal.models.chemprop.data.data import (
     MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
 )
-from .chemprop.data.scaler import StandardScaler
-from .chemprop.data.utils import split_data
+from molpal.models.chemprop.data.scaler import StandardScaler
+from molpal.models.chemprop.data.utils import split_data
 
 from molpal.models.base import Model
 from molpal.models import mpnn
 from molpal.utils import batches
 
 logging.getLogger('lightning').setLevel(logging.FATAL)
+warnings.filterwarnings(
+    "ignore", ".*Trying to infer the `batch_size` from an ambiguous collection.*"
+)
 
 class MPNN:
     """A message-passing neural network base class
@@ -174,9 +178,13 @@ class MPNN:
             mpnn.EpochAndStepProgressBar()
         ]
         trainer = pl.Trainer(
-            max_epochs=self.epochs, callbacks=callbacks,
-            gpus=1 if self.use_gpu else 0, precision=self.precision,
-            enable_model_summary=False, log_every_n_steps=len(train_dataloader)
+            logger=False,
+            max_epochs=self.epochs,
+            callbacks=callbacks,
+            gpus=1 if self.use_gpu else 0,
+            precision=self.precision,
+            enable_model_summary=False,
+            # log_every_n_steps=len(train_dataloader)
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
         
