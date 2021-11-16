@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple
+import warnings
 
 import numpy as np
 from pytorch_lightning import Trainer as Trainer_pl
@@ -23,6 +24,9 @@ from molpal.models import mpnn
 from molpal.utils import batches
 
 logging.getLogger('lightning').setLevel(logging.FATAL)
+warnings.filterwarnings(
+    "ignore", ".*Trying to infer the `batch_size` from an ambiguous collection.*"
+)
 
 class MPNN:
     """A message-passing neural network base class
@@ -174,9 +178,13 @@ class MPNN:
             mpnn.ptl.EpochAndStepProgressBar()
         ]
         trainer = Trainer_pl(
-            max_epochs=self.epochs, callbacks=callbacks,
-            gpus=1 if self.use_gpu else 0, precision=self.precision,
-            weights_summary=None, log_every_n_steps=len(train_dataloader)
+            logger=False,
+            max_epochs=self.epochs,
+            callbacks=callbacks,
+            gpus=1 if self.use_gpu else 0,
+            precision=self.precision,
+            enable_model_summary=False,
+            # log_every_n_steps=len(train_dataloader)
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
         
@@ -186,11 +194,16 @@ class MPNN:
             self, xs: Iterable[str], ys: Sequence[float]
         ) -> Tuple[MoleculeDataset, MoleculeDataset]:
         """Split xs and ys into train and validation datasets"""
-
-        data = MoleculeDataset([
-            MoleculeDatapoint(smiles=[x], targets=[y])
-            for x, y in zip(xs, ys)
-        ])
+        if len(ys.shape) == 1:
+            data = MoleculeDataset([
+                MoleculeDatapoint(smiles=[x], targets=[y])
+                for x, y in zip(xs, ys)
+            ])
+        else:
+            data = MoleculeDataset([
+                MoleculeDatapoint(smiles=[x], targets=y)
+                for x, y in zip(xs, ys)
+            ])
         train_data, val_data, _ = split_data(
             data=data, sizes=(0.8, 0.2, 0.0), seed=self.seed
         )

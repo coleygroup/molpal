@@ -36,13 +36,14 @@ class EpochAndStepProgressBar(ProgressBarBase):
         self.step_bar.set_description_str("Epoch (train)")
 
     def on_train_batch_end(
-        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
+        self, trainer, pl_module, outputs, batch, batch_idx
     ):
         super().on_train_batch_end(
-            trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
+            trainer, pl_module, outputs, batch, batch_idx
         )
 
-        loss = trainer.progress_bar_dict["loss"]
+        # loss = trainer.progress_bar_dict["loss"]
+        loss = self.get_metrics(trainer, pl_module)["loss"]
         self.step_bar.set_postfix_str(f"loss={loss}")
         self.step_bar.update()
 

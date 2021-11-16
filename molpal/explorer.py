@@ -777,9 +777,7 @@ class Explorer:
             xs, ys = zip(*self.new_scores.items())
 
         self.model.train(
-            xs,
-            ys,
-            retrain=self.retrain_from_scratch,
+            xs, np.array(ys), retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
         )
         self.new_scores = {}

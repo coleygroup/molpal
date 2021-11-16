@@ -140,6 +140,7 @@ cython_debug/
 *.ipynb
 *.csv
 *.pt
+*.ckpt
 *.err
 *.out
 *.log
