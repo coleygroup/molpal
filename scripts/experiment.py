@@ -42,15 +42,23 @@ class Experiment:
             self.new_style = False
 
         data_dir = self.experiment / "data"
-        final_csv = data_dir / "all_explored_final.csv"
-        final_scores, final_failures = Experiment.read_scores(final_csv)
-        self.__size = len({**final_scores, **final_failures})
+        try:
+            final_scores, final_failures = Experiment.read_scores(
+                data_dir / "all_explored_final.csv"
+            )
+            self.__size = len({**final_scores, **final_failures})
+        except:
+            self.__size = None
+            pass
         scores_csvs = [p for p in data_dir.iterdir() if "final" not in p.stem]
         self.scores_csvs = sorted(scores_csvs, key=lambda p: int(p.stem.split("_")[-1]))
         self.__sizes = [len(self[i]) for i in range(self.num_iters)]
 
     def __len__(self) -> int:
         """the total number of inputs sampled in this experiment"""
+        if self.__size is None:
+            raise IncompleteExperimentError
+            
         return self.__size
 
     def __getitem__(self, i: int) -> Dict:
@@ -374,6 +382,9 @@ class Experiment:
         E = np.exp(-X)
         Z = E.sum()
         return (X * E / Z).sum()
+
+class IncompleteExperimentError(Exception):
+    pass
 
 if __name__ == "__main__":
     pass

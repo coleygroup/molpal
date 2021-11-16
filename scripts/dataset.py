@@ -6,7 +6,7 @@ from typing import Optional, Union
 
 import numpy as np
 
-from experiment import Experiment
+from experiment import Experiment, IncompleteExperimentError
 from utils import *
 
 @dataclass
@@ -133,15 +133,24 @@ if __name__ == "__main__":
     true_top_k = true_smis_scores[: args.N]
 
     rewardss = []
+    incomplete_experiments = []
     for expt_dir in args.experiments:
+        e = Experiment(expt_dir, d_smi_idx)
+        rewardss.append(
+            [e.calculate_reward(i, true_top_k, True) for i in range(e.num_iters)]
+        )
         try:
-            e = Experiment(expt_dir, d_smi_idx)
-            rewardss.append(
-                [e.calculate_reward(i, true_top_k, True) for i in range(e.num_iters)]
-            )
-        except Exception as e:
-            print(e)
-            pass
+            len(e)
+        except IncompleteExperimentError:
+            incomplete_experiments.append(expt_dir)
+
+    if len(incomplete_experiments) > 0:
+        print("There are incomplete experiments!")
+        min_iters = min(len(r) for r in rewardss)
+        rewardss = [r[:min_iters] for r in rewardss]
+        print(
+            f"Results will for dataset will be truncated to shortest experiment ({min_iters})."
+        )
     rewardss = np.array(rewardss)
 
     d = Dataset(
@@ -156,4 +165,5 @@ if __name__ == "__main__":
     )
 
     print(d)
-    print(f"Saved dataset to {save_dataset(d, args.output)}")
+    if args.output:
+        print(f"Saved dataset to {save_dataset(d, args.output)}")
