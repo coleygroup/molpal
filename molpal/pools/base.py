@@ -584,22 +584,28 @@ class MoleculePool(Sequence):
             if self.verbose > 0:
                 print("Validating SMILES strings ...", end=" ", flush=True)
 
-            valid_smis = validate_smis(self.smis())
-            invalid_idxs = set()
+            validated_smis = validate_smis(self.smis())
             if cache:
-                self.smis_ = []
-                for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
-                    if smi is None:
-                        self.invalid_idxs.add(i)
-                    else:
-                        self.smis_.append(smi)
-            else:
-                for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
-                    if smi is None:
-                        invalid_idxs.add(i)
+                validated_smis = list(validated_smis)
+                self.smis_ = [smi for smi in validated_smis if smi is not None]
+                self.invalid_idxs = {i for i, smi in validated_smis if smi is None}
 
-            self.size = (i + 1) - len(invalid_idxs)
-            self.invalid_idxs = invalid_idxs
+                self.size = len(self.smis_)
+                # for i, smi in tqdm(enumerate(validated_smis), desc="Validating"):
+                #     if smi is None:
+                #         self.invalid_idxs.add(i)
+                #     else:
+                #         self.smis_.append(smi)
+            else:
+                self.invalid_idxs = {
+                    i for i, smi in tqdm(enumerate(validated_smis), "Validating") if smi is None
+                }
+                self.size = sum(1 for _ in self.smis())
+                
+                # for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
+                #     if smi is None:
+                #         invalid_idxs.add(i)
+
 
             if self.verbose > 0:
                 print("Done!", flush=True)
@@ -786,26 +792,9 @@ class MoleculePool(Sequence):
 
     @staticmethod
     def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, threshold: float) -> np.ndarray:
-        """the probability that each prediction is above the input threshold
-
-        Parameters
-        ----------
-        Y_mean : np.ndarray
-            the mean of each prediction
-        Y_var : np.ndarray
-            the variance of each prediction
-        cutoff : float
-            the cutoff value
-
-        Returns
-        -------
-        np.ndarray
-        """
-        I = Y_mean - threshold
-        with np.errstate(divide='ignore'):
-            Z = I / np.sqrt(Y_var)
-
-        return norm.cdf(Z)
+        """the probability that each prediction (given mean and uncertainty) is above the input 
+        threshold"""
+        return norm.cdf(Y_mean, threshold, np.sqrt(Y_var))
 
     @staticmethod
     def maximize_fp(k: int, max_fp: float, Y_mean: np.ndarray, Y_var: np.ndarray) -> int:
@@ -858,7 +847,7 @@ def _validate_smis(smis):
 
 
 def validate_smis(smis) -> Iterator[Optional[str]]:
-    refs = [_validate_smis.remote(smis_batch) for smis_batch in batches(smis, 4096)]
+    refs = [_validate_smis.remote(smis_batch) for smis_batch in batches(smis, 8192)]
     for ref in refs:
         batch = ray.get(ref)
         for smi in batch:

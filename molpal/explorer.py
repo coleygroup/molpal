@@ -162,7 +162,6 @@ class Explorer:
 
         self.objective = objectives.objective(**kwargs)
 
-        self._validate_acquirer()
 
         # stopping attributes
         self.k = k
@@ -194,6 +193,8 @@ class Explorer:
         self.recent_avgs = []
         self.Y_pred = np.array([])
         self.Y_var = np.array([])
+
+        self._validate_model()
 
         if previous_scores:
             self.load_scores(previous_scores)
@@ -435,7 +436,7 @@ class Explorer:
             )
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
-                print(f"Expected number of pruned true positives: {expected_tp:0.2f}")
+                print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
 
             self.Y_pred = np.array([])
             self._update_predictions()
@@ -816,8 +817,8 @@ class Explorer:
 
         self.updated_model = False
 
-    def _validate_acquirer(self):
-        """Ensure that the model provides values the Acquirer needs"""
+    def _validate_model(self):
+        """Ensure that the model provides necessary values for the Acquirer and during pruning"""
         if self.acquirer.needs > self.model.provides:
             raise IncompatibilityError(
                 f"{self.acquirer.metric} metric needs: "
@@ -825,6 +826,11 @@ class Explorer:
                 + f"but {self.model.type_} only provides: "
                 + f"{self.model.provides}"
             )
+        if (
+            (self.prune_method == PruneMethod.PROB or self.prune_method == PruneMethod.UCB)
+            and "vars" not in self.model.provides
+        ):
+            pass
 
     def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""
