@@ -6,8 +6,8 @@ from typing import Optional, Union
 
 import numpy as np
 
-from experiment import Experiment, IncompleteExperimentError
-from utils import *
+from scripts.experiment import Experiment, IncompleteExperimentError
+from scripts.utils import *
 
 @dataclass
 class Dataset:
@@ -43,29 +43,14 @@ class Dataset:
         border = f"+{'-'*(len(header)-2)}+"
 
         width = len("Points acquired") + 2
-        rows = []
-        rows.append(
-            f"{'Points acquired': >0{width}}: {', '.join(map(str, self.num_acquired))}"
-        )
-        rows.append(
-            f"{'Average': >0{width}}: {Dataset.format_reward_array(self.avg, 2)}"
-        )
-        rows.append(f"{'SMILES': >0{width}}: {Dataset.format_reward_array(self.smis)}")
-        rows.append(
+        rows = [
+            f"{'Points acquired': >0{width}}: {', '.join(map(str, self.num_acquired))}",
+            f"{'Average': >0{width}}: {Dataset.format_reward_array(self.avg, 2)}",
+            f"{'SMILES': >0{width}}: {Dataset.format_reward_array(self.smis)}",
             f"{'Scores': >0{width}}: {Dataset.format_reward_array(self.scores)}"
-        )
-
+        ]
+        
         return "\n".join((border, header, border, *rows))
-
-    def get_reward(self, reward: str) -> np.ndarray:
-        try:
-            return {
-                "AVG": self.avg,
-                "SCORES": self.scores,
-                "SMILES": self.smis
-            }[reward.upper()]
-        except KeyError:
-            raise ValueError(f"Invalid reward! got: {reward}")
 
     @staticmethod
     def format_reward_array(X: np.ndarray, precision: int = 1) -> str:
