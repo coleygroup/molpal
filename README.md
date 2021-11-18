@@ -26,9 +26,9 @@ This repository contains the source of MolPAL, a software for the accelerated di
 ## Requirements
 - Python (>= 3.6)
 
-_if utilizing GPU accelerated model inference_
-- CUDA (>= 10.2)
 _if utilizing GPU accelerated model training and inference_
+- CUDA (>= 10.2)
+_if utilizing distributed GPU accelerated model training and inference_
 - CUDA (>= 11.1)
 
 _if performing docking online_
@@ -85,13 +85,13 @@ The resulting fingerprint file will be located in your current working directory
 ### Configuration files
 The general command to run MolPAL is as follows:
 
-`python molpal.py -o <objective_type> [additional objective arguments] --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
+`python molpal.py -o {LOOKUP,DOCKING} --objective-config <path/to/objective_config> --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
 
 Alternatively, you may use a configuration file to run MolPAL, like so:
 
 `python molpal.py --config <path/to/config_file>`
 
-Two sample configuration files are provided: [minimal_config.ini](config/minimal_config.ini), a configuration file specifying only the necessary arguments to run MolPAL, and [sample_config.ini](config/sample_config.ini), a configuration file containing a few common options to specify (but not _all_ possible options.)
+Two sample configuration files are provided: [minimal_config.ini](examples/config/minimal_config.ini), a configuration file specifying only the necessary arguments to run MolPAL, and [sample_config.ini](examples/config/sample_config.ini), a configuration file containing a few common options to specify (but not _all_ possible options.)
 
 Configuration files accept the following syntaxes:
 - `--arg value` (argparse)
@@ -142,7 +142,7 @@ __Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition o
 
 __Featurizer__: A [`Featurizer`](molpal/featurizer.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
 
-__Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
+__Model__: A [`Model`](molpal/models/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
 
 __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
 
