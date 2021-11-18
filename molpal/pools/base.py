@@ -214,7 +214,7 @@ class MoleculePool(Sequence):
         )
 
     def prune(self, k: Union[int, float], Y_mean: np.ndarray, Y_var: np.ndarray) -> float:
-        """prune the library
+        """prune the library to to contain only the top-k predicted compounds.
 
         Parameters
         ----------
