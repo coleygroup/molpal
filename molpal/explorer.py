@@ -318,9 +318,7 @@ class Explorer:
         bool
             whether a stopping condition has been met
         """
-        if self.iter > self.max_iters:
-            return True
-        if len(self) >= self.budget:
+        if len(self) >= len(self.pool) or self.iter > self.max_iters or len(self) >= self.budget:
             return True
         if len(self.recent_avgs) < self.window_size:
             return False
@@ -424,7 +422,7 @@ class Explorer:
         self._update_predictions()
 
         if self.prune_method is not None and self.iter == 1:
-            expected_tp = self.pool.prune(
+            idxs = self.pool.prune(
                 self.k,
                 self.Y_pred,
                 self.Y_var,
@@ -434,12 +432,15 @@ class Explorer:
                 self.prune_max_fp,
                 self.prune_min_hit_prob,
             )
+            expected_tp = pools.MoleculePool.expected_positives_pruned(
+                self.k, self.Y_pred, self.Y_var, idxs
+            )
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
                 print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
-
-            self.Y_pred = np.array([])
-            self._update_predictions()
+            
+            self.Y_pred = self.Y_pred[idxs]
+            self.Y_var = self.Y_var[idxs]
 
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(),
