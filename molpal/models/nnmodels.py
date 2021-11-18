@@ -3,10 +3,10 @@ underlying model"""
 from functools import partial
 import logging
 import json
+import math
 import os
 from pathlib import Path
-from typing import (Callable, Iterable, List, NoReturn,
-                    Optional, Sequence, Tuple, TypeVar)
+from typing import Callable, Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
@@ -30,9 +30,9 @@ def mve_loss(y_true, y_pred):
     var = tf.math.softplus(y_pred[:, 1])
 
     return tf.reduce_mean(
-        tf.math.log(2*3.141592)/2
-        + tf.math.log(var)/2
-        + tf.math.square(mu-y_true)/(2*var)
+        tf.math.log(2*math.pi) / 2
+        + tf.math.log(var) / 2
+        + (mu-y_true)**2 / (2*var)
     )
 
 class NN:
@@ -287,7 +287,7 @@ class NNModel(Model):
         return self.model.predict(xs)[:, 0]
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
-        raise TypeError('NNModel can\'t predict variances!')
+        raise NotImplementedError("NNModel can't predict variances!")
 
     def save(self, path) -> str:
         return self.model.save(path)
@@ -318,11 +318,11 @@ class NNEnsembleModel(Model):
     bootstrap_ensemble : bool
         NOTE: UNUSED
     """
-    def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
+    def __init__(self, input_size: int, test_batch_size: Optional[int] = 8192,
                  dropout: Optional[float] = 0.0, ensemble_size: int = 5,
                  bootstrap_ensemble: Optional[bool] = False,
                  model_seed: Optional[int] = None, **kwargs):
-        test_batch_size = test_batch_size or 4096
+        test_batch_size = test_batch_size or 8192
         self.build_model = partial(
             NN, input_size=input_size, num_tasks=1,
             batch_size=test_batch_size, dropout=dropout,
@@ -347,27 +347,26 @@ class NNEnsembleModel(Model):
     def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
               featurizer: Featurizer, retrain: bool = False):
         if retrain:
-            self.models = [
-                self.build_model() for _ in range(self.ensemble_size)
-            ]
+            self.models = [self.build_model() for _ in range(self.ensemble_size)]
 
         return all([model.train(xs, ys, featurizer) for model in self.models])
 
     def get_means(self, xs: Sequence) -> np.ndarray:
-        preds = np.zeros((len(xs), len(self.models)))
-        for j, model in tqdm(enumerate(self.models), leave=False,
-                             desc='ensemble prediction', unit='model'):
-            preds[:, j] = model.predict(xs)[:, 0]
+        preds = np.zeros((len(self.models), len(xs)))
+        for j, model in tqdm(
+            enumerate(self.models), 'ensemble prediction', leave=False, unit='model'
+        ):
+            preds[j] = model.predict(xs)[:, 0]
 
-        return np.mean(preds, axis=1)
+        return np.mean(preds, 0)
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
-        preds = np.zeros((len(xs), len(self.models)))
-        for j, model in tqdm(enumerate(self.models), leave=False,
-                             desc='ensemble prediction', unit='model'):
-            preds[:, j] = model.predict(xs)[:, 0]
+        preds = np.zeros((len(self.models), len(xs)))
+        for j, model in tqdm(
+            enumerate(self.models), 'ensemble prediction', leave=False, unit='model'):
+            preds[j] = model.predict(xs)[:, 0]
 
-        return np.mean(preds, axis=1), np.var(preds, axis=1)
+        return np.mean(preds, 0), np.var(preds, 0)
 
     def save(self, path) -> str:
         for i, model in enumerate(self.models):
@@ -399,11 +398,11 @@ class NNTwoOutputModel(Model):
         the dropout probability during training
     """
     def __init__(self, input_size: int,
-                 test_batch_size: Optional[int] = 4096,
+                 test_batch_size: Optional[int] = 8192,
                  dropout: Optional[float] = 0.0,
                  model_seed: Optional[int] = None,
                  **kwargs):
-        test_batch_size = test_batch_size or 4096
+        test_batch_size = test_batch_size or 8192
 
         self.build_model = partial(
             NN, input_size=input_size, num_tasks=1,
@@ -444,9 +443,11 @@ class NNTwoOutputModel(Model):
         self.model.load(path)
 
     @classmethod
-    def _safe_softplus(cls, xs):
-        in_range = xs < 100
-        return np.log(1 + np.exp(xs*in_range))*in_range + xs*(1 - in_range)
+    def _safe_softplus(cls, xs):    
+        return np.log1p(np.exp(-np.abs(xs))) + np.maximum(xs, 0)
+
+        # in_range = xs < 100
+        # return np.log(1 + np.exp(xs*in_range))*in_range + xs*(1 - in_range)
 
 class NNDropoutModel(Model):
     """Feed forward neural network that uses MC dropout for UQ
@@ -469,10 +470,10 @@ class NNDropoutModel(Model):
     dropout_size : int (Default = 10)
         the number of passes to make through the network during inference
     """
-    def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
+    def __init__(self, input_size: int, test_batch_size: Optional[int] = 8192,
                  dropout: Optional[float] = 0.2, dropout_size: int = 10,
                  model_seed: Optional[int] = None, **kwargs):
-        test_batch_size = test_batch_size or 4096
+        test_batch_size = test_batch_size or 8192
 
         self.build_model = partial(
             NN, input_size=input_size, num_tasks=1,
@@ -501,18 +502,18 @@ class NNDropoutModel(Model):
 
     def get_means(self, xs: Sequence) -> ndarray:
         predss = self._get_predss(xs)
-        return np.mean(predss, axis=1)
+        return np.mean(predss, 0)
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[ndarray, ndarray]:
         predss = self._get_predss(xs)
-        return np.mean(predss, axis=1), np.var(predss, axis=1)
+        return np.mean(predss, 0), np.var(predss, 0)
 
     def _get_predss(self, xs: Sequence) -> ndarray:
         """Get the predictions for each dropout pass"""
-        predss = np.zeros((len(xs), self.dropout_size))
+        predss = np.zeros((self.dropout_size, len(xs)))
         for j in tqdm(range(self.dropout_size), leave=False,
                       desc='bootstrap prediction', unit='pass'):
-            predss[:, j] = self.model.predict(xs)[:, 0]
+            predss[j] = self.model.predict(xs)[:, 0]
 
         return predss
 

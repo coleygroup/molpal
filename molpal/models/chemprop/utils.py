@@ -1,17 +1,23 @@
 from argparse import Namespace
 import csv
 from datetime import timedelta
+from enum import Enum, auto
 from functools import wraps
 import logging
 import math
 import os
 import pickle
 from time import time
-from typing import Any, Callable, List, Tuple, Type, Union
+from typing import Any, Callable, List, Type, Union
 
-from sklearn.metrics import (auc, mean_absolute_error, mean_squared_error, 
-                             precision_recall_curve, r2_score,
-                             roc_auc_score, accuracy_score, log_loss)
+from sklearn.metrics import (
+    auc, mean_absolute_error,
+    mean_squared_error,
+    precision_recall_curve,
+    r2_score,
+    roc_auc_score, accuracy_score,
+    log_loss
+)
 import torch
 import torch.nn as nn
 from torch.optim import Adam, Optimizer
@@ -20,8 +26,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 from .data import StandardScaler, MoleculeDataset
 from .nn_utils import NoamLR
 
-def makedirs(*args, **kwargs):
-    pass
+class UncertaintyType(Enum):
+
+    DROPOUT = auto()
+    MVE = auto()
 
 def get_loss_func(args: Namespace) -> nn.Module:
     """
@@ -207,6 +215,9 @@ def build_lr_scheduler(
         final_lr=[final_lr]
     )
 
+def makedirs(*args, **kwargs):
+    raise NotImplementedError
+    
 def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> logging.Logger:
     """
     Creates a logger with a stream handler and two file handlers.

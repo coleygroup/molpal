@@ -13,6 +13,7 @@ import numpy as np
 
 from molpal import acquirer, featurizer, models, objectives, pools
 from molpal.exceptions import IncompatibilityError, InvalidExplorationError
+from molpal.pools.base import PruneMethod
 
 T = TypeVar("T")
 
@@ -128,7 +129,11 @@ class Explorer:
         delta: float = 0.01,
         max_iters: int = 10,
         budget: Union[int, float] = 1.0,
-        prune_threshold: Optional[Union[int, float]] = None,
+        prune_method: Optional[PruneMethod] = None,
+        prune_threshold: Union[int, float] = 0.1,
+        prune_beta: float = 2.,
+        prune_max_fp: Union[int, float] = 0.01,
+        prune_min_hit_prob: float = 0.025,
         write_final: bool = True,
         write_intermediate: bool = False,
         chkpt_freq: int = 0,
@@ -144,9 +149,7 @@ class Explorer:
         self.verbose = kwargs.get("verbose", 0)
 
         self.featurizer = featurizer.Featurizer(
-            fingerprint=kwargs["fingerprint"],
-            radius=kwargs["radius"],
-            length=kwargs["length"],
+            kwargs["fingerprint"], kwargs["radius"], kwargs["length"],
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
@@ -159,7 +162,6 @@ class Explorer:
 
         self.objective = objectives.objective(**kwargs)
 
-        self._validate_acquirer()
 
         # stopping attributes
         self.k = k
@@ -168,7 +170,12 @@ class Explorer:
         self.max_iters = max_iters
         self.budget = budget
 
+        # pruning attributes
+        self.prune_method = PruneMethod.from_str(prune_method) if prune_method is not None else None
         self.prune_threshold = prune_threshold
+        self.prune_beta = prune_beta
+        self.prune_max_fp = prune_max_fp
+        self.prune_min_hit_prob = prune_min_hit_prob
 
         # logging attributes
         self.write_final = write_final
@@ -186,6 +193,8 @@ class Explorer:
         self.recent_avgs = []
         self.Y_pred = np.array([])
         self.Y_var = np.array([])
+
+        self._validate_model()
 
         if previous_scores:
             self.load_scores(previous_scores)
@@ -319,6 +328,11 @@ class Explorer:
         sma = sum(self.recent_avgs[-self.window_size :]) / self.window_size
         return (self.top_k_avg - sma) / sma <= self.delta
 
+    @property
+    def should_chkpt(self) -> bool:
+        """whether it is time to checkpoint"""
+        return (self.iter - self.previous_chkpt_iter) > self.chkpt_freq
+
     def explore(self):
         self.run()
 
@@ -377,7 +391,7 @@ class Explorer:
 
         self.iter += 1
 
-        if (self.iter - self.previous_chkpt_iter) > self.chkpt_freq:
+        if self.should_chkpt:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
@@ -408,12 +422,24 @@ class Explorer:
 
         self._update_model()
         self._update_predictions()
-        if self.prune_threshold is not None and self.iter == 1:
-            false_negatives = self.pool.prune(self.prune_threshold, self.Y_pred, self.Y_var)
+
+        if self.prune_method is not None and self.iter == 1:
+            expected_tp = self.pool.prune(
+                self.k,
+                self.Y_pred,
+                self.Y_var,
+                self.prune_method,
+                self.prune_threshold,
+                self.prune_beta,
+                self.prune_max_fp,
+                self.prune_min_hit_prob,
+            )
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
-                print(f"Expected number of false pruned molecules: {false_negatives}")
-                pass
+                print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
+
+            self.Y_pred = np.array([])
+            self._update_predictions()
 
         inputs = self.acquirer.acquire_batch(
             xs=self.pool.smis(),
@@ -435,6 +461,10 @@ class Explorer:
             self.write_scores(include_failed=True)
 
         self.iter += 1
+
+        if self.should_chkpt:
+            self.checkpoint()
+            self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
@@ -748,9 +778,7 @@ class Explorer:
             xs, ys = zip(*self.new_scores.items())
 
         self.model.train(
-            xs,
-            ys,
-            retrain=self.retrain_from_scratch,
+            xs, np.array(ys), retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
         )
         self.new_scores = {}
@@ -789,8 +817,8 @@ class Explorer:
 
         self.updated_model = False
 
-    def _validate_acquirer(self):
-        """Ensure that the model provides values the Acquirer needs"""
+    def _validate_model(self):
+        """Ensure that the model provides necessary values for the Acquirer and during pruning"""
         if self.acquirer.needs > self.model.provides:
             raise IncompatibilityError(
                 f"{self.acquirer.metric} metric needs: "
@@ -798,6 +826,11 @@ class Explorer:
                 + f"but {self.model.type_} only provides: "
                 + f"{self.model.provides}"
             )
+        if (
+            (self.prune_method == PruneMethod.PROB or self.prune_method == PruneMethod.UCB)
+            and "vars" not in self.model.provides
+        ):
+            pass
 
     def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:
         """read the scores contained in the file located at scores_csv"""

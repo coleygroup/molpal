@@ -4,10 +4,9 @@ import csv
 from typing import Dict, Iterable, Optional
 
 import numpy as np
+import pyscreener as ps
 
 from molpal.objectives.base import Objective
-
-import pyscreener as ps
 
 
 class DockingObjective(Objective):
@@ -44,7 +43,6 @@ class DockingObjective(Objective):
         minimize: bool = True,
         **kwargs,
     ):
-
         args = ps.args.gen_args(f"--config {objective_config}")
 
         metadata_template = ps.build_metadata(args.screen_type, args.metadata_template)
@@ -69,6 +67,7 @@ class DockingObjective(Objective):
         )
 
         atexit.register(self.cleanup)
+        
         super().__init__(minimize=minimize)
 
     def forward(self, smis: Iterable[str], **kwargs) -> Dict[str, Optional[float]]:

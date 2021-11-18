@@ -4,6 +4,7 @@ training data."""
 
 from typing import Optional, Set, Type
 
+import pytorch_lightning
 from molpal.models.base import Model
 
 def model(model: str, **kwargs) -> Type[Model]:
@@ -49,10 +50,8 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
 
 def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     """MPN-type Model factory function"""
-    from molpal.models.mpnmodels import (
-        MPNModel, MPNDropoutModel, MPNTwoOutputModel
-    )
-            
+    from molpal.models.mpnmodels import MPNModel, MPNDropoutModel, MPNTwoOutputModel
+
     try:
         return {
             'dropout': MPNDropoutModel,
