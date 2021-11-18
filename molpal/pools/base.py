@@ -231,7 +231,7 @@ class MoleculePool(Sequence):
         beta: float = 2.,
         max_fp: Optional[Union[int, float]] = None,
         min_hit_prob: float = 0.025
-    ) -> float:
+    ) -> np.ndarray:
         """prune the library to the top-k predicted compounds based on their predicted means
 
         NOTE: if both max_fp and l are specified, pruning will be performed using the top-l
@@ -266,7 +266,7 @@ class MoleculePool(Sequence):
 
         Returns
         -------
-        float
+        np.ndarray
             the expected number of true positives pruned, where a "positive" constitutes a molecule 
             with a predicted mean inside the top-k
         """
@@ -299,7 +299,8 @@ class MoleculePool(Sequence):
             self.size = len(fps)
             self.chunk_size = fps.chunks[0]
 
-        return MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, idxs)
+        return idxs
+        # return MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, idxs), idxs
 
     def get_smi(self, idx: int) -> str:
         if idx < 0 or idx >= len(self):
