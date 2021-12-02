@@ -169,6 +169,7 @@ class Explorer:
         self.delta = delta
         self.max_iters = max_iters
         self.budget = budget
+        self.empty_pool = False
 
         # pruning attributes
         self.prune_method = PruneMethod.from_str(prune_method) if prune_method is not None else None
@@ -203,6 +204,8 @@ class Explorer:
         args.update(**args.pop("kwargs"))
         args["fps"] = self.pool.fps_
         args["invalid_idxs"] = list(self.pool.invalid_idxs)
+        args["k"] = self.k
+        args["budget"] = self.budget
         args.pop("config", None)
         self.write_config(args)
 
@@ -303,11 +306,10 @@ class Explorer:
 
         Stopping Conditions
         -------------------
-        a. explored the entire pool
-           (not implemented right now due to complications with warm starting)
-        b. explored for at least <max_iters> iters
-        c. exceeded the maximum budget
-        d. the current top-k average is within a fraction <delta> of the moving
+        - explored for at least <max_iters> iters
+        - exceeded the maximum budget
+        - no unexplored inputs remaining in the pool
+        - the current top-k average is within a fraction <delta> of the moving
            top-k average. This requires two sub-conditions to be met:
            1. the explorer has successfully explored at least k inputs
            2. the explorer has completed at least <window_size> iters after
@@ -318,7 +320,7 @@ class Explorer:
         bool
             whether a stopping condition has been met
         """
-        if len(self) >= len(self.pool) or self.iter > self.max_iters or len(self) >= self.budget:
+        if self.iter > self.max_iters or len(self) >= self.budget or self.empty_pool:
             return True
         if len(self.recent_avgs) < self.window_size:
             return False
@@ -377,6 +379,7 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
+        self.empty_pool = len(inputs) == 0
 
         new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
@@ -421,7 +424,7 @@ class Explorer:
         self._update_model()
         self._update_predictions()
 
-        if self.prune_method is not None and self.iter == 1:
+        if self.prune_method is not None:# and self.iter == 1:
             idxs = self.pool.prune(
                 self.k,
                 self.Y_pred,
@@ -435,6 +438,9 @@ class Explorer:
             expected_tp = pools.MoleculePool.expected_positives_pruned(
                 self.k, self.Y_pred, self.Y_var, idxs
             )
+            chkpt_dir = Path(self.path / "chkpts" / f"iter_{self.iter}")
+            np.save(chkpt_dir / "retained_idxs.npy", idxs)
+
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
                 print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
@@ -451,6 +457,7 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes,
             t=(self.iter - 1),
         )
+        self.empty_pool = len(inputs) == 0
 
         new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)

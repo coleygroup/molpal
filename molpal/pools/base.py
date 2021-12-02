@@ -266,9 +266,8 @@ class MoleculePool(Sequence):
 
         Returns
         -------
-        np.ndarray
-            the expected number of true positives pruned, where a "positive" constitutes a molecule 
-            with a predicted mean inside the top-k
+        idxs : np.ndarray
+            the indices of the retained molecules in the pool
         """
         if isinstance(k, float):
             k = int(k * len(Y_mean))
@@ -282,7 +281,7 @@ class MoleculePool(Sequence):
         elif prune_method == PruneMethod.EFP:
             idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
         elif prune_method == PruneMethod.PROB:
-            idxs = self.prune_prob(Y_mean, Y_var, l, min_hit_prob)
+            idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
         
         self.smis_ = self.get_smis(idxs)
 
