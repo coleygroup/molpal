@@ -32,7 +32,7 @@ class Experiment:
             try:
                 self.k = int(config["top-k"])
             except ValueError:
-                self.k = float(config["top-k"]) * len(d_smi_idx)
+                self.k = int(float(config["top-k"]) * len(d_smi_idx))
             self.metric = config["metric"]
             self.beta = float(config.get("beta", 2.0))
             self.xi = float(config.get("xi", 0.001))
