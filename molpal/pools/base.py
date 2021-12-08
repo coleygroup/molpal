@@ -14,6 +14,7 @@ import h5py
 import numpy as np
 import ray
 from rdkit import Chem, RDLogger
+from scipy import optimize
 from scipy.stats import norm
 from tqdm import tqdm
 
@@ -146,7 +147,7 @@ class MoleculePool(Sequence):
         self.verbose = verbose
 
         self.smis_ = None
-        self.fps_ = fps
+        self.fps_ = Path(fps) if fps else None
         self.fps_path = fps_path
         self.featurizer = featurizer
 
@@ -285,11 +286,12 @@ class MoleculePool(Sequence):
         
         self.smis_ = self.get_smis(idxs)
 
+        name = self.fps_.stem.split('_')[0]
         self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
             self.smis_,
             len(idxs),
             featurizer=self.featurizer,
-            name=f"{Path(self.fps_).stem}_pruned_{uuid.uuid4()}",
+            name=f"{name}_pruned_{uuid.uuid4()}",
             path=tempfile.gettempdir()
         )
 
@@ -732,6 +734,26 @@ class MoleculePool(Sequence):
         idxs = np.arange(len(Y_mean))[P >= min_hit_prob]
 
         return idxs
+
+    # @staticmethod
+    # def optimize_prob(
+    #     Y_mean: np.ndarray,
+    #     Y_var: np.ndarray,
+    #     prune_cutoff: float,
+    #     max_pos_prune: float
+    # ) -> float:
+    #     def E_pos_pruned(p) -> float:
+    #         P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
+    #         return -np.abs(max_pos_prune - P[P < p].sum())
+
+    #     Es = [E_pos_pruned(p) for p in np.linspace(0, 1, 10)]
+    #     result = optimize.minimize_scalar(
+    #         E_pos_pruned, 
+    #         bounds=(0, 1),
+    #     )
+
+    #     print(result.x)
+    #     return result.x
 
     @staticmethod
     def prune_max_fp(

@@ -41,6 +41,10 @@ def max_fp(request):
 def min_hit_prob(request):
     return request.param
 
+@pytest.fixture(params=[0.05, 0.10])
+def max_pos_prune(request):
+    return request.param
+
 def test_expected_pos_pruned_no_var_no_pruning(k, Y_mean, Y_var):
     k = int(k * len(Y_mean))
 
@@ -107,3 +111,18 @@ def test_prune_prob(Y_mean, Y_var, l, min_hit_prob):
     P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
 
     assert np.all(P[idxs] >= min_hit_prob)
+
+# def test_optimize_prob(Y_mean, Y_var, l: float, max_pos_prune: float):
+#     N = int(l * len(Y_mean))
+#     cutoff = np.partition(Y_mean, -N)[-N]
+#     max_pos_prune *= N
+
+#     prob = MoleculePool.optimize_prob(Y_mean, Y_var, cutoff, 0)
+
+#     idxs = MoleculePool.prune_prob(Y_mean, Y_var, N, prob)
+#     P = MoleculePool.prob_above(Y_mean, Y_var, cutoff)
+
+#     mask = np.ones(len(P), bool)
+#     mask[idxs] = False
+
+#     assert P[mask].sum() <= max_pos_prune

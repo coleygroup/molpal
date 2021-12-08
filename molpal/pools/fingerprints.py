@@ -19,7 +19,7 @@ def feature_matrix_hdf5(
     featurizer: Featurizer = Featurizer(),
     name: str = "fps.h5",
     path: str = "."
-) -> Tuple[str, Set[int]]:
+) -> Tuple[Path, Set[int]]:
     """Precalculate the fature matrix of xs with the given featurizer and store
     the matrix in an HDF5 file
 
@@ -41,10 +41,9 @@ def feature_matrix_hdf5(
 
     Returns
     -------
-    fps_h5 : str
-        the filename of an hdf5 file containing the feature matrix of the
-        representations generated from the molecules in the input file.
-        The row ordering corresponds to the ordering of smis
+    fps_h5 : Path
+        the filepath of an hdf5 file containing the feature matrix of the representations generated 
+        from the molecules in the input file. The row ordering corresponds to the ordering of smis
     invalid_idxs : Set[int]
         the set of indices in xs containing invalid inputs
     """
@@ -88,4 +87,4 @@ def feature_matrix_hdf5(
         if valid_size != size:
             fps_dset.resize(valid_size, 0)
 
-    return fps_h5, invalid_idxs
+    return Path(fps_h5), invalid_idxs
