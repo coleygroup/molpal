@@ -701,7 +701,7 @@ class MoleculePool(Sequence):
     def prune_prob(
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        l: Union[int, float],
+        k: Union[int, float],
         min_hit_prob: float = 0.025,
     ) -> np.ndarray:
         """Prune all predictions with a probabilty less than min_hit_prob of being above a given
@@ -713,9 +713,8 @@ class MoleculePool(Sequence):
             the predicted means
         Y_var : np.ndarray
             the predicted variances
-        l : Union[int, float]
-            the percentile or rank of the predicted means from which to calculate a pruning 
-            threshold 
+        k : Union[int, float]
+            the percentile or rank of the predicted means above which molecules are considered hits
         min_hit_prob : float
             the minimum probability necessary to avoid pruning
 
@@ -724,13 +723,13 @@ class MoleculePool(Sequence):
         np.ndarray
             the indices of the predictions to retain
         """
-        if isinstance(l, float):
-            l = int(l * len(Y_mean))
-        if l < 1:
-            raise ValueError(f"l must be positive! got: {l}")
+        if isinstance(k, float):
+            k = int(k * len(Y_mean))
+        if k < 1:
+            raise ValueError(f"l must be positive! got: {k}")
             
-        prune_cutoff = np.partition(Y_mean, -l)[-l]
-        P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
+        hit_cutoff = np.partition(Y_mean, -k)[-k]
+        P = MoleculePool.prob_above(Y_mean, Y_var, hit_cutoff)
         idxs = np.arange(len(Y_mean))[P >= min_hit_prob]
 
         return idxs

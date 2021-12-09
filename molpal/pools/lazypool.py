@@ -70,7 +70,7 @@ class LazyMoleculePool(MoleculePool):
         self.smis_ = self.get_smis(idxs)
         self.size = len(self.smis_)
 
-        return MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, idxs)
+        return idxs
 
     def _encode_mols(self, *args, **kwargs):
         """Do not precompute any feature representations"""
