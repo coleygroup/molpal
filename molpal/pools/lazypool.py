@@ -65,7 +65,7 @@ class LazyMoleculePool(MoleculePool):
         elif prune_method == PruneMethod.EFP:
             idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
         elif prune_method == PruneMethod.PROB:
-            idxs = self.prune_prob(Y_mean, Y_var, l, min_hit_prob)
+            idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
         
         self.smis_ = self.get_smis(idxs)
         self.size = len(self.smis_)
