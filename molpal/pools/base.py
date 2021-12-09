@@ -726,7 +726,7 @@ class MoleculePool(Sequence):
         if isinstance(k, float):
             k = int(k * len(Y_mean))
         if k < 1:
-            raise ValueError(f"l must be positive! got: {k}")
+            raise ValueError(f"k must be positive! got: {k}")
             
         hit_cutoff = np.partition(Y_mean, -k)[-k]
         P = MoleculePool.prob_above(Y_mean, Y_var, hit_cutoff)
