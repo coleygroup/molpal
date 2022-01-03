@@ -6,8 +6,8 @@ from typing import Optional, Union
 
 import numpy as np
 
-from scripts.experiment import Experiment, IncompleteExperimentError
-from scripts.utils import *
+from experiment import Experiment, IncompleteExperimentError
+from utils import *
 
 @dataclass
 class Dataset:
