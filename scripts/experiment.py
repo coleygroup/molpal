@@ -262,7 +262,7 @@ class Experiment:
         self,
         i: int,
         true: List[Point],
-        is_sorted=True,
+        is_sorted=False,
         avg: bool = True,
         smis: bool = True,
         scores: bool = True,
