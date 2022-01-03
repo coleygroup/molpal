@@ -284,7 +284,7 @@ def cleanup_args(args: Namespace):
         args_to_remove |= {'conf_method'}
 
     if args.prune_method is None:
-        args_to_remove |= {'prune_threshold', 'prune_max_fp', 'prune_beta', 'prune_min_hit_prob'}
+        args_to_remove |= {'prune_min_hit_prob'}
         
     for arg in args_to_remove:
         delattr(args, arg)

@@ -393,7 +393,7 @@ class Explorer:
             self.recent_avgs.append(self.avg())
 
         if self.write_intermediate:
-            self.write_scores(include_failed=True)
+            self.write_scores()
 
         self.iter += 1
 
@@ -474,7 +474,7 @@ class Explorer:
             self.recent_avgs.append(self.avg())
 
         if self.write_intermediate:
-            self.write_scores(include_failed=True)
+            self.write_scores()
 
         self.iter += 1
 
@@ -546,6 +546,7 @@ class Explorer:
             )[:n]
 
         return top_explored
+
     def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the current top predicted molecules and their scores
 
@@ -794,10 +795,10 @@ class Explorer:
             return
 
         if self.retrain_from_scratch:
-            points = self.scores.items()
+            xs_ys = self.scores.items()
         else:
-            points = self.new_scores.items()
-        xs, ys = zip(*[(x, y) for x, y in points if y is not None])
+            xs_ys = self.new_scores.items()
+        xs, ys = zip(*[(x, y) for x, y in xs_ys if y is not None])
 
         self.model.train(
             xs,
