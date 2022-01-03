@@ -47,10 +47,10 @@ class LazyMoleculePool(MoleculePool):
         k: Union[int, float],
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        prune_method: PruneMethod = PruneMethod.GREEDY,
-        l: Optional[Union[int, float]] = None,
-        beta: float = 2.,
-        max_fp: Optional[Union[int, float]] = None,
+        prune_method: PruneMethod = PruneMethod.PROB,
+        # l: Optional[Union[int, float]] = None,
+        # beta: float = 2.,
+        # max_fp: Optional[Union[int, float]] = None,
         min_hit_prob: float = 0.025
     ) -> float:
         if isinstance(k, float):
@@ -58,14 +58,10 @@ class LazyMoleculePool(MoleculePool):
         if k < 1:
             raise ValueError(f"hit threshold (k) must be positive! got: {k}")
 
-        if prune_method == PruneMethod.GREEDY:
-            idxs = self.prune_greedy(Y_mean, l)
-        elif prune_method == PruneMethod.UCB:
-            idxs = self.prune_ucb(Y_mean, Y_var, l, beta)
-        elif prune_method == PruneMethod.EFP:
-            idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
-        elif prune_method == PruneMethod.PROB:
+        if prune_method == PruneMethod.PROB:
             idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
+        else:
+            raise NotImplementedError(f"Deprecated prune method! got: {prune_method}")
         
         self.smis_ = self.get_smis(idxs)
         self.size = len(self.smis_)

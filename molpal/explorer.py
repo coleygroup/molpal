@@ -130,9 +130,9 @@ class Explorer:
         max_iters: int = 10,
         budget: Union[int, float] = 1.0,
         prune_method: Optional[PruneMethod] = None,
-        prune_threshold: Union[int, float] = 0.1,
-        prune_beta: float = 2.,
-        prune_max_fp: Union[int, float] = 0.01,
+        # prune_threshold: Union[int, float] = 0.1,
+        # prune_beta: float = 2.,
+        # prune_max_fp: Union[int, float] = 0.01,
         prune_min_hit_prob: float = 0.025,
         write_final: bool = True,
         write_intermediate: bool = False,
@@ -173,9 +173,9 @@ class Explorer:
 
         # pruning attributes
         self.prune_method = PruneMethod.from_str(prune_method) if prune_method is not None else None
-        self.prune_threshold = prune_threshold
-        self.prune_beta = prune_beta
-        self.prune_max_fp = prune_max_fp
+        # self.prune_threshold = prune_threshold
+        # self.prune_beta = prune_beta
+        # self.prune_max_fp = prune_max_fp
         self.prune_min_hit_prob = prune_min_hit_prob
 
         # logging attributes
@@ -435,9 +435,9 @@ class Explorer:
                 self.Y_pred,
                 self.Y_var,
                 self.prune_method,
-                self.prune_threshold,
-                self.prune_beta,
-                self.prune_max_fp,
+                # self.prune_threshold,
+                # self.prune_beta,
+                # self.prune_max_fp,
                 self.prune_min_hit_prob,
             )
             expected_tp = pools.MoleculePool.expected_positives_pruned(

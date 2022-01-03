@@ -95,14 +95,14 @@ def add_pool_args(parser: ArgumentParser) -> None:
 #       PRUNING ARGUMENTS       #
 #################################
 def add_prune_args(parser):
-    parser.add_argument('--prune-method', choices=('efp', 'prob', 'greedy', 'ucb'))
-    parser.add_argument(
-        '--prune-threshold',
-        type=restricted_float_or_int,
-        help="the number or fraction of top-predicted molecules to keep after the first round of exploration"
-    )
-    parser.add_argument('--prune-beta', type=float)
-    parser.add_argument('--prune-max-fp', type=restricted_float_or_int)
+    parser.add_argument("--prune-method", choices=("greedy"))
+    # parser.add_argument(
+    #     '--prune-threshold',
+    #     type=restricted_float_or_int,
+    #     help="the number or fraction of top-predicted molecules to keep after the first round of exploration"
+    # )
+    # parser.add_argument('--prune-beta', type=float)
+    # parser.add_argument('--prune-max-fp', type=restricted_float_or_int)
     parser.add_argument('--prune-min-hit-prob', type=restricted_float)
 
 #####################################
