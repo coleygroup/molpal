@@ -169,6 +169,7 @@ class Explorer:
         self.delta = delta
         self.max_iters = max_iters
         self.budget = budget
+        self.empty_pool = False
 
         # pruning attributes
         self.prune_method = PruneMethod.from_str(prune_method) if prune_method is not None else None
@@ -186,7 +187,7 @@ class Explorer:
         # stateful attributes (not including model)
         self.iter = 0
         self.scores = {}
-        self.failures = {}
+        # self.failures = {}
         self.new_scores = {}
         self.adjustment = 0
         self.updated_model = None
@@ -203,6 +204,8 @@ class Explorer:
         args.update(**args.pop("kwargs"))
         args["fps"] = self.pool.fps_
         args["invalid_idxs"] = list(self.pool.invalid_idxs)
+        args["k"] = self.k
+        args["budget"] = self.budget
         args.pop("config", None)
         self.write_config(args)
 
@@ -218,7 +221,11 @@ class Explorer:
     def num_explored(self) -> int:
         """The total number of inputs this Explorer has explored adjusted
         for score data that was read as opposed evaluated"""
-        return len(self.scores) + len(self.failures) - self.adjustment
+        return (
+            len(self.scores)
+            # + len(self.failures)
+            - self.adjustment
+        )
 
     @property
     def path(self) -> Path:
@@ -303,11 +310,10 @@ class Explorer:
 
         Stopping Conditions
         -------------------
-        a. explored the entire pool
-           (not implemented right now due to complications with warm starting)
-        b. explored for at least <max_iters> iters
-        c. exceeded the maximum budget
-        d. the current top-k average is within a fraction <delta> of the moving
+        - explored for at least <max_iters> iters
+        - exceeded the maximum budget
+        - no unexplored inputs remaining in the pool
+        - the current top-k average is within a fraction <delta> of the moving
            top-k average. This requires two sub-conditions to be met:
            1. the explorer has successfully explored at least k inputs
            2. the explorer has completed at least <window_size> iters after
@@ -318,7 +324,7 @@ class Explorer:
         bool
             whether a stopping condition has been met
         """
-        if len(self) >= len(self.pool) or self.iter > self.max_iters or len(self) >= self.budget:
+        if self.iter > self.max_iters or len(self) >= self.budget or self.empty_pool:
             return True
         if len(self.recent_avgs) < self.window_size:
             return False
@@ -377,9 +383,11 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
+        self.empty_pool = len(inputs) == 0
 
-        new_scores = self.objective(inputs)
-        self._clean_and_update_scores(new_scores)
+        self.new_scores = self.objective(inputs)
+        self.scores.update(self.new_scores)
+        # self._clean_and_update_scores(new_scores)
 
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.avg())
@@ -393,7 +401,7 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        valid_scores = [y for y in new_scores.values() if y is not None]
+        valid_scores = [y for y in self.new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
 
     def explore_batch(self) -> float:
@@ -421,7 +429,7 @@ class Explorer:
         self._update_model()
         self._update_predictions()
 
-        if self.prune_method is not None and self.iter == 1:
+        if self.prune_method is not None:# and self.iter == 1:
             idxs = self.pool.prune(
                 self.k,
                 self.Y_pred,
@@ -435,6 +443,9 @@ class Explorer:
             expected_tp = pools.MoleculePool.expected_positives_pruned(
                 self.k, self.Y_pred, self.Y_var, idxs
             )
+            chkpt_dir = Path(self.path / "chkpts" / f"iter_{self.iter}")
+            np.save(chkpt_dir / "retained_idxs.npy", idxs)
+
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
                 print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
@@ -446,14 +457,18 @@ class Explorer:
             xs=self.pool.smis(),
             y_means=self.Y_pred,
             y_vars=self.Y_var,
-            explored={**self.scores, **self.failures},
+            explored=self.scores,#{**self.scores, **self.failures},
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
             t=(self.iter - 1),
         )
+        self.empty_pool = len(inputs) == 0
 
-        new_scores = self.objective(inputs)
-        self._clean_and_update_scores(new_scores)
+        # new_scores = self.objective(inputs)
+        # self._clean_and_update_scores(new_scores)
+
+        self.new_scores = self.objective(inputs)
+        self.scores.update(self.new_scores)
 
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.avg())
@@ -467,7 +482,7 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        valid_scores = [y for y in new_scores.values() if y is not None]
+        valid_scores = [y for y in self.new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
 
     def avg(self, k: Union[int, float, None] = None) -> float:
@@ -475,12 +490,11 @@ class Explorer:
 
         Parameter
         ---------
-        k : Union[int, float, None], default = None)
-            the number of molecules to consider when calculating the
-            average, expressed either as a specific number or as a
-            fraction of the pool. If the value specified is greater than the
-            number of successfully evaluated inputs, return the average of all
-            succesfully evaluated inputs. If None, use self.k
+        k : Union[int, float, None], default=None
+            the number of molecules to consider when calculating the average, expressed either as an
+            integer or as a fraction of the pool. If the value specified is greater than the
+            number of successfully evaluated inputs, return the average of all succesfully 
+            evaluated inputs. If None, use self.k
 
         Returns
         -------
@@ -497,12 +511,12 @@ class Explorer:
 
         return sum(score for _, score in self.top_explored(k)) / k
 
-    def top_explored(self, k: Union[int, float, None] = None) -> List[Tuple]:
-        """Get the top-k explored molecules
+    def top_explored(self, n: Union[int, float, None] = None) -> List[Tuple]:
+        """Get the top-n explored molecules
 
         Parameter
         ---------
-        k : Union[int, float, None], default=None
+        n : Union[int, float, None], default=None
             the number of top-scoring molecules to get, expressed either as a
             specific number or as a fraction of the pool. If the value
             specified is greater than the number of successfully evaluated
@@ -514,27 +528,38 @@ class Explorer:
             a list of tuples containing the identifier and score of the
             top-k inputs, sorted by their score
         """
-        k = k or self.k
-        if isinstance(k, float):
-            k = int(k * len(self.pool))
-        k = min(k, len(self.scores))
+        n = n or self.k
+        if isinstance(n, float):
+            n = int(n * len(self.pool))
+        n = min(n, len(self.scores))
 
-        if k / len(self.scores) < 0.8:
-            return heapq.nlargest(k, self.scores.items(), key=itemgetter(1))
+        
+        if n / len(self.scores) < 0.3:
+            top_explored = heapq.nlargest(
+                n, self.scores.items(), key=lambda xy: xy[1] if xy[1] is not None else -float("inf")
+            )
+        else:
+            top_explored = sorted(
+                self.scores.items(),
+                key=lambda xy: xy[1] if xy[1] is not None else -float("inf"),
+                reverse=True
+            )[:n]
 
-        return sorted(self.scores.items(), key=itemgetter(1), reverse=True)[:k]
-
+        return top_explored
     def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the current top predicted molecules and their scores
 
         Parameter
         ---------
         k : Union[int, float, None], default=None
-            see documentation for avg()
+            the number of molecules to consider when calculating the average, expressed either as an
+            integer or as a fraction of the pool. If the value specified is greater than the
+            number of successfully evaluated inputs, return the average of all succesfully 
+            evaluated inputs. If None, use self.k
 
         Returns
         -------
-        top_preds : List[Tuple[T, float]]
+        List[Tuple[T, float]]
             a list of tuples containing the identifier and predicted score of
             the top-k predicted inputs, sorted by their predicted score
         """
@@ -554,51 +579,44 @@ class Explorer:
 
     def write_scores(
         self,
-        m: Union[int, float] = 1.0,
         final: bool = False,
-        include_failed: bool = False,
-    ) -> None:
-        """Write the top M scores to a CSV file
+        # include_failed: bool = False,
+    ):
+        """Write all scores to a CSV file
 
-        Writes a CSV file of the top-k explored inputs with the input ID and
-        the respective objective function value.
+        Writes a CSV file of the explored inputs with the input ID and the respective objective 
+        function value in the order in which they were acquired. If final is true, the CSV will be 
+        sorted order, with the best objective function values at the top
 
         Parameters
         ----------
-        m : Union[int, float], default=1.
-            The number of top-scoring inputs to write, expressed either as an
-            integer or as a float representing the fraction of explored inputs.
-            By default, writes all inputs
         final : bool, default=False
             Whether the explorer has finished. If true, write all explored
             inputs (both successful and failed) and name the output CSV file
             "all_explored_final.csv"
         include_failed : bool, default=False
             Whether to include the inputs for which objective function
-            evaluation failed
+            evaluation failed 
         """
-        if isinstance(m, float):
-            m = int(m * len(self))
-        m = min(m, len(self))
+        n = len(self)
 
         p_data = self.path / "data"
         p_data.mkdir(parents=True, exist_ok=True)
 
         if final:
-            m = len(self)
             p_scores = p_data / f"all_explored_final.csv"
-            include_failed = True
+            # include_failed = True
+            points = self.top_explored(n)
         else:
-            p_scores = p_data / f"top_{m}_explored_iter_{self.iter}.csv"
-
-        top_m = self.top_explored(m)
+            p_scores = p_data / f"top_{n}_explored_iter_{self.iter}.csv"
+            points = self.scores.items() 
 
         with open(p_scores, "w") as fid:
             writer = csv.writer(fid)
             writer.writerow(["smiles", "score"])
-            writer.writerows(top_m)
-            if include_failed:
-                writer.writerows(self.failures.items())
+            writer.writerows(points)
+            # if include_failed:
+            #     writer.writerows(self.failures.items())
 
         if self.verbose > 0:
             print(f'Results were written to "{p_scores}"')
@@ -625,7 +643,8 @@ class Explorer:
         self.adjustment += len(scores) + len(failures)
 
         self.scores.update(scores)
-        self.failures.update(failures)
+        self.scores.update(failures)
+        # self.failures.update(failures)
 
         if self.iter == 0:
             self.iter = 1
@@ -652,13 +671,14 @@ class Explorer:
         chkpt_dir.mkdir(parents=True, exist_ok=True)
 
         scores_pkl = chkpt_dir / "scores.pkl"
-        pickle.dump(self.scores, open(scores_pkl, "wb"))
+        scores_pkl.write_bytes(pickle.dumps(self.scores))
 
-        failures_pkl = chkpt_dir / "failures.pkl"
-        pickle.dump(self.failures, open(failures_pkl, "wb"))
+        # failures_pkl = chkpt_dir / "failures.pkl"
+        # failures_pkl.write_bytes(pickle.dumps(self.failures))
+        # pickle.dump(self.failures, open(failures_pkl, "wb"))
 
         new_scores_pkl = chkpt_dir / "new_scores.pkl"
-        pickle.dump(self.new_scores, open(new_scores_pkl, "wb"))
+        new_scores_pkl.write_bytes(pickle.dumps(self.new_scores))
 
         preds_npz = chkpt_dir / "preds.npz"
         np.savez(preds_npz, Y_pred=self.Y_pred, Y_var=self.Y_var)
@@ -666,7 +686,7 @@ class Explorer:
         state = {
             "iter": self.iter,
             "scores": str(scores_pkl.absolute()),
-            "failures": str(failures_pkl.absolute()),
+            # "failures": str(failures_pkl.absolute()),
             "new_scores": str(new_scores_pkl.absolute()),
             "adjustment": self.adjustment,
             "updated_model": self.updated_model,
@@ -694,7 +714,7 @@ class Explorer:
         self.iter = state["iter"]
 
         self.scores = pickle.load(open(state["scores"], "rb"))
-        self.failures = pickle.load(open(state["failures"], "rb"))
+        # self.failures = pickle.load(open(state["failures"], "rb"))
         self.new_scores = pickle.load(open(state["new_scores"], "rb"))
         self.adjustment = state["adjustment"]
 
@@ -730,31 +750,31 @@ class Explorer:
 
         return str(config_file)
 
-    def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
-        """Remove the None entries from new_scores and update the attributes
-        new_scores, scores, and failed accordingly
+    # def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
+    #     """Remove the None entries from new_scores and update the attributes
+    #     new_scores, scores, and failed accordingly
 
-        Parameter
-        ---------
-        new_scores : Dict[T, Optional[float]]
-            a dictionary containing the corresponding values of the objective
-            function for a batch of inputs
+    #     Parameter
+    #     ---------
+    #     new_scores : Dict[T, Optional[float]]
+    #         a dictionary containing the corresponding values of the objective
+    #         function for a batch of inputs
 
-        Side effects
-        ------------
-        (mutates) self.scores : Dict[T, float]
-            updates self.scores with the non-None entries from new_scores
-        (mutates) self.new_scores : Dict[T, float]
-            updates self.new_scores with the non-None entries from new_scores
-        (mutates) self.failures : Dict[T, None]
-            a dictionary storing the inputs for which scoring failed
-        """
-        for x, y in new_scores.items():
-            if y is None:
-                self.failures[x] = y
-            else:
-                self.scores[x] = y
-                self.new_scores[x] = y
+    #     Side effects
+    #     ------------
+    #     (mutates) self.scores : Dict[T, float]
+    #         updates self.scores with the non-None entries from new_scores
+    #     (mutates) self.new_scores : Dict[T, float]
+    #         updates self.new_scores with the non-None entries from new_scores
+    #     (mutates) self.failures : Dict[T, None]
+    #         a dictionary storing the inputs for which scoring failed
+    #     """
+    #     for x, y in new_scores.items():
+    #         if y is None:
+    #             self.failures[x] = y
+    #         else:
+    #             self.scores[x] = y
+    #             self.new_scores[x] = y
 
     def _update_model(self):
         """Update the prior distribution to generate a posterior distribution
@@ -774,12 +794,15 @@ class Explorer:
             return
 
         if self.retrain_from_scratch:
-            xs, ys = zip(*self.scores.items())
+            points = self.scores.items()
         else:
-            xs, ys = zip(*self.new_scores.items())
+            points = self.new_scores.items()
+        xs, ys = zip(*[(x, y) for x, y in points if y is not None])
 
         self.model.train(
-            xs, np.array(ys), retrain=self.retrain_from_scratch,
+            xs,
+            np.array(ys),
+            retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
         )
         self.new_scores = {}

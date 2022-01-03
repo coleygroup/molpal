@@ -26,17 +26,9 @@ class Dataset:
         self.reps = len(self.avg)
         self.num_iters = len(self.num_acquired)
 
-        avg = self.avg
-        self.avg = np.empty((avg.shape[1], 2))
-        self.avg[:, 0], self.avg[:, 1] = avg.mean(0), avg.std(0)
-
-        smis = self.smis
-        self.smis = np.empty((smis.shape[1], 2))
-        self.smis[:, 0], self.smis[:, 1] = smis.mean(0), smis.std(0)
-
-        scores = self.scores
-        self.scores = np.empty((scores.shape[1], 2))
-        self.scores[:, 0], self.scores[:, 1] = scores.mean(0), scores.std(0)
+        self.avg = mean_and_sd(self.avg)
+        self.smis = mean_and_sd(self.smis)
+        self.scores = mean_and_sd(self.scores)
 
     def __str__(self):
         header = f"| {self.split:0.1%} | {self.model.upper()} | {self.metric.upper()} | TOP-{self.N} |"
@@ -61,6 +53,22 @@ class Dataset:
                 for mean, sd in zip(means, sds)
             ]
         )
+
+def mean_and_sd(X: np.ndarray) -> np.ndarray:
+    Y = np.empty((X.shape[1], 2))
+    Y[:, 0], Y[:, 1] = np.nanmean(X, 0), np.nanstd(X, 0)
+
+    return Y
+
+def smooth_rewards(rewardss: List) -> np.ndarray:
+    fill_length = max(len(r) for r in rewardss)
+    cut_length = min(len(r) for r in rewardss)
+    rewardss = [r[:cut_length] for r in rewardss]
+    # for r in rewardss:
+        # fill = fill_length - len(r)
+        # r.extend((None, None, None) for _ in range(fill))
+
+    return np.array(rewardss, float)
 
 def save_dataset(d: Dataset, filepath: Optional[Union[str, Path]] = None):
     pkl_file = filepath or f"{d.split:0.3f}-{d.model}-{d.metric}-top{d.N}.pkl"
@@ -136,7 +144,10 @@ if __name__ == "__main__":
         print(
             f"Results will for dataset will be truncated to shortest experiment ({min_iters})."
         )
-    rewardss = np.array(rewardss)
+
+    R = np.array(rewardss)
+    if len(R.shape) != 3:
+        R = smooth_rewards(rewardss)
 
     d = Dataset(
         args.split,
@@ -144,9 +155,9 @@ if __name__ == "__main__":
         args.metric,
         args.N,
         e.num_acquired,
-        rewardss[:,:,0],
-        rewardss[:,:,1],
-        rewardss[:,:,2],
+        R[:,:,0],
+        R[:,:,1],
+        R[:,:,2],
     )
 
     print(d)

@@ -14,6 +14,7 @@ import h5py
 import numpy as np
 import ray
 from rdkit import Chem, RDLogger
+from scipy import optimize
 from scipy.stats import norm
 from tqdm import tqdm
 
@@ -146,7 +147,7 @@ class MoleculePool(Sequence):
         self.verbose = verbose
 
         self.smis_ = None
-        self.fps_ = fps
+        self.fps_ = Path(fps) if fps else None
         self.fps_path = fps_path
         self.featurizer = featurizer
 
@@ -266,9 +267,8 @@ class MoleculePool(Sequence):
 
         Returns
         -------
-        np.ndarray
-            the expected number of true positives pruned, where a "positive" constitutes a molecule 
-            with a predicted mean inside the top-k
+        idxs : np.ndarray
+            the indices of the retained molecules in the pool
         """
         if isinstance(k, float):
             k = int(k * len(Y_mean))
@@ -282,15 +282,16 @@ class MoleculePool(Sequence):
         elif prune_method == PruneMethod.EFP:
             idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
         elif prune_method == PruneMethod.PROB:
-            idxs = self.prune_prob(Y_mean, Y_var, l, min_hit_prob)
+            idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
         
         self.smis_ = self.get_smis(idxs)
 
+        name = self.fps_.stem.split('_')[0]
         self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
             self.smis_,
             len(idxs),
             featurizer=self.featurizer,
-            name=f"{Path(self.fps_).stem}_pruned_{uuid.uuid4()}",
+            name=f"{name}_pruned_{uuid.uuid4()}",
             path=tempfile.gettempdir()
         )
 
@@ -700,7 +701,7 @@ class MoleculePool(Sequence):
     def prune_prob(
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        l: Union[int, float],
+        k: Union[int, float],
         min_hit_prob: float = 0.025,
     ) -> np.ndarray:
         """Prune all predictions with a probabilty less than min_hit_prob of being above a given
@@ -712,9 +713,8 @@ class MoleculePool(Sequence):
             the predicted means
         Y_var : np.ndarray
             the predicted variances
-        l : Union[int, float]
-            the percentile or rank of the predicted means from which to calculate a pruning 
-            threshold 
+        k : Union[int, float]
+            the percentile or rank of the predicted means above which molecules are considered hits
         min_hit_prob : float
             the minimum probability necessary to avoid pruning
 
@@ -723,16 +723,36 @@ class MoleculePool(Sequence):
         np.ndarray
             the indices of the predictions to retain
         """
-        if isinstance(l, float):
-            l = int(l * len(Y_mean))
-        if l < 1:
-            raise ValueError(f"l must be positive! got: {l}")
+        if isinstance(k, float):
+            k = int(k * len(Y_mean))
+        if k < 1:
+            raise ValueError(f"k must be positive! got: {k}")
             
-        prune_cutoff = np.partition(Y_mean, -l)[-l]
-        P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
+        hit_cutoff = np.partition(Y_mean, -k)[-k]
+        P = MoleculePool.prob_above(Y_mean, Y_var, hit_cutoff)
         idxs = np.arange(len(Y_mean))[P >= min_hit_prob]
 
         return idxs
+
+    # @staticmethod
+    # def optimize_prob(
+    #     Y_mean: np.ndarray,
+    #     Y_var: np.ndarray,
+    #     prune_cutoff: float,
+    #     max_pos_prune: float
+    # ) -> float:
+    #     def E_pos_pruned(p) -> float:
+    #         P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
+    #         return -np.abs(max_pos_prune - P[P < p].sum())
+
+    #     Es = [E_pos_pruned(p) for p in np.linspace(0, 1, 10)]
+    #     result = optimize.minimize_scalar(
+    #         E_pos_pruned, 
+    #         bounds=(0, 1),
+    #     )
+
+    #     print(result.x)
+    #     return result.x
 
     @staticmethod
     def prune_max_fp(
