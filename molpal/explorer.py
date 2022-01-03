@@ -401,7 +401,7 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        valid_scores = [y for y in new_scores.values() if y is not None]
+        valid_scores = [y for y in self.new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
 
     def explore_batch(self) -> float:
@@ -482,7 +482,7 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        valid_scores = [y for y in new_scores.values() if y is not None]
+        valid_scores = [y for y in self.new_scores.values() if y is not None]
         return sum(valid_scores) / len(valid_scores)
 
     def avg(self, k: Union[int, float, None] = None) -> float:
