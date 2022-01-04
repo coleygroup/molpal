@@ -95,7 +95,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
 #       PRUNING ARGUMENTS       #
 #################################
 def add_prune_args(parser):
-    parser.add_argument("--prune-method", choices=("greedy"))
+    parser.add_argument("--prune-method", choices=("prob",))
     # parser.add_argument(
     #     '--prune-threshold',
     #     type=restricted_float_or_int,
