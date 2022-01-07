@@ -95,7 +95,8 @@ def add_pool_args(parser: ArgumentParser) -> None:
 #       PRUNING ARGUMENTS       #
 #################################
 def add_prune_args(parser):
-    parser.add_argument("--prune-method", choices=("prob",))
+    parser.add_argument("--prune", action="store_true")
+    parser.add_argument('--prune-min-hit-prob', type=restricted_float)
     # parser.add_argument(
     #     '--prune-threshold',
     #     type=restricted_float_or_int,
@@ -103,7 +104,6 @@ def add_prune_args(parser):
     # )
     # parser.add_argument('--prune-beta', type=float)
     # parser.add_argument('--prune-max-fp', type=restricted_float_or_int)
-    parser.add_argument('--prune-min-hit-prob', type=restricted_float)
 
 #####################################
 #       ACQUISITION ARGUMENTS       #
@@ -283,7 +283,7 @@ def cleanup_args(args: Namespace):
     if args.model != 'nn' and args.model != 'mpn':
         args_to_remove |= {'conf_method'}
 
-    if args.prune_method is None:
+    if not args.prune:
         args_to_remove |= {'prune_min_hit_prob'}
         
     for arg in args_to_remove:

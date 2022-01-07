@@ -129,11 +129,11 @@ class Explorer:
         delta: float = 0.01,
         max_iters: int = 10,
         budget: Union[int, float] = 1.0,
-        prune_method: Optional[PruneMethod] = None,
+        prune: bool = False,
+        prune_min_hit_prob: float = 0.025,
         # prune_threshold: Union[int, float] = 0.1,
         # prune_beta: float = 2.,
         # prune_max_fp: Union[int, float] = 0.01,
-        prune_min_hit_prob: float = 0.025,
         write_final: bool = True,
         write_intermediate: bool = False,
         chkpt_freq: int = 0,
@@ -172,11 +172,12 @@ class Explorer:
         self.empty_pool = False
 
         # pruning attributes
-        self.prune_method = PruneMethod.from_str(prune_method) if prune_method is not None else None
+        self.prune = prune
         # self.prune_threshold = prune_threshold
         # self.prune_beta = prune_beta
         # self.prune_max_fp = prune_max_fp
         self.prune_min_hit_prob = prune_min_hit_prob
+        self.full_pool_size = len(self.pool)
 
         # logging attributes
         self.write_final = write_final
@@ -429,16 +430,16 @@ class Explorer:
         self._update_model()
         self._update_predictions()
 
-        if self.prune_method is not None:# and self.iter == 1:
+        if self.prune:
             idxs = self.pool.prune(
                 self.k,
                 self.Y_pred,
                 self.Y_var,
-                self.prune_method,
+                self.prune_min_hit_prob,
+                # self.prune_method,
                 # self.prune_threshold,
                 # self.prune_beta,
                 # self.prune_max_fp,
-                self.prune_min_hit_prob,
             )
             expected_tp = pools.MoleculePool.expected_positives_pruned(
                 self.k, self.Y_pred, self.Y_var, idxs
@@ -503,7 +504,7 @@ class Explorer:
         """
         k = k or self.k
         if isinstance(k, float):
-            k = int(k * len(self.pool))
+            k = int(k * self.full_pool_size)
         k = min(k, len(self.scores))
 
         if k == len(self.scores):
@@ -530,7 +531,7 @@ class Explorer:
         """
         n = n or self.k
         if isinstance(n, float):
-            n = int(n * len(self.pool))
+            n = int(n * self.full_pool_size)
         n = min(n, len(self.scores))
 
         
@@ -851,10 +852,7 @@ class Explorer:
                 + f"but {self.model.type_} only provides: "
                 + f"{self.model.provides}"
             )
-        if (
-            (self.prune_method == PruneMethod.PROB or self.prune_method == PruneMethod.UCB)
-            and "vars" not in self.model.provides
-        ):
+        if self.prune and ("vars" not in self.model.provides):
             pass
 
     def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:

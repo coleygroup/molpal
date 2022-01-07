@@ -5,6 +5,7 @@ import pickle
 from typing import Optional, Union
 
 import numpy as np
+from tqdm import tqdm, trange
 
 from experiment import Experiment, IncompleteExperimentError
 from utils import *
@@ -127,10 +128,11 @@ if __name__ == "__main__":
 
     rewardss = []
     incomplete_experiments = []
-    for expt_dir in args.experiments:
+    for expt_dir in tqdm(args.experiments, leave=False):
         e = Experiment(expt_dir, d_smi_idx)
         rewardss.append(
-            [e.calculate_reward(i, true_top_k) for i in range(e.num_iters)]
+            [e.calculate_reward(i, true_top_k, False, False)
+            for i in range(e.num_iters, leave=False)]
         )
         try:
             len(e)

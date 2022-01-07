@@ -151,7 +151,6 @@ class MPNN:
             self.train_config['train_data'] = train_data
             self.train_config['val_data'] = val_data
 
-            # import pdb; pdb.set_trace()
             callbacks = [mpnn.sgd.TqdmCallback(self.epochs)]
             trainer = Trainer_ray("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
             trainer.start()
@@ -205,7 +204,7 @@ class MPNN:
                 for x, y in zip(xs, ys)
             ])
         train_data, val_data, _ = split_data(
-            data=data, sizes=(0.8, 0.2, 0.0), seed=self.seed
+            data, sizes=(0.8, 0.2, 0.0), seed=self.seed
         )
 
         self.scaler = train_data.normalize_targets()    

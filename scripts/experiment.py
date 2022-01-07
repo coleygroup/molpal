@@ -43,10 +43,9 @@ class Experiment:
 
         data_dir = self.experiment / "data"
         try:
-            final_scores, final_failures = Experiment.read_scores(
+            self.__size = len(Experiment.read_scores(
                 data_dir / "all_explored_final.csv"
-            )
-            self.__size = len({**final_scores, **final_failures})
+            ))
         except:
             self.__size = None
             pass
@@ -63,15 +62,12 @@ class Experiment:
 
     def __getitem__(self, i: int) -> Dict:
         """Get the score data for iteration i, where i=0 is the initialization batch"""
-        scores, failures = Experiment.read_scores(self.scores_csvs[i])
-
-        return {**scores, **failures}
+        return Experiment.read_scores(self.scores_csvs[i])
 
     def __iter__(self) -> Iterable[Dict]:
         """iterate through all the score data at each iteration"""
         for scores_csv in self.scores_csvs:
-            scores, failures = Experiment.read_scores(scores_csv)
-            yield {**scores, **failures}
+            yield dict(Experiment.read_scores(scores_csv))
 
     @property
     def num_iters(self) -> int:
@@ -92,8 +88,7 @@ class Experiment:
 
     def get(self, i: int, N: Optional[int] = None) -> Dict:
         """get the top-N scores for iteration i"""
-        scores, failures = Experiment.read_scores(self.scores_csvs[i], N)
-        return {**scores, **failures}
+        return dict(Experiment.read_scores(self.scores_csvs[i], N))
 
     def new_points_by_epoch(self) -> List[Dict]:
         """get the set of new points acquired at each iteration in the list of
@@ -262,7 +257,8 @@ class Experiment:
         self,
         i: int,
         true: List[Point],
-        is_sorted=False,
+        is_sorted: bool = False,
+        maximize: bool = True,
         avg: bool = True,
         smis: bool = True,
         scores: bool = True,
@@ -295,7 +291,7 @@ class Experiment:
         """
         N = len(true)
         if not is_sorted:
-            true = sorted(true, key=lambda kv: kv[1], reverse=True)
+            true = sorted(true, key=lambda kv: kv[1], reverse=maximize)
 
         found = list(self.get(i, N).items())
 
@@ -346,29 +342,21 @@ class Experiment:
     @staticmethod
     def read_scores(
         scores_csv: Union[Path, str], N: Optional[int] = None
-    ) -> Tuple[Dict, Dict]:
+    ) -> List[Tuple]:
         """read the scores contained in the file located at scores_csv"""
-        scores = {}
-        failures = {}
-
         with open(scores_csv) as fid:
             reader = csv.reader(fid)
             next(reader)
 
-            if N is None:
-                for row in reader:
-                    try:
-                        scores[row[0]] = float(row[1])
-                    except:
-                        failures[row[0]] = None
-            else:
-                for row in islice(reader, N):
-                    try:
-                        scores[row[0]] = float(row[1])
-                    except:
-                        failures[row[0]] = None
+            smis_scores = [
+                (row[0], float(row[1])) if row[1] else (row[0], -float("inf"))
+                for row in reader
+            ]
 
-        return scores, failures
+        if N is None:
+            return smis_scores
+
+        return sorted(smis_scores, key=lambda xy: xy[1], reverse=True)[:N]
 
     @staticmethod
     def read_config(config_file: str) -> Dict:

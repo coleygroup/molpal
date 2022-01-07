@@ -227,11 +227,11 @@ class MoleculePool(Sequence):
         k: Union[int, float],
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        prune_method: PruneMethod = PruneMethod.PROB,
+        min_hit_prob: float = 0.025
+        # prune_method: PruneMethod = PruneMethod.PROB,
         # l: Optional[Union[int, float]] = None,
         # beta: float = 2.,
         # max_fp: Optional[Union[int, float]] = None,
-        min_hit_prob: float = 0.025
     ) -> np.ndarray:
         """prune the library to the top-k predicted compounds based on their predicted means
 
@@ -281,10 +281,10 @@ class MoleculePool(Sequence):
         #     idxs = self.prune_ucb(Y_mean, Y_var, l, beta)
         # elif prune_method == PruneMethod.EFP:
         #     idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
-        if prune_method == PruneMethod.PROB:
-            idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
-        else:
-            raise NotImplementedError(f"Deprecated prune method! got: {prune_method}")
+        idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
+        # if prune_method == PruneMethod.PROB:
+        # else:
+        #     raise NotImplementedError(f"Deprecated prune method! got: {prune_method}")
 
         self.smis_ = self.get_smis(idxs)
 
@@ -303,7 +303,6 @@ class MoleculePool(Sequence):
             self.chunk_size = fps.chunks[0]
 
         return idxs
-        # return MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, idxs), idxs
 
     def get_smi(self, idx: int) -> str:
         if idx < 0 or idx >= len(self):
