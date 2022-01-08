@@ -58,11 +58,11 @@ class Experiment:
             
         return self.__size
 
-    def __getitem__(self, i: int) -> List[Tuple]:
+    def __getitem__(self, i: int) -> List[Point]:
         """Get the score data for iteration i, where i=0 is the initialization batch"""
         return Experiment.read_scores(self.scores_csvs[i])
 
-    def __iter__(self) -> Iterator[List[Tuple]]:
+    def __iter__(self) -> Iterator[List[Point]]:
         """iterate through all the score data at each iteration"""
         for scores_csv in self.scores_csvs:
             yield Experiment.read_scores(scores_csv)
@@ -84,10 +84,15 @@ class Experiment:
         initialization batch"""
         return self.__sizes
 
-    def get(self, i: int, N: Optional[int] = None) -> List[Tuple]:
+    def get(self, i: int, N: Optional[int] = None) -> List[Point]:
         """get the top-N molecules explored at iteration i"""
         smis_scores = Experiment.read_scores(self.scores_csvs[i])
-        return sorted(smis_scores, key=lambda xy: xy[1] or -float("inf"), reverse=True)[:N]
+        smis_scores = sorted(smis_scores, key=lambda xy: xy[1] or -float("inf"), reverse=True)
+
+        if N is not None:
+            return smis_scores[:N]
+        
+        return smis_scores
 
     # def new_points_by_epoch(self) -> List[Dict]:
     #     """get the set of new points acquired at each iteration in the list of
@@ -104,7 +109,7 @@ class Experiment:
 
     #     return new_points_by_epoch
 
-    def new_pointss(self) -> List[List[Tuple]]:
+    def new_pointss(self) -> List[List[Point]]:
         """get the new points acquired at each iteration"""
         new_pointss = [self[0]]
         N = len(self[0])
@@ -327,9 +332,7 @@ class Experiment:
         if scores:
             missed_scores = Counter(true_scores)
             missed_scores.subtract(found_scores)
-            n_missed_scores = sum(
-                count if count > 0 else 0 for count in missed_scores.values()
-            )
+            n_missed_scores = sum(max(count, 0) for count in missed_scores.values())
             f_scores = (N - n_missed_scores) / N
         else:
             f_scores = None
@@ -375,6 +378,7 @@ class Experiment:
         X = np.array(xs)
         E = np.exp(-X)
         Z = E.sum()
+
         return (X * E / Z).sum()
 
 class IncompleteExperimentError(Exception):
