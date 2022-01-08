@@ -132,7 +132,7 @@ if __name__ == "__main__":
         e = Experiment(expt_dir, d_smi_idx)
         rewardss.append(
             [e.calculate_reward(i, true_top_k, False, False)
-            for i in range(e.num_iters, leave=False)]
+            for i in range(e.num_iters)]
         )
         try:
             len(e)

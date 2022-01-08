@@ -3,7 +3,7 @@ import csv
 import heapq
 from itertools import islice
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 import numpy as np
 
 from molpal.acquirer import metrics
@@ -43,12 +43,10 @@ class Experiment:
 
         data_dir = self.experiment / "data"
         try:
-            self.__size = len(Experiment.read_scores(
-                data_dir / "all_explored_final.csv"
-            ))
+            self.__size = len(Experiment.read_scores(data_dir / "all_explored_final.csv"))
         except:
             self.__size = None
-            pass
+        
         scores_csvs = [p for p in data_dir.iterdir() if "final" not in p.stem]
         self.scores_csvs = sorted(scores_csvs, key=lambda p: int(p.stem.split("_")[-1]))
         self.__sizes = [len(self[i]) for i in range(self.num_iters)]
@@ -60,14 +58,14 @@ class Experiment:
             
         return self.__size
 
-    def __getitem__(self, i: int) -> Dict:
+    def __getitem__(self, i: int) -> List[Tuple]:
         """Get the score data for iteration i, where i=0 is the initialization batch"""
         return Experiment.read_scores(self.scores_csvs[i])
 
-    def __iter__(self) -> Iterable[Dict]:
+    def __iter__(self) -> Iterator[List[Tuple]]:
         """iterate through all the score data at each iteration"""
         for scores_csv in self.scores_csvs:
-            yield dict(Experiment.read_scores(scores_csv))
+            yield Experiment.read_scores(scores_csv)
 
     @property
     def num_iters(self) -> int:
@@ -86,24 +84,37 @@ class Experiment:
         initialization batch"""
         return self.__sizes
 
-    def get(self, i: int, N: Optional[int] = None) -> Dict:
-        """get the top-N scores for iteration i"""
-        return dict(Experiment.read_scores(self.scores_csvs[i], N))
+    def get(self, i: int, N: Optional[int] = None) -> List[Tuple]:
+        """get the top-N molecules explored at iteration i"""
+        smis_scores = Experiment.read_scores(self.scores_csvs[i])
+        return sorted(smis_scores, key=lambda xy: xy[1] or -float("inf"), reverse=True)[:N]
 
-    def new_points_by_epoch(self) -> List[Dict]:
-        """get the set of new points acquired at each iteration in the list of
-        scores_csvs that are already sorted by iteration"""
-        new_points_by_epoch = []
-        all_points = {}
+    # def new_points_by_epoch(self) -> List[Dict]:
+    #     """get the set of new points acquired at each iteration in the list of
+    #     scores_csvs that are already sorted by iteration"""
+    #     new_points_by_epoch = []
+    #     all_points = {}
 
-        for scores in self:
-            new_points = {
-                smi: score for smi, score in scores.items() if smi not in all_points
-            }
-            new_points_by_epoch.append(new_points)
-            all_points.update(new_points)
+    #     for scores in self:
+    #         new_points = {
+    #             smi: score for smi, score in scores if smi not in all_points
+    #         }
+    #         new_points_by_epoch.append(new_points)
+    #         all_points.update(new_points)
 
-        return new_points_by_epoch
+    #     return new_points_by_epoch
+
+    def new_pointss(self) -> List[List[Tuple]]:
+        """get the new points acquired at each iteration"""
+        new_pointss = [self[0]]
+        N = len(self[0])
+
+        for points in self[1:]:
+            new_points = [points[N:]]
+            new_pointss.append(new_points)
+            N = len(points)
+            
+        return new_pointss
 
     def predictions(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
         """get the predictions for exploration iteration i.
@@ -123,65 +134,65 @@ class Experiment:
         """
         if i not in range(1, self.num_iters):
             raise ValueError(f"arg: i must be in {{1..{self.num_iters}}}. got {i}")
-        preds_npz = np.load(self.chkpt_dirs[i] / "preds.npz")
 
-        return preds_npz["Y_pred"], preds_npz["Y_var"]
+        npz = np.load(self.chkpt_dirs[i] / "preds.npz")
+        return npz["Y_pred"], npz["Y_var"]
 
-    def utilities(self) -> List[np.ndarray]:
-        if not self.new_style:
-            raise NotImplementedError(
-                "Utilities cannot be calculated for an old style MolPAL run"
-            )
-        Us = []
+    # def utilities(self) -> List[np.ndarray]:
+    #     if not self.new_style:
+    #         raise NotImplementedError(
+    #             "Utilities cannot be calculated for an old style MolPAL run"
+    #         )
+    #     Us = []
 
-        for i in range(1, self.num_iters):
-            Y_pred, Y_var = self.predictions(i)
-            ys = list(self[i - 1].values())
+    #     for i in range(1, self.num_iters):
+    #         Y_pred, Y_var = self.predictions(i)
+    #         ys = list(self[i - 1].values())
 
-            Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
-            current_max = np.partition(Y, -self.k)[-self.k]
+    #         Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
+    #         current_max = np.partition(Y, -self.k)[-self.k]
 
-            Us.append(
-                metrics.calc(
-                    self.metric,
-                    Y_pred,
-                    Y_var,
-                    current_max,
-                    0.0,
-                    self.beta,
-                    self.xi,
-                    False,
-                )
-            )
+    #         Us.append(
+    #             metrics.calc(
+    #                 self.metric,
+    #                 Y_pred,
+    #                 Y_var,
+    #                 current_max,
+    #                 0.0,
+    #                 self.beta,
+    #                 self.xi,
+    #                 False,
+    #             )
+    #         )
 
-        return Us
+    #     return Us
 
-    def points_in_order(self) -> List[Point]:
-        """Get all points acquired during this experiment's run in the order
-        in which they were acquired"""
-        if self.d_smi_idx is None:
-            raise NotImplementedError(
-                'Cannot get points in order without setting "self.d_smi_idx"'
-            )
-        if not self.new_style:
-            raise NotImplementedError(
-                "Cannot get points in order for an old style MolPAL run"
-            )
-        init_batch, *exp_batches = self.new_points_by_epoch()
+    # def points_in_order(self) -> List[Point]:
+    #     """Get all points acquired during this experiment's run in the order
+    #     in which they were acquired"""
+    #     if self.d_smi_idx is None:
+    #         raise NotImplementedError(
+    #             'Cannot get points in order without setting "self.d_smi_idx"'
+    #         )
+    #     if not self.new_style:
+    #         raise NotImplementedError(
+    #             "Cannot get points in order for an old style MolPAL run"
+    #         )
+    #     init_batch, *exp_batches = self.new_points_by_epoch()
 
-        all_points_in_order = []
-        all_points_in_order.extend(init_batch.items())
+    #     all_points_in_order = []
+    #     all_points_in_order.extend(init_batch.items())
 
-        for new_points, U in zip(exp_batches, self.utilities()):
-            us = np.array([U[self.d_smi_idx[smi]] for smi in new_points])
+    #     for new_points, U in zip(exp_batches, self.utilities()):
+    #         us = np.array([U[self.d_smi_idx[smi]] for smi in new_points])
 
-            new_points_in_order = [
-                smi_score
-                for _, smi_score in sorted(zip(us, new_points.items()), reverse=True)
-            ]
-            all_points_in_order.extend(new_points_in_order)
+    #         new_points_in_order = [
+    #             smi_score
+    #             for _, smi_score in sorted(zip(us, new_points.items()), reverse=True)
+    #         ]
+    #         all_points_in_order.extend(new_points_in_order)
 
-        return all_points_in_order
+    #     return all_points_in_order
 
     def reward_curve(self, true_top_k: List[Point], reward: str = "scores"):
         """Calculate the reward curve of a molpal run
@@ -199,7 +210,7 @@ class Experiment:
         np.ndarray
             the reward as a function of the number of molecules sampled
         """
-        all_points_in_order = self.points_in_order()
+        all_points_in_order = self[-1]
         k = len(true_top_k)
 
         if reward == "scores":
@@ -242,10 +253,10 @@ class Experiment:
                 reward_curve[i + k] = top_k_avg
 
         elif reward == "total-ave":
-            _, all_scores_in_order = zip(*all_points_in_order)
-            Y = np.array(all_scores_in_order, dtype=float)
+            _, ys = zip(*all_points_in_order)
+            Y = np.array(ys, dtype=float)
             Y = np.nan_to_num(Y)
-            N = np.arange(0, len(Y)) + 1
+            N = np.arange(len(Y)) + 1
             reward_curve = np.cumsum(Y) / N
 
         else:
@@ -293,7 +304,7 @@ class Experiment:
         if not is_sorted:
             true = sorted(true, key=lambda kv: kv[1], reverse=maximize)
 
-        found = list(self.get(i, N).items())
+        found = self.get(i, N)
 
         found_smis, found_scores = zip(*found)
         true_smis, true_scores = zip(*true)
@@ -331,7 +342,7 @@ class Experiment:
         large, mids, singletons = true_clusters
         N = len(large) + len(mids) + len(singletons)
 
-        found = set(list(self.get(i, N).keys()))
+        found = {smi for smi, _ in self.get(i, N)}
 
         f_large = len(found & large) / len(large)
         f_mids = len(found & mids) / len(mids)
@@ -340,23 +351,18 @@ class Experiment:
         return f_large, f_mids, f_singletons
 
     @staticmethod
-    def read_scores(
-        scores_csv: Union[Path, str], N: Optional[int] = None
-    ) -> List[Tuple]:
+    def read_scores(scores_csv: Union[Path, str]) -> List[Tuple]:
         """read the scores contained in the file located at scores_csv"""
         with open(scores_csv) as fid:
             reader = csv.reader(fid)
             next(reader)
 
             smis_scores = [
-                (row[0], float(row[1])) if row[1] else (row[0], -float("inf"))
+                (row[0], float(row[1])) if row[1] else (row[0], None)
                 for row in reader
             ]
 
-        if N is None:
-            return smis_scores
-
-        return sorted(smis_scores, key=lambda xy: xy[1], reverse=True)[:N]
+        return smis_scores
 
     @staticmethod
     def read_config(config_file: str) -> Dict:
