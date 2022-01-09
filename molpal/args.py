@@ -6,7 +6,7 @@ def gen_args(args: Optional[str] = None) -> Namespace:
     parser = ArgumentParser()
 
     add_general_args(parser)
-    add_encoder_args(parser)
+    add_featurizer_args(parser)
     add_pool_args(parser)
     add_prune_args(parser)
     add_acquisition_args(parser)
@@ -38,11 +38,10 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--write-intermediate', 
                         action='store_true', default=False,
                         help='whether to write a summary file with all of the explored inputs and their associated scores after each round of exploration')
-    parser.add_argument('--write-final', action='store_true', default=False,
+    parser.add_argument('--write-final', action='store_true', default=True,
                         help='whether to write a summary file with all of the explored inputs and their associated scores')
 
-    parser.add_argument('--chkpt-freq', type=int,
-                        nargs='?', default=0, const=-1,
+    parser.add_argument('--chkpt-freq', type=int, nargs='?', default=0, const=-1,
                         help='The number of iterations that should pass without writing a checkpoint. A value of 0 means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. By default, checkpointing occurs every iteration. For convenience, passing solely the flag with no argument will result in no checkpointing at all.')
     parser.add_argument('--checkpoint-file',
                         help='the checkpoint file containing the state of a previous molpal run.')
@@ -51,14 +50,13 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--scores-csvs', nargs='+',
                         help='Either (1) A list of filepaths containing the outputs from a previous exploration or (2) a pickle file containing this list. Will load these files in the order in which they are passed to mimic the intermediate state of a previous exploration. Specifying a single will be interpreted as passing a pickle file. If seeking to mimic the state after only one round of exploration, use the --previous-scores argument instead and leave this option empty.')
 
-#TODO(degraff): this should be "featurizer"
-#####################################
-#       ENCODER ARGUMENTS           #
-#####################################
-def add_encoder_args(parser: ArgumentParser) -> None:
+########################################
+#       FEATURIZER ARGUMENTS           #
+########################################
+def add_featurizer_args(parser: ArgumentParser) -> None:
     parser.add_argument('--fingerprint', default='pair',
                         choices={'morgan', 'rdkit', 'pair', 'maccs', 'map4'},
-                        help='the type of encoder to use')
+                        help='the type of fingerprint to use')
     parser.add_argument('--radius', type=int, default=2,
                         help='the radius or path length to use for fingerprints')
     parser.add_argument('--length', type=int, default=2048,
@@ -147,48 +145,6 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('--objective-config',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 
-    #TODO(degraff): delete this
-    # DockingObjective args
-    # parser.add_argument('--software', default='vina',
-    #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
-    #                     help='the name of the docking program to use')
-    # parser.add_argument('--receptor',
-    #                     help='the filename of the receptor')
-    # parser.add_argument('--box-center', type=float, nargs=3,
-    #                     metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
-    #                     help='the x-, y-, and z-coordinates of the center of the docking box')
-    # parser.add_argument('--box-size', type=int, nargs=3,
-    #                     metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
-    #                     help='the x-, y-, and z-dimensions of the docking box')
-    # parser.add_argument('--docked-ligand-file',
-    #                     help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
-    # parser.add_argument('--score-mode', default='best',
-    #                     help='the method by which to calculate an overall score from multiple scored conformations')
-
-    # # LookupObjective args
-    # parser.add_argument('--lookup-path',
-    #                     help='filepath pointing to a file containing lookup scoring data')
-    # parser.add_argument('--no-lookup-title-line', action='store_true',
-    #                     default=False,
-    #                     help='whether there is a title line in the data lookup file')
-    # parser.add_argument('--lookup-sep', default=',',
-    #                     help='the column separator in the data lookup file')
-    # parser.add_argument('--lookup-smiles-col', default=0, type=int,
-    #                     help='the column containing the SMILES strings in the data lookup file')
-    # parser.add_argument('--lookup-data-col', default=1, type=int,
-    #                     help='the column containing the score data in the data lookup file')
-
-# def modify_objective_args(args: Namespace) -> None:
-#     if args.objective == 'lookup':
-#         modify_LookupObjective_args(args)
-
-# def modify_LookupObjective_args(args: Namespace) -> None:
-#     args.lookup_title_line = not args.no_lookup_title_line
-#     delattr(args, 'no_lookup_title_line')
-
-#     if args.name is None:
-#         args.name = Path(args.library).stem
-
 ###############################
 #       MODEL ARGUMENTS       #
 ###############################
@@ -227,8 +183,7 @@ def add_model_args(parser: ArgumentParser) -> None:
 
     # NN/MPNN args
     parser.add_argument('--conf-method', default='none',
-                        choices={'ensemble', 'twooutput', 
-                                 'mve', 'dropout', 'none'},
+                        choices={'ensemble', 'twooutput', 'mve', 'dropout', 'none'},
                         help='Confidence estimation method for NN/MPNN models')
 
     parser.add_argument('--ddp', action='store_true', default=False,
