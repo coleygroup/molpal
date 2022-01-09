@@ -183,7 +183,7 @@ class MPNN:
             gpus=1 if self.use_gpu else 0,
             precision=self.precision,
             enable_model_summary=False,
-            # log_every_n_steps=len(train_dataloader)
+            enable_checkpointing=False  # TODO: reimplement trainer checkpointing later
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
         
