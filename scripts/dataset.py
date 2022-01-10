@@ -116,9 +116,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.title_line = not args.no_title_line
 
-    smis = extract_smis(args.library, args.smiles_col, args.title_line)
-    d_smi_idx = {smi: i for i, smi in enumerate(smis)}
-
     d_smi_score = build_true_dict(
         args.true_csv, args.smiles_col, args.score_col, args.title_line, args.maximize
     )
@@ -129,10 +126,10 @@ if __name__ == "__main__":
     rewardss = []
     incomplete_experiments = []
     for expt_dir in tqdm(args.experiments, leave=False):
-        e = Experiment(expt_dir, d_smi_idx)
+        e = Experiment(expt_dir)
         rewardss.append(
             [e.calculate_reward(i, true_top_k, False, False)
-            for i in range(e.num_iters)]
+            for i in trange(e.num_iters)]
         )
         try:
             len(e)

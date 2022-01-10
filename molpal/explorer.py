@@ -169,7 +169,7 @@ class Explorer:
         self.delta = delta
         self.max_iters = max_iters
         self.budget = budget
-        self.empty_pool = False
+        self.exhausted_pool = False
 
         # pruning attributes
         self.prune = prune
@@ -325,12 +325,12 @@ class Explorer:
         bool
             whether a stopping condition has been met
         """
-        if self.iter > self.max_iters or len(self) >= self.budget or self.empty_pool:
+        if self.iter > self.max_iters or len(self) >= self.budget or self.exhausted_pool:
             return True
         if len(self.recent_avgs) < self.window_size:
             return False
 
-        sma = sum(self.recent_avgs[-self.window_size :]) / self.window_size
+        sma = sum(self.recent_avgs[-self.window_size:]) / self.window_size
         return (self.top_k_avg - sma) / sma <= self.delta
 
     @property
@@ -384,11 +384,10 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
-        self.empty_pool = len(inputs) == 0
+        self.exhausted_pool = len(inputs) == 0
 
         self.new_scores = self.objective(inputs)
         self.scores.update(self.new_scores)
-        # self._clean_and_update_scores(new_scores)
 
         if len(self.scores) >= self.k:
             self.recent_avgs.append(self.avg())
@@ -423,7 +422,8 @@ class Explorer:
                 "Cannot explore a batch before initialization!"
             )
 
-        if self.num_explored >= len(self.pool):
+        if self.exhausted_pool:
+            print("MoleculePool has been exhausted! No additional exploration will be performed.")
             self.iter += 1
             return self.top_k_avg
 
@@ -432,14 +432,7 @@ class Explorer:
 
         if self.prune:
             idxs = self.pool.prune(
-                self.k,
-                self.Y_pred,
-                self.Y_var,
-                self.prune_min_hit_prob,
-                # self.prune_method,
-                # self.prune_threshold,
-                # self.prune_beta,
-                # self.prune_max_fp,
+                self.k, self.Y_pred, self.Y_var, self.prune_min_hit_prob
             )
             expected_tp = pools.MoleculePool.expected_positives_pruned(
                 self.k, self.Y_pred, self.Y_var, idxs
@@ -458,15 +451,12 @@ class Explorer:
             xs=self.pool.smis(),
             y_means=self.Y_pred,
             y_vars=self.Y_var,
-            explored=self.scores,#{**self.scores, **self.failures},
+            explored=self.scores,
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
             t=(self.iter - 1),
         )
-        self.empty_pool = len(inputs) == 0
-
-        # new_scores = self.objective(inputs)
-        # self._clean_and_update_scores(new_scores)
+        self.exhausted_pool = len(inputs) == 0
 
         self.new_scores = self.objective(inputs)
         self.scores.update(self.new_scores)
