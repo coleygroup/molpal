@@ -8,7 +8,7 @@ dependencies:
   # uncomment the corresponding line for your specific CUDA version
   # - nvidia::cudatoolkit # for cuda >= 11
   # - pytorch::cudatoolkit # for cuda < 11
-  # - pytorch::cpuonly
+  - pytorch::cpuonly
   - python=3.8
   - pytorch::pytorch
   - rdkit
