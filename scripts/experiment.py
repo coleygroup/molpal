@@ -139,8 +139,8 @@ class Experiment:
         if reward == "scores":
             _, true_scores = zip(*true_points)
             missed_scores = Counter(true_scores)
-
             all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
+            
             for i, (_, score) in enumerate(all_points_in_order):
                 if score not in missed_scores:
                     continue

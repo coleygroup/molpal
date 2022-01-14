@@ -214,19 +214,8 @@ class Explorer:
             self.load(checkpoint_file)
 
     def __len__(self) -> int:
-        """The total expended budget expressed in terms of the number of
-        objective evaluations"""
-        return self.num_explored
-
-    @property
-    def num_explored(self) -> int:
-        """The total number of inputs this Explorer has explored adjusted
-        for score data that was read as opposed evaluated"""
-        return (
-            len(self.scores)
-            # + len(self.failures)
-            - self.adjustment
-        )
+        """The total number of objective evaluations"""
+        return len(self.scores) - self.adjustment
 
     @property
     def path(self) -> Path:
@@ -376,8 +365,9 @@ class Explorer:
 
         Returns
         -------
-        avg : float
-            the average score of the batch
+        Optional[float]
+            the average score of the batch. None if no objective values were calculated, either due
+            to each input failing or no inputs being acquired
         """
         inputs = self.acquirer.acquire_initial(
             xs=self.pool.smis(),
@@ -402,15 +392,19 @@ class Explorer:
             self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in self.new_scores.values() if y is not None]
-        return sum(valid_scores) / len(valid_scores)
+        try:
+            return sum(valid_scores) / len(valid_scores)
+        except ZeroDivisionError:
+            return None
 
-    def explore_batch(self) -> float:
+    def explore_batch(self) -> Optional[float]:
         """Perform a round of exploration
 
         Returns
         -------
-        avg : float
-            the average score of the batch
+        Optional[float]
+            the average score of the batch. None if no objective values were calculated, either due
+            to each input failing or no inputs being acquired
 
         Raises
         ------
@@ -474,7 +468,10 @@ class Explorer:
             self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in self.new_scores.values() if y is not None]
-        return sum(valid_scores) / len(valid_scores)
+        try:
+            return sum(valid_scores) / len(valid_scores)
+        except ZeroDivisionError:
+            return None
 
     def avg(self, k: Union[int, float, None] = None) -> float:
         """Calculate the average of the top k molecules
@@ -569,11 +566,7 @@ class Explorer:
 
         return [(x, y) for y, x in selected]
 
-    def write_scores(
-        self,
-        final: bool = False,
-        # include_failed: bool = False,
-    ):
+    def write_scores(self, final: bool = False):
         """Write all scores to a CSV file
 
         Writes a CSV file of the explored inputs with the input ID and the respective objective 
@@ -586,9 +579,6 @@ class Explorer:
             Whether the explorer has finished. If true, write all explored
             inputs (both successful and failed) and name the output CSV file
             "all_explored_final.csv"
-        include_failed : bool, default=False
-            Whether to include the inputs for which objective function
-            evaluation failed 
         """
         n = len(self)
 
@@ -597,7 +587,6 @@ class Explorer:
 
         if final:
             p_scores = p_data / f"all_explored_final.csv"
-            # include_failed = True
             points = self.top_explored(n)
         else:
             p_scores = p_data / f"top_{n}_explored_iter_{self.iter}.csv"
@@ -607,8 +596,6 @@ class Explorer:
             writer = csv.writer(fid)
             writer.writerow(["smiles", "score"])
             writer.writerows(points)
-            # if include_failed:
-            #     writer.writerows(self.failures.items())
 
         if self.verbose > 0:
             print(f'Results were written to "{p_scores}"')
