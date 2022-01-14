@@ -149,14 +149,14 @@ class Experiment:
                 if missed_scores[score] == 0:
                     del missed_scores[score]
 
-            Y = 100 * np.cumsum(all_hits_in_order) / k
+            Y = np.cumsum(all_hits_in_order) / k
 
         elif reward == "smis":
             true_top_k_smis = {smi for smi, _ in true_points}
             all_hits_in_order = np.array(
                 [smi in true_top_k_smis for smi, _ in all_points_in_order], dtype=bool
             )
-            Y = 100 * np.cumsum(all_hits_in_order) / k
+            Y = np.cumsum(all_hits_in_order) / k
 
         elif reward == "top-k-ave":
             Y = np.zeros(len(all_points_in_order))
