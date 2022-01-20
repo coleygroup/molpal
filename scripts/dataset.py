@@ -32,6 +32,9 @@ class Dataset:
         self.smis = mean_and_sd(self.smis)
         self.scores = mean_and_sd(self.scores)
 
+    def __len__(self):
+        return self.reps
+        
     def __str__(self):
         header = f"| {self.split:0.1%} | {self.model.upper()} | {self.metric.upper()} | TOP-{self.N} |"
         border = f"+{'-'*(len(header)-2)}+"
