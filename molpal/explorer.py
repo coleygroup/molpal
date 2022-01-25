@@ -418,8 +418,7 @@ class Explorer:
 
         if self.exhausted_pool:
             print("MoleculePool has been exhausted! No additional exploration will be performed.")
-            self.iter += 1
-            return self.top_k_avg
+            return None
 
         self._update_model()
         self._update_predictions()

@@ -21,19 +21,13 @@ class Experiment:
 
         chkpts_dir = self.path / "chkpts"
         try:
-            self.chkpts = sorted(
-                chkpts_dir.iterdir(), key=lambda p: int(p.stem.split("_")[1])
-            )
-            self.config = Experiment.read_config(self.path / "config.ini")
-
+            self.chkpts = sorted(chkpts_dir.iterdir(), key=lambda p: int(p.stem.split("_")[1]))
         except FileNotFoundError:
             pass
 
         data_dir = self.path / "data"
         try:
-            self.__size = len(
-                Experiment.read_scores(data_dir / "all_explored_final.csv")
-            )
+            self.__size = len((data_dir / "all_explored_final.csv").read_text().splitlines()) - 1
         except:
             self.__size = None
 
