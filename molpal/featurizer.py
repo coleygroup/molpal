@@ -28,7 +28,7 @@ class Featurizer:
     def __len__(self):
         return 167 if self.fingerprint == "maccs" else self.length
 
-    def __call__(self, smi: str) -> Optional[np.ndarray]:
+    def __call__(self, smi: str) -> Optional[np.ndarray]:  # Featurizer() runs this
         return featurize(smi, self.fingerprint, self.radius, self.length)
 
 
