@@ -5,10 +5,10 @@ import sys
 from timeit import default_timer as time
 
 import ray
-ray.shutdown()
+# ray.shutdown()
 from molpal import args, Explorer
 
-ray.shutdown()
+# ray.shutdown()
 
 arguments = '-o lookup -l libraries/Enamine10k.csv.gz --output-dir molpal_10k_jennatest -vvv \
 --objective-config examples/objective/Enamine10k_lookup.ini'.split()
