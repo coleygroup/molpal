@@ -23,13 +23,21 @@ class Experiment:
         self.experiment = Path(experiment)
         self.d_smi_idx = d_smi_idx
 
+        data_dir = self.experiment / 'data'
+        final_csv = data_dir / 'all_explored_final.csv'
+        final_scores, final_failures = Experiment.read_scores(final_csv)
+        self.__size = len({**final_scores, **final_failures})
+
         try:
             chkpts_dir = self.experiment / 'chkpts'
             self.chkpts = sorted(
                 chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
             )
             config = Experiment.read_config(self.experiment / 'config.ini')
-            self.k = int(config['top-k'])
+            if float(config['top-k']) < 1:
+                self.k = float(config['top-k'])*len({**final_scores, **final_failures})
+            else:
+                self.k = int(config['top-k'])
             self.metric = config['metric']
             self.beta = float(config.get('beta', 2.))
             self.xi = float(config.get('xi', 0.001))
@@ -37,11 +45,6 @@ class Experiment:
             self.new_style = True
         except FileNotFoundError:
             self.new_style = False
-
-        data_dir = self.experiment / 'data'
-        final_csv = data_dir / 'all_explored_final.csv'
-        final_scores, final_failures = Experiment.read_scores(final_csv)
-        self.__size = len({**final_scores, **final_failures})
 
         scores_csvs = [p for p in data_dir.iterdir() if 'final' not in p.stem]
         self.scores_csvs = sorted(
