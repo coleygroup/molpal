@@ -1,86 +1,160 @@
 import csv
-from functools import partial
-import os
 import random
 import string
-import unittest
+from typing import Iterable, List
+import uuid
+
+import numpy as np
+import pytest
 
 from molpal.objectives.lookup import LookupObjective
 
-class TestLookupObjective(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.alphabet = {c: i for i, c in enumerate(string.ascii_lowercase)}
+def interleave(a: Iterable, b: Iterable) -> List:
+    return list(map(next, random.sample([iter(a)]*len(a) + [iter(b)]*len(b), len(a)+len(b))))
 
-        cls.random_xs = random.sample(cls.alphabet.keys(), 10)
-        cls.random_items = {c: cls.alphabet[c] for c in cls.random_xs}
+@pytest.fixture
+def empty(tmp_path) -> LookupObjective:
+    p_config = tmp_path / "config.ini"
+    p_csv = tmp_path / "obj.csv"
 
-        cls.empty_csv = 'test_lookup_empty.csv'
-        cls.singleton_csv = 'test_lookup_singleton.csv'
-        cls.normal_csv = 'test_lookup_normal.csv'
-        cls.weird_csv = 'test_lookup_weird.csv'
+    with open(p_config, "w") as fid:
+        fid.write(f"path: {p_csv}\n")
+        fid.write(f"no-title-line: True\n")
 
-        with open(cls.empty_csv, 'w') as fid:
-            pass
-        with open(cls.singleton_csv, 'w') as fid:
-            writer = csv.writer(fid)
-            writer.writerow(['a', cls.alphabet['a']])
-        with open(cls.normal_csv, 'w') as fid:
-            writer = csv.writer(fid)
-            writer.writerows(cls.alphabet.items())
-        with open(cls.weird_csv, 'w') as fid:
-            writer = csv.writer(fid)
-            for c in 'abc':
-                writer.writerow([None, cls.alphabet[c], None, None, c])
+    with open(p_csv, "w") as fid:
+        pass
 
-        cls.empty = LookupObjective(cls.empty_csv, lookup_title_line=False)
-        cls.singleton = LookupObjective(cls.singleton_csv, 
-                                         lookup_title_line=False)
-        cls.normal = LookupObjective(cls.normal_csv, lookup_title_line=False)
-        cls.weird = LookupObjective(cls.weird_csv, lookup_title_line=False,
-                                     lookup_smiles_col=4, lookup_data_col=1)
+    return LookupObjective(str(p_config), minimize=False)
 
-    def test_empty(self):
-        scores = self.empty.calc(self.random_xs)
-        self.assertEqual(scores, {x: None for x in self.random_xs})
+@pytest.fixture
+def singleton(tmp_path) -> LookupObjective:
+    p_config = tmp_path / "config.ini"
+    p_csv = tmp_path / "obj.csv"
 
-    def test_singleton(self):
-        scores_a = self.singleton.calc('a')
-        self.assertEqual(scores_a, {'a': self.alphabet['a']})
+    with open(p_config, "w") as fid:
+        fid.write(f"path: {p_csv}\n")
+        fid.write(f"no-title-line: True\n")
 
-    def test_singleton_not_contained(self):
-        scores_b = self.singleton.calc('b')
-        self.assertNotEqual(scores_b, {'b': self.alphabet['b']})
+    with open(p_csv, "w") as fid:
+        writer = csv.writer(fid)
+        writer.writerow(["foo", "42"])
 
-    def test_normal_all_contained(self):
-        scores = self.normal.calc(self.random_xs)
-        self.assertEqual(scores, {x: self.alphabet[x] for x in self.random_xs})
-    
-    def test_normal_none_contained(self):
-        not_contained_strings = ['foo', 'bar', 'baz', 'qux']
-        scores = self.normal.calc(not_contained_strings)
-        self.assertEqual(scores, {s: None for s in not_contained_strings})
-    
-    def test_normal_some_contained(self):
-        xs = ['foo', 'bar', 'baz', 'qux']
-        xs.extend(self.random_xs)
-        scores = self.normal.calc(xs)
-        for k, v in scores.items():
-            if k in self.alphabet:
-                self.assertEqual(v, self.alphabet[k])
-            else:
-                self.assertIsNone(v)
+    return LookupObjective(str(p_config), minimize=False)
 
-    def test_weird(self):
-        scores = self.weird.calc('abc')
-        self.assertEqual(scores, {x: self.alphabet[x] for x in 'abc'})
+@pytest.fixture
+def normal(tmp_path, normal_xs, normal_ys) -> LookupObjective:
+    p_config = tmp_path / "config.ini"
+    p_csv = tmp_path / "obj.csv"
 
-    @classmethod
-    def tearDownClass(cls):
-        os.unlink(cls.empty_csv)
-        os.unlink(cls.singleton_csv)
-        os.unlink(cls.normal_csv)
-        os.unlink(cls.weird_csv)
+    with open(p_config, "w") as fid:
+        fid.write(f"path: {p_csv}\n")
+        fid.write(f"no-title-line: True\n")
 
-if __name__ == "__main__":
-    unittest.main()
+    with open(p_csv, "w") as fid:
+        writer = csv.writer(fid)
+        writer.writerows(zip(normal_xs, normal_ys))
+
+    return LookupObjective(str(p_config), minimize=False)
+
+@pytest.fixture
+def normal_min(tmp_path, normal_xs, normal_ys) -> LookupObjective:
+    p_config = tmp_path / "config.ini"
+    p_csv = tmp_path / "obj.csv"
+
+    with open(p_config, "w") as fid:
+        fid.write(f"path: {p_csv}\n")
+        fid.write(f"no-title-line: True\n")
+
+    with open(p_csv, "w") as fid:
+        writer = csv.writer(fid)
+        writer.writerows(zip(normal_xs, normal_ys))
+
+    return LookupObjective(str(p_config))
+
+@pytest.fixture
+def sparse(tmp_path, sparse_xs, sparse_ys) -> LookupObjective:
+    p_config = tmp_path / "config.ini"
+    p_csv = tmp_path / "obj.csv"
+
+    with open(p_config, "w") as fid:
+        fid.write(f"path: {p_csv}\n")
+        fid.write(f"no-title-line: True\n")
+        fid.write(f"smiles-col: 1\n")
+        fid.write(f"score-col: 4\n")
+
+    with open(p_csv, "w") as fid:
+        writer = csv.writer(fid)
+
+        for x, y in zip(sparse_xs, sparse_ys):
+                writer.writerow([None, x, None, None, y])
+
+    return LookupObjective(str(p_config), minimize=False)
+
+@pytest.fixture(params=[string.ascii_letters, [str(uuid.uuid4()) for _ in range(100)]])
+def normal_xs():
+    return string.ascii_lowercase
+
+@pytest.fixture
+def normal_ys(normal_xs):
+    return np.random.randn(len(normal_xs))
+
+@pytest.fixture(params=[2, 5, 10])
+def xs(request, normal_xs):
+    return random.sample(normal_xs, request.param)
+
+@pytest.fixture
+def sparse_xs():
+    return ["foo", "bar", "alice", "bob"]
+
+@pytest.fixture
+def sparse_ys(sparse_xs):
+    return np.random.uniform(0, 100, len(sparse_xs))
+
+def test_forward_and_call(normal, xs):
+    ys1 = np.array(list(normal.forward(xs).values()))
+    ys2 = np.array(list(normal(xs).values()))
+
+    assert len(ys1) == len(ys2)
+    np.testing.assert_allclose(ys1, ys2)
+ 
+def test_empty(empty, xs):
+    ys = empty(xs).values()
+
+    assert all([y is None for y in ys])
+
+def test_singleton_integrity(singleton):
+    np.testing.assert_almost_equal(singleton(["foo"])["foo"], 42)
+
+def test_singleton_not_contained(singleton, xs):
+    ys = singleton(xs).values()
+
+    assert all([y is None for y in ys])
+
+def test_length(normal, xs):
+    ys = normal(xs)
+
+    assert len(ys) == len(xs)
+
+def test_normal_integrity(normal, normal_xs, normal_ys):
+    actual = list(normal(normal_xs).values())
+
+    np.testing.assert_allclose(actual, normal_ys)
+
+def test_minimization(normal_min, normal_xs, normal_ys):
+    actual = list(normal_min(normal_xs).values())
+
+    np.testing.assert_allclose(actual, -normal_ys)
+
+def test_normal_some_contained(normal, normal_xs, sparse_xs):
+    xs = interleave(normal_xs, sparse_xs)
+    d_xy = normal(xs)
+
+    normal_xs = set(normal_xs)
+    for x, y in d_xy.items():
+        if x not in normal_xs:
+            assert y is None
+
+def test_sparse(sparse, sparse_xs, sparse_ys):
+    ys = list(sparse(sparse_xs).values())
+
+    np.testing.assert_allclose(ys, sparse_ys)

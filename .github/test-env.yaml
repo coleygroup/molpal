@@ -1,0 +1,23 @@
+name: molpal-test
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - pytorch::pytorch >=1.9
+  - pytorch::cpuonly
+  - pip
+  - rdkit
+  - pip:
+    - configargparse
+    - h5py
+    - numpy
+    - ray >= 1.7
+    - ray[tune]
+    - pytest
+    - pytorch-lightning
+    - scikit-learn
+    - tensorflow
+    - tensorflow-addons
+    - tqdm
