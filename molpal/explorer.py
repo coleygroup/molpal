@@ -370,9 +370,9 @@ class Explorer:
             to each input failing or no inputs being acquired
         """
         inputs = self.acquirer.acquire_initial(
-            xs=self.pool.smis(),
-            cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes,
+            self.pool.smis(),
+            self.pool.cluster_ids(),
+            self.pool.cluster_sizes,
         )
         self.exhausted_pool = len(inputs) == 0
 
@@ -392,6 +392,7 @@ class Explorer:
             self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in self.new_scores.values() if y is not None]
+
         try:
             return sum(valid_scores) / len(valid_scores)
         except ZeroDivisionError:
@@ -441,15 +442,16 @@ class Explorer:
             self.Y_var = self.Y_var[idxs]
 
         inputs = self.acquirer.acquire_batch(
-            xs=self.pool.smis(),
-            y_means=self.Y_pred,
-            y_vars=self.Y_var,
-            explored=self.scores,
-            cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes,
-            t=(self.iter - 1),
+            self.pool.smis(),
+            self.Y_pred,
+            self.Y_var,
+            self.scores,
+            self.k,
+            self.pool.cluster_ids(),
+            self.pool.cluster_sizes,
+            self.iter - 1,
         )
-        self.exhausted_pool = len(inputs) == 0
+        self.exhausted_pool = len(inputs) < self.acquirer.batch_size(self.iter-1)
 
         self.new_scores = self.objective(inputs)
         self.scores.update(self.new_scores)
@@ -467,6 +469,7 @@ class Explorer:
             self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in self.new_scores.values() if y is not None]
+        
         try:
             return sum(valid_scores) / len(valid_scores)
         except ZeroDivisionError:

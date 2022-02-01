@@ -3,6 +3,7 @@ import csv
 import heapq
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
+import warnings
 
 import numpy as np
 
@@ -23,22 +24,32 @@ class Experiment:
         try:
             self.chkpts = sorted(chkpts_dir.iterdir(), key=lambda p: int(p.stem.split("_")[1]))
         except FileNotFoundError:
-            pass
+            self.chkpts = None
+            warnings.warn("Experiment has no checkpoints!")
 
-        data_dir = self.path / "data"
+        self.__size = None
+        self.__sizes = None
+
         try:
-            self.__size = len((data_dir / "all_explored_final.csv").read_text().splitlines()) - 1
-        except:
-            self.__size = None
-
-        scores_csvs = [p for p in data_dir.iterdir() if "final" not in p.stem]
-        self.scores_csvs = sorted(scores_csvs, key=lambda p: int(p.stem.split("_")[-1]))
-        self.__sizes = [len(self[i]) for i in range(self.num_iters)]
+            scores_csvs = [p for p in (self.path / "data").iterdir() if "final" not in p.stem]
+            self.scores_csvs = sorted(scores_csvs, key=lambda p: int(p.stem.split("_")[-1]))
+        except FileNotFoundError:
+            self.scores_csvs = None
+            warnings.warn("Experiment has no score csvs!")
 
     def __len__(self) -> int:
-        """the total number of inputs sampled in this experiment"""
+        """the total number of inputs sampled in this experiment. Equal to -1 if the experiment is 
+        incomplete"""
         if self.__size is None:
-            raise IncompleteExperimentError
+            try:
+                self.__size = (
+                    len(
+                        (self.path / "data" / "all_explored_final.csv").read_text().splitlines()
+                    ) - 1
+                )
+            except:
+                warnings.warn("Experiment is incomplete!")
+                self.__size = -1
 
         return self.__size
 
@@ -66,6 +77,11 @@ class Experiment:
     def num_acquired(self) -> List[int]:
         """The total number of points acquired *by* iteration i, where i=0 is the
         initialization batch"""
+        if self.__sizes is None:
+            self.__sizes = [
+                len(p.read_text().splitlines()) - 1 for p in self.scores_csvs
+            ]
+
         return self.__sizes
 
     def get(self, i: int, N: int) -> List[Point]:
