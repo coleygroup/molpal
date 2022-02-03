@@ -175,4 +175,4 @@ lightning_logs
 *.index
 prep_glide_csv.py
 *.bz2
-*.cxsmiles
+*.cxsmilesdata/EnamineHTS_scores.csv.gz

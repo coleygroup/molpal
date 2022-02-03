@@ -6,7 +6,9 @@ result_path = "molpal_10k"
 
 def make_figure(path):
     a = Experiment(path)
+    return a
 
 
 if __name__ == "__main__":
-    make_figure(result_path)
+    experiment = make_figure(result_path)
+    print(len(experiment))
