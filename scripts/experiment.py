@@ -27,6 +27,10 @@ class Experiment:
         final_csv = data_dir / 'all_explored_final.csv'
         final_scores, final_failures = Experiment.read_scores(final_csv)
         self.__size = len({**final_scores, **final_failures})
+        scores_csvs = [p for p in data_dir.iterdir() if 'final' not in p.stem]
+        self.scores_csvs = sorted(
+            scores_csvs, key=lambda p: int(p.stem.split('_')[-1])
+        )
 
         try:
             chkpts_dir = self.experiment / 'chkpts'
@@ -35,7 +39,7 @@ class Experiment:
             )
             config = Experiment.read_config(self.experiment / 'config.ini')
             if float(config['top-k']) < 1:
-                self.k = float(config['top-k'])*len({**final_scores, **final_failures})
+                self.k = len(self[0])
             else:
                 self.k = int(config['top-k'])
             self.metric = config['metric']
@@ -46,10 +50,7 @@ class Experiment:
         except FileNotFoundError:
             self.new_style = False
 
-        scores_csvs = [p for p in data_dir.iterdir() if 'final' not in p.stem]
-        self.scores_csvs = sorted(
-            scores_csvs, key=lambda p: int(p.stem.split('_')[-1])
-        )
+
 
     def __len__(self) -> int:
         """the total number of inputs sampled in this experiment"""
