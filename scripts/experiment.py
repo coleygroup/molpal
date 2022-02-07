@@ -148,18 +148,20 @@ class Experiment:
 
         if reward == "scores":
             _, true_scores = zip(*true_points)
-            missed_scores = Counter(true_scores)
-            all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
-            
-            for i, (_, score) in enumerate(all_points_in_order):
-                if score not in missed_scores:
-                    continue
-                all_hits_in_order[i] = True
-                missed_scores[score] -= 1
-                if missed_scores[score] == 0:
-                    del missed_scores[score]
+            true_scores = np.array(true_scores)
+            hit_threshold = true_scores.min()
 
-            Y = np.cumsum(all_hits_in_order) / k
+            _, ys = zip(*all_points_in_order)
+            ys = np.array(ys)
+
+            threshold_points_max = (true_scores == hit_threshold).sum()
+            threshold_point_idxs = np.arange(len(ys))[ys == hit_threshold]
+
+            all_hits_in_order = np.zeros(len(ys), dtype=bool)
+            all_hits_in_order[ys > hit_threshold] = True
+            all_hits_in_order[threshold_point_idxs[:threshold_points_max]] = True
+
+            Y = np.cumsum(all_hits_in_order) / len(true_scores)
 
         elif reward == "smis":
             true_top_k_smis = {smi for smi, _ in true_points}
@@ -172,16 +174,16 @@ class Experiment:
             Y = np.zeros(len(all_points_in_order))
             heap = []
 
-            for i, (_, score) in enumerate(all_points_in_order[:k]):
-                if score is not None:
-                    heapq.heappush(heap, score)
+            for i, (_, y) in enumerate(all_points_in_order[:k]):
+                if y is not None:
+                    heapq.heappush(heap, y)
                 top_k_avg = sum(heap) / k
                 Y[i] = top_k_avg
             Y[:k] = top_k_avg
 
-            for i, (_, score) in enumerate(all_points_in_order[k:]):
-                if score is not None:
-                    heapq.heappushpop(heap, score)
+            for i, (_, y) in enumerate(all_points_in_order[k:]):
+                if y is not None:
+                    heapq.heappushpop(heap, y)
 
                 top_k_avg = sum(heap) / k
                 Y[i + k] = top_k_avg
@@ -196,6 +198,29 @@ class Experiment:
         else:
             raise ValueError
 
+        return Y
+
+    def cluster_curve(self, true_clusters: Tuple[Set, Set, Set]):
+        s, m, l = true_clusters
+
+        all_points_in_order = self[-1]
+        N = np.zeros((len(all_points_in_order)+1, len(true_clusters)))
+
+        for i, (smi, _) in enumerate(all_points_in_order):
+            N[i+1] = N[i]
+
+            if smi in s:
+                j = 0
+            elif smi in m:
+                j = 1
+            elif smi in l:
+                j = 2
+            else:
+                continue
+            
+            N[i+1, j] = N[i, j] + 1
+
+        Y = N / [len(s), len(m), len(l)]
         return Y
 
     def calculate_reward(
