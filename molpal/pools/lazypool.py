@@ -1,4 +1,5 @@
-from typing import Iterator, Sequence, Union
+from typing import Iterator, Sequence
+import warnings
 
 import numpy as np
 import ray
@@ -43,11 +44,7 @@ class LazyMoleculePool(MoleculePool):
             yield np.array(feature_matrix(smis, self.featurizer, True))
 
     def prune(
-        self,
-        threshold: float,
-        Y_mean: np.ndarray,
-        Y_var: np.ndarray,
-        min_hit_prob: float = 0.025
+        self, threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, min_hit_prob: float = 0.025
     ) -> np.ndarray:
         idxs = self.prune_prob(threshold, Y_mean, Y_var, min_hit_prob)
 
@@ -64,11 +61,10 @@ class LazyMoleculePool(MoleculePool):
     def _cluster_mols(self, *args, **kwargs) -> None:
         """A LazyMoleculePool can't cluster molecules
 
-        Doing so would require precalculating all uncompressed representations,
-        which is what a LazyMoleculePool is designed to avoid. If clustering
-        is desired, use the base (Eager)MoleculePool
+        Doing so would require precalculating all uncompressed representations, which is what a 
+        LazyMoleculePool is designed to avoid. If clustering is desired, use the base
+        (Eager)MoleculePool
         """
-        print(
-            "WARNING: Clustering is not possible for a LazyMoleculePool.",
-            "No clustering will be performed.",
+        warnings.warn(
+            "Clustering is not possible for a LazyMoleculePool. No clustering will be performed!"
         )

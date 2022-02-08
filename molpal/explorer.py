@@ -131,7 +131,6 @@ class Explorer:
         prune: bool = False,
         prune_min_hit_prob: float = 0.025,
         use_observed_threshold: bool = False,
-        write_final: bool = True,
         write_intermediate: bool = False,
         chkpt_freq: int = 0,
         checkpoint_file: Optional[str] = None,
@@ -146,7 +145,9 @@ class Explorer:
         self.verbose = kwargs.get("verbose", 0)
 
         self.featurizer = featurizer.Featurizer(
-            kwargs["fingerprint"], kwargs["radius"], kwargs["length"],
+            kwargs["fingerprint"],
+            kwargs["radius"],
+            kwargs["length"],
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
@@ -158,7 +159,6 @@ class Explorer:
         self.retrain_from_scratch = retrain_from_scratch
 
         self.objective = objectives.objective(**kwargs)
-
 
         # stopping attributes
         self.k = k
@@ -175,7 +175,6 @@ class Explorer:
         self.full_pool_size = len(self.pool)
 
         # logging attributes
-        self.write_final = write_final
         self.write_intermediate = write_intermediate
         self.chkpt_freq = chkpt_freq if chkpt_freq >= 0 else float("inf")
         self.previous_chkpt_iter = -float("inf")
@@ -230,7 +229,7 @@ class Explorer:
     def k(self, k: Union[int, float]):
         """Set k either as an integer or as a fraction of the pool.
 
-        NOTE: Specifying either a fraction greater than 1 or or a number larger than the pool size 
+        NOTE: Specifying either a fraction greater than 1 or or a number larger than the pool size
         will default to using the full pool.
         """
         if isinstance(k, float):
@@ -242,7 +241,7 @@ class Explorer:
 
     @property
     def budget(self) -> int:
-        """the maximum budget expressed in terms of the number of allowed objective function 
+        """the maximum budget expressed in terms of the number of allowed objective function
         evaluations"""
         return self.__budget
 
@@ -250,7 +249,7 @@ class Explorer:
     def budget(self, budget: Union[int, float]):
         """Set budget either as an integer or as a fraction of the pool.
 
-        NOTE: Specifying either a fraction greater than 1 or or a number larger than the pool size 
+        NOTE: Specifying either a fraction greater than 1 or or a number larger than the pool size
         will default to using the full pool.
         """
         if isinstance(budget, float):
@@ -262,7 +261,7 @@ class Explorer:
 
     @property
     def top_k_avg(self) -> Optional[float]:
-        """The most recent top-k average of the explored inputs. None if k inputs have not yet been 
+        """The most recent top-k average of the explored inputs. None if k inputs have not yet been
         explored"""
         try:
             return self.recent_avgs[-1]
@@ -310,7 +309,7 @@ class Explorer:
         if len(self.recent_avgs) < self.window_size:
             return False
 
-        sma = sum(self.recent_avgs[-self.window_size:]) / self.window_size
+        sma = sum(self.recent_avgs[-self.window_size :]) / self.window_size
         return (self.top_k_avg - sma) / sma <= self.delta
 
     @property
@@ -346,8 +345,7 @@ class Explorer:
         for k in [0.0001, 0.0005, 0.001, 0.005]:
             print(f"TOP-{k:0.2%}: {self.avg(k):0.3f}")
 
-        if self.write_final:
-            self.write_scores(final=True)
+        self.write_scores(final=True)
 
     def explore_initial(self) -> float:
         """Perform an initial round of exploration
@@ -404,9 +402,7 @@ class Explorer:
             if called before explore_initial or load_scores
         """
         if self.iter == 0:
-            raise InvalidExplorationError(
-                "Cannot explore a batch before initialization!"
-            )
+            raise InvalidExplorationError("Cannot explore a batch before initialization!")
 
         if self.exhausted_pool:
             print("MoleculePool has been exhausted! No additional exploration will be performed.")
@@ -421,9 +417,7 @@ class Explorer:
             else:
                 threshold = np.partition(self.Y_mean, -self.k)[-self.k]
 
-            idxs = self.pool.prune(
-                threshold, self.Y_mean, self.Y_var, self.prune_min_hit_prob
-            )
+            idxs = self.pool.prune(threshold, self.Y_mean, self.Y_var, self.prune_min_hit_prob)
             expected_tp = pools.MoleculePool.expected_positives_pruned(
                 threshold, self.Y_mean, self.Y_var, idxs
             )
@@ -433,7 +427,7 @@ class Explorer:
             if self.verbose >= 1:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
                 print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
-            
+
             self.Y_mean = self.Y_mean[idxs]
             self.Y_var = self.Y_var[idxs]
 
@@ -447,7 +441,7 @@ class Explorer:
             self.pool.cluster_sizes,
             self.iter - 1,
         )
-        self.exhausted_pool = len(inputs) < self.acquirer.batch_size(self.iter-1)
+        self.exhausted_pool = len(inputs) < self.acquirer.batch_size(self.iter - 1)
 
         self.new_scores = self.objective(inputs)
         self.scores.update(self.new_scores)
@@ -465,7 +459,7 @@ class Explorer:
             self.previous_chkpt_iter = self.iter
 
         valid_scores = [y for y in self.new_scores.values() if y is not None]
-        
+
         try:
             return sum(valid_scores) / len(valid_scores)
         except ZeroDivisionError:
@@ -479,7 +473,7 @@ class Explorer:
         k : Union[int, float, None], default=None
             the number of molecules to consider when calculating the average, expressed either as an
             integer or as a fraction of the pool. If the value specified is greater than the
-            number of successfully evaluated inputs, return the average of all succesfully 
+            number of successfully evaluated inputs, return the average of all succesfully
             evaluated inputs. If None, use self.k
 
         Returns
@@ -518,7 +512,6 @@ class Explorer:
             n = int(n * self.full_pool_size)
         n = min(n, len(self.scores))
 
-        
         if n / len(self.scores) < 0.3:
             top_explored = heapq.nlargest(
                 n, self.scores.items(), key=lambda xy: xy[1] if xy[1] is not None else -float("inf")
@@ -527,7 +520,7 @@ class Explorer:
             top_explored = sorted(
                 self.scores.items(),
                 key=lambda xy: xy[1] if xy[1] is not None else -float("inf"),
-                reverse=True
+                reverse=True,
             )[:n]
 
         return top_explored
@@ -540,7 +533,7 @@ class Explorer:
         n : Union[int, float, None], default=None
             the number of molecules to consider when calculating the average, expressed either as an
             integer or as a fraction of the pool. If the value specified is greater than the
-            number of successfully evaluated inputs, return the average of all succesfully 
+            number of successfully evaluated inputs, return the average of all succesfully
             evaluated inputs. If None, use self.k
 
         Returns
@@ -564,8 +557,8 @@ class Explorer:
     def write_scores(self, final: bool = False):
         """Write all scores to a CSV file
 
-        Writes a CSV file of the explored inputs with the input ID and the respective objective 
-        function value in the order in which they were acquired. If final is true, the CSV will be 
+        Writes a CSV file of the explored inputs with the input ID and the respective objective
+        function value in the order in which they were acquired. If final is true, the CSV will be
         sorted order, with the best objective function values at the top
 
         Parameters
@@ -585,7 +578,7 @@ class Explorer:
             points = self.top_explored(n)
         else:
             p_scores = p_data / f"top_{n}_explored_iter_{self.iter}.csv"
-            points = self.scores.items() 
+            points = self.scores.items()
 
         with open(p_scores, "w") as fid:
             writer = csv.writer(fid)

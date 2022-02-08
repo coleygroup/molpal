@@ -27,6 +27,7 @@ Mol = Tuple[str, np.ndarray, Optional[int]]
 
 CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
 
+
 class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
 
@@ -216,11 +217,7 @@ class MoleculePool(Sequence):
         )
 
     def prune(
-        self,
-        threshold: float,
-        Y_mean: np.ndarray,
-        Y_var: np.ndarray,
-        p_min: float = 0.025
+        self, threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, p_min: float = 0.025
     ) -> np.ndarray:
         """prune the library to only the compounds with a hit probability greater than or equal to
         the give
@@ -234,7 +231,7 @@ class MoleculePool(Sequence):
         Y_var : np.ndarray
             the predicted variance for each molecule
         p_min : float, default=0.025
-            the minimum probability that a compound is a hit for it to be retained in PROB pruning
+            the minimum probability that a compound is a hit for it to be retained
 
         Returns
         -------
@@ -245,13 +242,13 @@ class MoleculePool(Sequence):
 
         self.smis_ = self.get_smis(idxs)
 
-        name = self.fps_.stem.split('_')[0]
+        name = self.fps_.stem.split("_")[0]
         self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
             self.smis_,
             len(idxs),
             featurizer=self.featurizer,
             name=f"{name}_pruned_{uuid.uuid4()}",
-            path=tempfile.gettempdir()
+            path=tempfile.gettempdir(),
         )
 
         with h5py.File(self.fps_, "r") as h5f:
@@ -531,9 +528,7 @@ class MoleculePool(Sequence):
             else:
                 if cache:
                     self.smis_ = [
-                        smi
-                        for i, smi in enumerate(self.smis())
-                        if i not in self.invalid_idxs
+                        smi for i, smi in enumerate(self.smis()) if i not in self.invalid_idxs
                     ]
                     self.size = len(self.smis_)
                 else:
@@ -551,21 +546,11 @@ class MoleculePool(Sequence):
                 self.invalid_idxs = {i for i, smi in validated_smis if smi is None}
 
                 self.size = len(self.smis_)
-                # for i, smi in tqdm(enumerate(validated_smis), desc="Validating"):
-                #     if smi is None:
-                #         self.invalid_idxs.add(i)
-                #     else:
-                #         self.smis_.append(smi)
             else:
                 self.invalid_idxs = {
                     i for i, smi in tqdm(enumerate(validated_smis), "Validating") if smi is None
                 }
                 self.size = sum(1 for _ in self.smis())
-                
-                # for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
-                #     if smi is None:
-                #         invalid_idxs.add(i)
-
 
             if self.verbose > 0:
                 print("Done!", flush=True)
@@ -621,13 +606,9 @@ class MoleculePool(Sequence):
 
         return idxs
 
-
     @staticmethod
     def expected_positives_pruned(
-        threshold: float,
-        Y_mean: np.ndarray,
-        Y_var: np.ndarray,
-        idxs: np.ndarray
+        threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, idxs: np.ndarray
     ) -> float:
         """the number of expected positives that will be pruned
 
@@ -659,53 +640,10 @@ class MoleculePool(Sequence):
 
     @staticmethod
     def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, threshold: float) -> np.ndarray:
-        """the probability that each prediction (given mean and uncertainty) is above the input 
+        """the probability that each prediction (given mean and uncertainty) is above the input
         threshold"""
         return norm.cdf(Y_mean, threshold, np.sqrt(Y_var))
 
-    @staticmethod
-    def maximize_fp(k: int, max_fp: float, Y_mean: np.ndarray, Y_var: np.ndarray) -> int:
-        """Return the number of molecules to select beyond the top-k such that the expected number 
-        of false positives is maximized such that it is lower than an input threshold.
-                
-        Parameters
-        ----------
-        k : int
-            the threshold above which to classify a molecule as a "postive" or "hit"
-        max_fp : float
-            the maximum allowable number of expected true positives
-        Y_mean : np.ndarray
-            the predicted mean of each molecule in the pool **sorted** by predicted mean
-        Y_var : np.ndarray
-            the predicted uncertainty of each molecule in the pool **sorted**
-            by the associated predicted mean
-        
-        Returns
-        -------
-        int
-            the number of top-predicted molecules to select
-        """
-        lo, hi = k, len(Y_mean)
-
-        while lo < hi:
-            mid = int(lo + hi) // 2
-            E_TP = MoleculePool.expected_TP(Y_mean, Y_var, k, mid)
-            if E_TP > max_fp:
-                hi = mid
-            else:
-                lo = mid + 1
-
-        return mid-1
-
-    @staticmethod
-    def expected_TP(Y_mean, Y_var, k: int, l: int):
-        """the expected number of true positives between the k-th and l-th best predictions, where
-        a positive is defined as a prediction being among the k best"""
-        I = Y_mean - Y_mean[k-1]
-        with np.errstate(divide='ignore'):
-            Z = I / np.sqrt(Y_var)
-
-        return norm.cdf(Z[k:l]).sum()
 
 @ray.remote
 def _validate_smis(smis):
