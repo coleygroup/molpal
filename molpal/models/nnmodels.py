@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 from typing import Callable, Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # FATAL
+logging.getLogger("tensorflow").setLevel(logging.ERROR)
 
 import numpy as np
 from numpy import ndarray
@@ -21,19 +21,18 @@ from tensorflow import keras
 from molpal.featurizer import Featurizer, feature_matrix
 from molpal.models.base import Model
 
-T = TypeVar('T')
-T_feat = TypeVar('T_feat')
-Dataset = tf.data.Dataset
+T = TypeVar("T")
+T_feat = TypeVar("T_feat")
+
 
 def mve_loss(y_true, y_pred):
     mu = y_pred[:, 0]
     var = tf.math.softplus(y_pred[:, 1])
 
     return tf.reduce_mean(
-        tf.math.log(2*math.pi) / 2
-        + tf.math.log(var) / 2
-        + (mu-y_true)**2 / (2*var)
+        tf.math.log(2 * math.pi) / 2 + tf.math.log(var) / 2 + (mu - y_true) ** 2 / (2 * var)
     )
+
 
 class NN:
     """A feed-forward neural network model
@@ -51,7 +50,7 @@ class NN:
     output_size : int
         the dimension of the model output
     batch_size : int
-        the size to batch training into        
+        the size to batch training into
     uncertainty : Optional[str]
         the uncertainty method this model is using (if at all)
     uncertainty : bool
@@ -76,13 +75,18 @@ class NN:
         the name of the activation function to use
     uncertainty : Optional[str], default=None
     """
-    def __init__(self, input_size: int, num_tasks: int,
-                 batch_size: int = 4096,
-                 layer_sizes: Optional[Sequence[int]] = None,
-                 dropout: Optional[float] = None,
-                 activation: Optional[str] = 'relu',
-                 uncertainty: Optional[str] = None,
-                 model_seed: Optional[int] = None):
+
+    def __init__(
+        self,
+        input_size: int,
+        num_tasks: int,
+        batch_size: int = 4096,
+        layer_sizes: Optional[Sequence[int]] = None,
+        dropout: Optional[float] = None,
+        activation: Optional[str] = "relu",
+        uncertainty: Optional[str] = None,
+        model_seed: Optional[int] = None,
+    ):
         self.input_size = input_size
         self.batch_size = batch_size
 
@@ -90,25 +94,23 @@ class NN:
 
         layer_sizes = layer_sizes or [100, 100]
         self.model, self.optimizer, self.loss = self.build(
-            input_size, num_tasks, layer_sizes, dropout,
-            self.uncertainty, activation
+            input_size, num_tasks, layer_sizes, dropout, self.uncertainty, activation
         )
 
         self.mean = 0
         self.std = 0
 
         tf.random.set_seed(model_seed)
-        
-    def build(self, input_size, num_tasks, layer_sizes, dropout, 
-              uncertainty, activation):
+
+    def build(self, input_size, num_tasks, layer_sizes, dropout, uncertainty, activation):
         """Build the model, optimizer, and loss function"""
         # self.model = keras.Sequential()
 
-        dropout_at_predict = uncertainty == 'dropout'
-        output_size = 2*num_tasks if self.uncertainty else num_tasks
-        
+        dropout_at_predict = uncertainty == "dropout"
+        output_size = 2 * num_tasks if self.uncertainty else num_tasks
+
         inputs = keras.layers.Input(shape=(input_size,))
-        
+
         hidden = inputs
         for layer_size in layer_sizes:
             hidden = keras.layers.Dense(
@@ -118,30 +120,26 @@ class NN:
             )(hidden)
 
             if dropout:
-                hidden = keras.layers.Dropout(
-                    dropout
-                )(hidden, training=dropout_at_predict)
+                hidden = keras.layers.Dropout(dropout)(hidden, training=dropout_at_predict)
 
-        outputs = keras.layers.Dense(
-            output_size, activation='linear'
-        )(hidden)
+        outputs = keras.layers.Dense(output_size, activation="linear")(hidden)
 
         model = keras.Model(inputs, outputs)
 
-        if uncertainty not in {'mve'}:
+        if uncertainty not in {"mve"}:
             optimizer = keras.optimizers.Adam(lr=0.01)
             loss = keras.losses.mse
-        elif uncertainty == 'mve':
+        elif uncertainty == "mve":
             optimizer = keras.optimizers.Adam(lr=0.05)
             loss = mve_loss
         else:
-            raise ValueError(
-                f'Unrecognized uncertainty method: "{uncertainty}"')
+            raise ValueError(f'Unrecognized uncertainty method: "{uncertainty}"')
 
         return model, optimizer, loss
 
-    def train(self, xs: Iterable[T], ys: Iterable[float],
-              featurizer: Callable[[T], ndarray]) -> bool:
+    def train(
+        self, xs: Iterable[T], ys: Iterable[float], featurizer: Callable[[T], ndarray]
+    ) -> bool:
         """Train the model on xs and ys with the given featurizer
 
         Parameters
@@ -153,7 +151,7 @@ class NN:
         featurize : Callable[[T], ndarray]
             a function that transforms an identifier into its uncompressed
             feature representation
-        
+
         Returns
         -------
         True
@@ -164,15 +162,19 @@ class NN:
         Y = self._normalize(ys)
 
         self.model.fit(
-            X, Y, batch_size=self.batch_size, validation_split=0.2,
-            epochs=50, validation_freq=2, verbose=0,
+            X,
+            Y,
+            batch_size=self.batch_size,
+            validation_split=0.2,
+            epochs=50,
+            validation_freq=2,
+            verbose=0,
             callbacks=[
                 keras.callbacks.EarlyStopping(
-                    monitor='val_loss', patience=5,
-                    restore_best_weights=True, verbose=0
+                    monitor="val_loss", patience=5, restore_best_weights=True, verbose=0
                 ),
-                tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
-            ]
+                tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False),
+            ],
         )
 
         return True
@@ -181,53 +183,48 @@ class NN:
         X = np.stack(xs, axis=0)
         Y_pred = self.model.predict(X)
 
-        if self.uncertainty == 'mve':
+        if self.uncertainty == "mve":
             Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.std + self.mean
-            Y_pred[:, 1::2] = Y_pred[:, 1::2] * self.std**2
+            Y_pred[:, 1::2] = Y_pred[:, 1::2] * self.std ** 2
         else:
             Y_pred = Y_pred * self.std + self.mean
 
         return Y_pred
-    
+
     def save(self, path) -> str:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
-        model_path = f'{path}/model'
+        model_path = f"{path}/model"
         self.model.save(model_path, include_optimizer=True)
 
-        state_path = f'{path}/state.json'
-        state = {
-            'std': self.std,
-            'mean': self.mean,
-            'model_path': model_path
-        }
-        json.dump(state, open(state_path, 'w'), indent=4)
+        state_path = f"{path}/state.json"
+        state = {"std": self.std, "mean": self.mean, "model_path": model_path}
+        json.dump(state, open(state_path, "w"), indent=4)
 
         return state_path
 
     def load(self, path):
-        state = json.load(open(path, 'r'))
-        
-        model_path = state['model_path']
-        self.std = state['std']
-        self.mean = state['mean']
+        state = json.load(open(path, "r"))
 
-        if self.uncertainty == 'mve':
-            custom_objects = {'mve_loss': mve_loss}
+        model_path = state["model_path"]
+        self.std = state["std"]
+        self.mean = state["mean"]
+
+        if self.uncertainty == "mve":
+            custom_objects = {"mve_loss": mve_loss}
         else:
             custom_objects = {}
 
-        self.model = keras.models.load_model(
-            model_path, custom_objects=custom_objects
-        )
-    
+        self.model = keras.models.load_model(model_path, custom_objects=custom_objects)
+
     def _normalize(self, ys: Sequence[float]) -> ndarray:
         Y = np.stack(list(ys))
         self.mean = np.nanmean(Y, axis=0)
         self.std = np.nanstd(Y, axis=0)
 
         return (Y - self.mean) / self.std
+
 
 class NNModel(Model):
     """A simple feed-forward neural network model
@@ -236,7 +233,7 @@ class NNModel(Model):
     ----------
     model : Type[NN]
         the underlying neural net on which to train and perform inference
-    
+
     Parameters
     ----------
     input_size : int
@@ -246,23 +243,31 @@ class NNModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    
+
     See also
     --------
     NNDropoutModel
     NNEnsembleModel
     NNTwoOutputModel
     """
-    def __init__(self, input_size: int, test_batch_size: Optional[int] = 4096,
-                 dropout: Optional[float] = 0.0,
-                 model_seed: Optional[int] = None,
-                 **kwargs):
+
+    def __init__(
+        self,
+        input_size: int,
+        test_batch_size: Optional[int] = 4096,
+        dropout: Optional[float] = 0.0,
+        model_seed: Optional[int] = None,
+        **kwargs,
+    ):
         test_batch_size = test_batch_size or 4096
 
         self.build_model = partial(
-            NN, input_size=input_size, num_tasks=1,
-            batch_size=test_batch_size, dropout=dropout,
-            model_seed=model_seed
+            NN,
+            input_size=input_size,
+            num_tasks=1,
+            batch_size=test_batch_size,
+            dropout=dropout,
+            model_seed=model_seed,
         )
         self.model = self.build_model()
 
@@ -270,14 +275,20 @@ class NNModel(Model):
 
     @property
     def provides(self):
-        return {'means'}
+        return {"means"}
 
     @property
     def type_(self):
-        return 'nn'
+        return "nn"
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Featurizer, retrain: bool = False) -> bool:
+    def train(
+        self,
+        xs: Iterable[T],
+        ys: Sequence[Optional[float]],
+        *,
+        featurizer: Featurizer,
+        retrain: bool = False,
+    ) -> bool:
         if retrain:
             self.model = self.build_model()
 
@@ -291,19 +302,20 @@ class NNModel(Model):
 
     def save(self, path) -> str:
         return self.model.save(path)
-    
+
     def load(self, path):
         self.model.load(path)
+
 
 class NNEnsembleModel(Model):
     """A feed-forward neural network ensemble model for estimating mean
     and variance.
-    
+
     Attributes
     ----------
     models : List[Type[NN]]
         the underlying neural nets on which to train and perform inference
-    
+
     Parameters
     ----------
     input_size : int
@@ -318,34 +330,50 @@ class NNEnsembleModel(Model):
     bootstrap_ensemble : bool
         NOTE: UNUSED
     """
-    def __init__(self, input_size: int, test_batch_size: Optional[int] = 8192,
-                 dropout: Optional[float] = 0.0, ensemble_size: int = 5,
-                 bootstrap_ensemble: Optional[bool] = False,
-                 model_seed: Optional[int] = None, **kwargs):
+
+    def __init__(
+        self,
+        input_size: int,
+        test_batch_size: Optional[int] = 8192,
+        dropout: Optional[float] = 0.0,
+        ensemble_size: int = 5,
+        bootstrap_ensemble: Optional[bool] = False,
+        model_seed: Optional[int] = None,
+        **kwargs,
+    ):
         test_batch_size = test_batch_size or 8192
         self.build_model = partial(
-            NN, input_size=input_size, num_tasks=1,
-            batch_size=test_batch_size, dropout=dropout,
-            model_seed=model_seed
+            NN,
+            input_size=input_size,
+            num_tasks=1,
+            batch_size=test_batch_size,
+            dropout=dropout,
+            model_seed=model_seed,
         )
 
         self.ensemble_size = ensemble_size
         self.models = [self.build_model() for _ in range(self.ensemble_size)]
 
-        self.bootstrap_ensemble = bootstrap_ensemble # TODO: Actually use this
+        self.bootstrap_ensemble = bootstrap_ensemble  # TODO: Actually use this
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
 
     @property
     def type_(self):
-        return 'nn'
+        return "nn"
 
     @property
     def provides(self):
-        return {'means', 'vars'}
+        return {"means", "vars"}
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Featurizer, retrain: bool = False):
+    def train(
+        self,
+        xs: Iterable[T],
+        ys: Sequence[Optional[float]],
+        *,
+        featurizer: Featurizer,
+        retrain: bool = False,
+    ):
         if retrain:
             self.models = [self.build_model() for _ in range(self.ensemble_size)]
 
@@ -354,7 +382,7 @@ class NNEnsembleModel(Model):
     def get_means(self, xs: Sequence) -> np.ndarray:
         preds = np.zeros((len(self.models), len(xs)))
         for j, model in tqdm(
-            enumerate(self.models), 'ensemble prediction', leave=False, unit='model'
+            enumerate(self.models), "ensemble prediction", leave=False, unit="model"
         ):
             preds[j] = model.predict(xs)[:, 0]
 
@@ -363,30 +391,32 @@ class NNEnsembleModel(Model):
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         preds = np.zeros((len(self.models), len(xs)))
         for j, model in tqdm(
-            enumerate(self.models), 'ensemble prediction', leave=False, unit='model'):
+            enumerate(self.models), "ensemble prediction", leave=False, unit="model"
+        ):
             preds[j] = model.predict(xs)[:, 0]
 
         return np.mean(preds, 0), np.var(preds, 0)
 
     def save(self, path) -> str:
         for i, model in enumerate(self.models):
-            model.save(path, f'model_{i}')
+            model.save(path, f"model_{i}")
 
         return path
-    
+
     def load(self, path):
         for model, model_path in zip(self.models, path.iterdir()):
             model.load(model_path)
 
+
 class NNTwoOutputModel(Model):
     """Feed forward neural network with two outputs so it learns to predict
     its own uncertainty at the same time
-    
+
     Attributes
     ----------
     model : Type[NN]
         the underlying neural net on which to train and perform inference
-    
+
     Parameters
     ----------
     input_size : int
@@ -397,17 +427,25 @@ class NNTwoOutputModel(Model):
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
     """
-    def __init__(self, input_size: int,
-                 test_batch_size: Optional[int] = 8192,
-                 dropout: Optional[float] = 0.0,
-                 model_seed: Optional[int] = None,
-                 **kwargs):
+
+    def __init__(
+        self,
+        input_size: int,
+        test_batch_size: Optional[int] = 8192,
+        dropout: Optional[float] = 0.0,
+        model_seed: Optional[int] = None,
+        **kwargs,
+    ):
         test_batch_size = test_batch_size or 8192
 
         self.build_model = partial(
-            NN, input_size=input_size, num_tasks=1,
-            batch_size=test_batch_size, dropout=dropout,
-            uncertainty='mve', model_seed=model_seed
+            NN,
+            input_size=input_size,
+            num_tasks=1,
+            batch_size=test_batch_size,
+            dropout=dropout,
+            uncertainty="mve",
+            model_seed=model_seed,
         )
         self.model = self.build_model()
 
@@ -415,14 +453,20 @@ class NNTwoOutputModel(Model):
 
     @property
     def type_(self):
-        return 'nn'
+        return "nn"
 
     @property
     def provides(self):
-        return {'means', 'vars'}
+        return {"means", "vars"}
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Featurizer, retrain: bool = False) -> bool:
+    def train(
+        self,
+        xs: Iterable[T],
+        ys: Sequence[Optional[float]],
+        *,
+        featurizer: Featurizer,
+        retrain: bool = False,
+    ) -> bool:
         if retrain:
             self.model = self.build_model()
 
@@ -438,20 +482,21 @@ class NNTwoOutputModel(Model):
 
     def save(self, path) -> str:
         return self.model.save(path)
-    
+
     def load(self, path):
         self.model.load(path)
 
     @classmethod
-    def _safe_softplus(cls, xs):    
+    def _safe_softplus(cls, xs):
         return np.log1p(np.exp(-np.abs(xs))) + np.maximum(xs, 0)
 
         # in_range = xs < 100
         # return np.log(1 + np.exp(xs*in_range))*in_range + xs*(1 - in_range)
 
+
 class NNDropoutModel(Model):
     """Feed forward neural network that uses MC dropout for UQ
-    
+
     Attributes
     ----------
     model : Type[NN]
@@ -470,15 +515,26 @@ class NNDropoutModel(Model):
     dropout_size : int (Default = 10)
         the number of passes to make through the network during inference
     """
-    def __init__(self, input_size: int, test_batch_size: Optional[int] = 8192,
-                 dropout: Optional[float] = 0.2, dropout_size: int = 10,
-                 model_seed: Optional[int] = None, **kwargs):
+
+    def __init__(
+        self,
+        input_size: int,
+        test_batch_size: Optional[int] = 8192,
+        dropout: Optional[float] = 0.2,
+        dropout_size: int = 10,
+        model_seed: Optional[int] = None,
+        **kwargs,
+    ):
         test_batch_size = test_batch_size or 8192
 
         self.build_model = partial(
-            NN, input_size=input_size, num_tasks=1,
-            batch_size=test_batch_size, dropout=dropout,
-            uncertainty='dropout', model_seed=model_seed
+            NN,
+            input_size=input_size,
+            num_tasks=1,
+            batch_size=test_batch_size,
+            dropout=dropout,
+            uncertainty="dropout",
+            model_seed=model_seed,
         )
         self.model = self.build_model()
         self.dropout_size = dropout_size
@@ -487,17 +543,23 @@ class NNDropoutModel(Model):
 
     @property
     def type_(self):
-        return 'nn'
+        return "nn"
 
     @property
     def provides(self):
-        return {'means', 'vars', 'stochastic'}
+        return {"means", "vars", "stochastic"}
 
-    def train(self, xs: Iterable[T], ys: Sequence[Optional[float]], *,
-              featurizer: Featurizer, retrain: bool = False) -> bool:
+    def train(
+        self,
+        xs: Iterable[T],
+        ys: Sequence[Optional[float]],
+        *,
+        featurizer: Featurizer,
+        retrain: bool = False,
+    ) -> bool:
         if retrain:
             self.model = self.build_model()
-        
+
         return self.model.train(xs, ys, featurizer)
 
     def get_means(self, xs: Sequence) -> ndarray:
@@ -511,14 +573,15 @@ class NNDropoutModel(Model):
     def _get_predss(self, xs: Sequence) -> ndarray:
         """Get the predictions for each dropout pass"""
         predss = np.zeros((self.dropout_size, len(xs)))
-        for j in tqdm(range(self.dropout_size), leave=False,
-                      desc='bootstrap prediction', unit='pass'):
+        for j in tqdm(
+            range(self.dropout_size), leave=False, desc="bootstrap prediction", unit="pass"
+        ):
             predss[j] = self.model.predict(xs)[:, 0]
 
         return predss
 
     def save(self, path) -> str:
         return self.model.save(path)
-    
+
     def load(self, path):
         self.model.load(path)

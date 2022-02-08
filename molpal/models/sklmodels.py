@@ -82,8 +82,7 @@ class RFModel(Model):
 
         errors = Y_pred - Y
         logging.info(
-            f"  training MAE: {np.mean(np.abs(errors)):0.2f},"
-            f"MSE: {(errors**2).mean():0.2f}"
+            f"  training MAE: {np.mean(np.abs(errors)):0.2f}," f"MSE: {(errors**2).mean():0.2f}"
         )
         return True
 
@@ -173,8 +172,7 @@ class GPModel(Model):
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
         logging.info(
-            f"  training MAE: {np.abs(errors).mean():0.2f}, "
-            f"MSE: {(errors**2).mean():0.2f}"
+            f"  training MAE: {np.abs(errors).mean():0.2f}, " f"MSE: {(errors**2).mean():0.2f}"
         )
 
         return True
@@ -188,7 +186,7 @@ class GPModel(Model):
         X = np.vstack(xs)
         Y_mean_pred, Y_sd_pred = self.model.predict(X, return_std=True)
 
-        return Y_mean_pred, Y_sd_pred**2
+        return Y_mean_pred, Y_sd_pred ** 2
 
     def save(self, path) -> str:
         path = Path(path)
