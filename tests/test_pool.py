@@ -38,7 +38,7 @@ def max_fp(request):
     return request.param
 
 @pytest.fixture(params=[0.025, 0.01, 0.001])
-def min_hit_prob(request):
+def p_min(request):
     return request.param
 
 @pytest.fixture(params=[0.05, 0.10])
@@ -47,26 +47,31 @@ def max_pos_prune(request):
 
 def test_expected_pos_pruned_no_var_no_pruning(k, Y_mean, Y_var):
     k = int(k * len(Y_mean))
+    threshold = np.partition(Y_mean, -k)[-k]
 
-    E_pos_pruned = MoleculePool.expected_positives_pruned(k, Y_mean, Y_var, np.arange(len(Y_mean)))
+    E_pos_pruned = MoleculePool.expected_positives_pruned(
+        threshold, Y_mean, Y_var, np.arange(len(Y_mean))
+    )
 
     assert E_pos_pruned == 0
 
 def test_expected_pos_pruned_no_var_all_pruned(k, Y_mean):
     k = int(k * len(Y_mean))
-    hit_cutoff = np.partition(Y_mean, -k)[-k]
+    threshold = np.partition(Y_mean, -k)[-k]
 
-    E_pos_pruned = MoleculePool.expected_positives_pruned(k, Y_mean, np.array([]), [])
+    E_pos_pruned = MoleculePool.expected_positives_pruned(threshold, Y_mean, np.array([]), [])
 
-    assert E_pos_pruned == (Y_mean >= hit_cutoff).sum()
+    assert E_pos_pruned == (Y_mean >= threshold).sum()
 
 def test_expected_pos_pruned_no_var_all_hits(Y_mean, idxs):
-    E_pos_pruned = MoleculePool.expected_positives_pruned(0, Y_mean, np.array([]), idxs)
+    threshold = Y_mean.min()
+    E_pos_pruned = MoleculePool.expected_positives_pruned(threshold, Y_mean, np.array([]), idxs)
 
     assert E_pos_pruned == len(Y_mean) - len(idxs)
 
 def test_expected_pos_pruned_no_var_single_hit(Y_mean, idxs):
-    E_pos_pruned = MoleculePool.expected_positives_pruned(1, Y_mean, np.array([]), idxs)
+    threshold = Y_mean.max()
+    E_pos_pruned = MoleculePool.expected_positives_pruned(threshold, Y_mean, np.array([]), idxs)
 
     assert E_pos_pruned == 1 or E_pos_pruned == 0
 
@@ -75,54 +80,11 @@ def test_prob_above(Y_mean, Y_var):
 
     assert np.all(P <= 0.5)
 
-def test_maximize_fp(k, max_fp, Y_mean, Y_var):
-    k = int(k * len(Y_mean))
-    max_fp *= len(Y_mean)
-
-    sorted_idxs = np.argsort(Y_mean)[::-1]
-    Y_mean = Y_mean[sorted_idxs]
-    Y_var = Y_var[sorted_idxs]
-
-    l = MoleculePool.maximize_fp(k, max_fp, Y_mean, Y_var)
-    assert MoleculePool.expected_TP(Y_mean, Y_var, k, l) <= max_fp
-
-def test_prune_greedy(Y_mean, l):
+def test_prune_prob(Y_mean, Y_var, l, p_min):
     l = int(l * len(Y_mean))
+    threshold = np.partition(Y_mean, -l)[-l]
 
-    idxs = MoleculePool.prune_greedy(Y_mean, l)
+    idxs = MoleculePool.prune_prob(threshold, Y_mean, Y_var, p_min)
+    P = MoleculePool.prob_above(Y_mean, Y_var, threshold)
 
-    assert len(idxs) == l
-
-def test_prune_ucb(Y_mean, Y_var, l, beta):
-    l = int(l * len(Y_mean))
-    idxs = MoleculePool.prune_ucb(Y_mean, Y_var, l, beta)
-
-    Y_ub = Y_mean + beta*np.sqrt(Y_var)
-    prune_cutoff = np.partition(Y_mean, -l)[-l]
-
-    assert len(idxs) == l
-    assert np.all(Y_ub[idxs] >= prune_cutoff)
-
-def test_prune_prob(Y_mean, Y_var, l, min_hit_prob):
-    l = int(l * len(Y_mean))
-    idxs = MoleculePool.prune_prob(Y_mean, Y_var, l, min_hit_prob)
-
-    prune_cutoff = np.partition(Y_mean, -l)[-l]
-    P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
-
-    assert np.all(P[idxs] >= min_hit_prob)
-
-# def test_optimize_prob(Y_mean, Y_var, l: float, max_pos_prune: float):
-#     N = int(l * len(Y_mean))
-#     cutoff = np.partition(Y_mean, -N)[-N]
-#     max_pos_prune *= N
-
-#     prob = MoleculePool.optimize_prob(Y_mean, Y_var, cutoff, 0)
-
-#     idxs = MoleculePool.prune_prob(Y_mean, Y_var, N, prob)
-#     P = MoleculePool.prob_above(Y_mean, Y_var, cutoff)
-
-#     mask = np.ones(len(P), bool)
-#     mask[idxs] = False
-
-#     assert P[mask].sum() <= max_pos_prune
+    assert np.all(P[idxs] >= p_min)

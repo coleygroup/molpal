@@ -1,11 +1,11 @@
-from typing import Iterator, Optional, Sequence, Union
+from typing import Iterator, Sequence, Union
 
 import numpy as np
 import ray
 
 from molpal.utils import batches
-from molpal.featurizer import Featurizer, feature_matrix
-from molpal.pools.base import MoleculePool, PruneMethod
+from molpal.featurizer import feature_matrix
+from molpal.pools.base import MoleculePool
 
 
 class LazyMoleculePool(MoleculePool):
@@ -44,25 +44,13 @@ class LazyMoleculePool(MoleculePool):
 
     def prune(
         self,
-        k: Union[int, float],
+        threshold: float,
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
         min_hit_prob: float = 0.025
-        # prune_method: PruneMethod = PruneMethod.PROB,
-        # l: Optional[Union[int, float]] = None,
-        # beta: float = 2.,
-        # max_fp: Optional[Union[int, float]] = None,
     ) -> np.ndarray:
-        if isinstance(k, float):
-            k = int(k * len(Y_mean))
-        if k < 1:
-            raise ValueError(f"hit threshold (k) must be positive! got: {k}")
+        idxs = self.prune_prob(threshold, Y_mean, Y_var, min_hit_prob)
 
-        idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
-        # if prune_method == PruneMethod.PROB:
-        # else:
-        #     raise NotImplementedError(f"Deprecated prune method! got: {prune_method}")
-        
         self.smis_ = self.get_smis(idxs)
         self.size = len(self.smis_)
 

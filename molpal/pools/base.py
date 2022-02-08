@@ -14,25 +14,18 @@ import h5py
 import numpy as np
 import ray
 from rdkit import Chem, RDLogger
-from scipy import optimize
 from scipy.stats import norm
 from tqdm import tqdm
 
 from molpal.featurizer import Featurizer
 from molpal.pools import cluster, fingerprints
-from molpal.utils import AutoName, batches
+from molpal.utils import batches
 
 RDLogger.DisableLog("rdApp.*")
 
 Mol = Tuple[str, np.ndarray, Optional[int]]
 
 CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
-
-class PruneMethod(AutoName):
-    EFP = auto()
-    GREEDY = auto()
-    PROB = auto()
-    UCB = auto()
 
 class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
@@ -224,45 +217,23 @@ class MoleculePool(Sequence):
 
     def prune(
         self,
-        k: Union[int, float],
+        threshold: float,
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        min_hit_prob: float = 0.025
-        # prune_method: PruneMethod = PruneMethod.PROB,
-        # l: Optional[Union[int, float]] = None,
-        # beta: float = 2.,
-        # max_fp: Optional[Union[int, float]] = None,
+        p_min: float = 0.025
     ) -> np.ndarray:
-        """prune the library to the top-k predicted compounds based on their predicted means
-
-        NOTE: if both max_fp and l are specified, pruning will be performed using the top-l
-        predicted compounds and NOT by maximizing the number of false positives
+        """prune the library to only the compounds with a hit probability greater than or equal to
+        the give
 
         Parameters
         ----------
-        k : Union[int, float]
-            the percentile or rank above which molecules are classified as "hits" or "positives" 
+        threshold : float
+            the threshold above which molecules are classified as hits
         Y_mean : np.ndarray
             the predicted mean for each molecule
         Y_var : np.ndarray
             the predicted variance for each molecule
-        prune_method : PruneMethod, default=PruneMethod.PROB
-            the method by which to prune the pool (only PROB is valid):
-            * PruneMethod.GREEDY: retain the top-l compounds by predicted mean
-            * PruneMethod.UCB: retain the top-l compounds by
-                predicted_mean + beta * sqrt(predicted_variance)
-            * PruneMethod.EFN: retain a maximal number of expected false positives up to some input
-                threshold
-            * PruneMethod.PROB: retain all molecules that have probability p > p* of being a "hit"
-        l : Union[int, float], default=None
-            the number or fraction of the pool to retain after GREEDY/UCB pruning.
-        beta : float, default=2.
-            the amount by which to multiply the predicted uncertainty before adding to the
-            predicted mean
-        max_fp : Union[int, float], default=0.01
-            the maximal expected number of true negatives to retain for EFN pruning, expressed as
-            either a number or fraction of the pool size.
-        min_hit_prob : float, default=0.025
+        p_min : float, default=0.025
             the minimum probability that a compound is a hit for it to be retained in PROB pruning
 
         Returns
@@ -270,21 +241,7 @@ class MoleculePool(Sequence):
         idxs : np.ndarray
             the indices of the retained molecules in the pool
         """
-        if isinstance(k, float):
-            k = int(k * len(Y_mean))
-        if k < 1:
-            raise ValueError(f"hit threshold (k) must be positive! got: {k}")
-
-        # if prune_method == PruneMethod.GREEDY:
-        #     idxs = self.prune_greedy(Y_mean, l)
-        # elif prune_method == PruneMethod.UCB:
-        #     idxs = self.prune_ucb(Y_mean, Y_var, l, beta)
-        # elif prune_method == PruneMethod.EFP:
-        #     idxs = self.prune_max_fp(k, Y_mean, Y_var, max_fp)
-        idxs = self.prune_prob(Y_mean, Y_var, k, min_hit_prob)
-        # if prune_method == PruneMethod.PROB:
-        # else:
-        #     raise NotImplementedError(f"Deprecated prune method! got: {prune_method}")
+        idxs = self.prune_prob(threshold, Y_mean, Y_var, p_min)
 
         self.smis_ = self.get_smis(idxs)
 
@@ -634,88 +591,23 @@ class MoleculePool(Sequence):
         self.cluster_sizes = Counter(self.cluster_ids_)
 
     @staticmethod
-    def prune_greedy(Y_mean: np.ndarray, l: Union[int, float]) -> np.ndarray:
-        """prune all predictions with mean less than a given threshold
-        
-        Parameters
-        ----------
-        Y_mean : np.ndarray
-            the predicted means
-        l : Union[int, float]
-            the percentile or rank of the predicted means from which to calculate a pruning 
-            threshold
-
-        Returns
-        -------
-        np.ndarray
-            the indices of the predictions to retain
-
-        Raises
-        ------
-        ValueError
-            if l is a float below 0 or an int less than 1
-        """
-        return MoleculePool.prune_ucb(Y_mean, np.array([]), l, 0.)
-
-    @staticmethod
-    def prune_ucb(
-        Y_mean: np.ndarray,
-        Y_var: np.ndarray,
-        l: Union[int, float],
-        beta: float = 2.
-    ) -> np.ndarray:
-        """prune to the top-l compounds by mean + beta * sqrt(var)
-
-        Parameters
-        ----------
-        Y_mean : np.ndarray
-            the predicted means
-        Y_var : np.ndarray
-            the predicted variances
-        l : Union[int, float]
-            the fraction or number of predictions to retain
-        beta : float, default=2
-            the number of confidence intervals to add to each predicted mean
-
-        Returns
-        -------
-        np.ndarray
-            the indices of the predictions to retain
-
-        Raises
-        ------
-        ValueError
-            if l is a float below 0 or an int less than 1
-        """
-        if isinstance(l, float):
-            l = int(l * len(Y_mean))
-        if l < 1:
-            raise ValueError(f"l must be positive! got: {l}")
-
-        Y_ub = Y_mean + beta * np.sqrt(Y_var) if Y_mean.shape == Y_var.shape else Y_mean
-        prune_cutoff = np.partition(Y_ub, -l)[-l]
-        idxs = np.arange(len(Y_mean))[Y_ub >= prune_cutoff]
-
-        return idxs
-    
-    @staticmethod
     def prune_prob(
+        threshold: float,
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
-        k: Union[int, float],
-        min_hit_prob: float = 0.025,
+        p_min: float = 0.025,
     ) -> np.ndarray:
         """Prune all predictions with a probabilty less than min_hit_prob of being above a given
         threshold
 
         Parameters
         ----------
+        threshold : float,
+            the threshold above which a molecule is considered a predicted hit
         Y_mean : np.ndarray
             the predicted means
         Y_var : np.ndarray
             the predicted variances
-        k : Union[int, float]
-            the percentile or rank of the predicted means above which molecules are considered hits
         min_hit_prob : float
             the minimum probability necessary to avoid pruning
 
@@ -724,60 +616,15 @@ class MoleculePool(Sequence):
         np.ndarray
             the indices of the predictions to retain
         """
-        if isinstance(k, float):
-            k = int(k * len(Y_mean))
-        if k < 1:
-            raise ValueError(f"k must be positive! got: {k}")
-            
-        hit_cutoff = np.partition(Y_mean, -k)[-k]
-        P = MoleculePool.prob_above(Y_mean, Y_var, hit_cutoff)
-        idxs = np.arange(len(Y_mean))[P >= min_hit_prob]
+        P = MoleculePool.prob_above(Y_mean, Y_var, threshold)
+        idxs = np.arange(len(Y_mean))[P >= p_min]
 
         return idxs
 
-    # @staticmethod
-    # def optimize_prob(
-    #     Y_mean: np.ndarray,
-    #     Y_var: np.ndarray,
-    #     prune_cutoff: float,
-    #     max_pos_prune: float
-    # ) -> float:
-    #     def E_pos_pruned(p) -> float:
-    #         P = MoleculePool.prob_above(Y_mean, Y_var, prune_cutoff)
-    #         return -np.abs(max_pos_prune - P[P < p].sum())
-
-    #     Es = [E_pos_pruned(p) for p in np.linspace(0, 1, 10)]
-    #     result = optimize.minimize_scalar(
-    #         E_pos_pruned, 
-    #         bounds=(0, 1),
-    #     )
-
-    #     print(result.x)
-    #     return result.x
-
-    @staticmethod
-    def prune_max_fp(
-        k: int,
-        Y_mean: np.ndarray,
-        Y_var: np.ndarray,
-        max_fp: Optional[Union[int, float]] = None,
-    ) -> np.ndarray:
-        if isinstance(max_fp, float):
-            max_fp *= len(Y_mean)
-        if max_fp < 1:
-            raise ValueError(f"max_fp must be positive! got: {max_fp}")
-
-        sorted_idxs = np.argsort(Y_mean)[::-1]
-        Y_mean = Y_mean[sorted_idxs]
-        Y_var = Y_var[sorted_idxs]
-
-        l = MoleculePool.maximize_fp(k, max_fp, Y_mean, Y_var)
-        
-        return sorted_idxs[:l]
 
     @staticmethod
     def expected_positives_pruned(
-        k: int,
+        threshold: float,
         Y_mean: np.ndarray,
         Y_var: np.ndarray,
         idxs: np.ndarray
@@ -786,8 +633,8 @@ class MoleculePool(Sequence):
 
         Parameters
         ----------
-        k : int
-            the rank above which to classify molecules as hits
+        threshold : float
+            the threshold above which to classify molecules as hits
         Y_mean : np.ndarray
             the predicted means
         Y_var : np.ndarray
@@ -800,17 +647,15 @@ class MoleculePool(Sequence):
         float
             the expected number of positives that will be pruned
         """
-        hit_cutoff = np.partition(Y_mean, -k)[-k]
-
         if Y_mean.shape == Y_var.shape:
-            P = MoleculePool.prob_above(Y_mean, Y_var, hit_cutoff)
+            P = MoleculePool.prob_above(Y_mean, Y_var, threshold)
         else:
-            P = Y_mean >= hit_cutoff
+            P = Y_mean >= threshold
 
-        mask = np.zeros(len(Y_mean), bool)
-        mask[idxs] = True
+        mask = np.ones(len(Y_mean), bool)
+        mask[idxs] = False
 
-        return P[~mask].sum()
+        return P[mask].sum()
 
     @staticmethod
     def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, threshold: float) -> np.ndarray:
