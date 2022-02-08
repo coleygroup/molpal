@@ -1,13 +1,16 @@
+import warnings
 from molpal.pools.base import MoleculePool, EagerMoleculePool
 from molpal.pools.lazypool import LazyMoleculePool
 
 
-def pool(pool_type: str, *args, **kwargs):
+def pool(pool: str, *args, **kwargs):
     try:
         return {
             "eager": MoleculePool,
             "lazy": LazyMoleculePool
-        }[pool_type](*args, **kwargs)
+        }[pool](*args, **kwargs)
     except KeyError:
-        print(f'WARNING: Unrecognized pool type: "{pool_type}". Defaulting to EagerMoleculePool.')
+        warnings.warn(
+            f'Unrecognized pool type: "{pool}". Defaulting to EagerMoleculePool.'
+        )
         return MoleculePool(*args, **kwargs)
