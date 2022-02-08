@@ -13,7 +13,6 @@ import numpy as np
 
 from molpal import acquirer, featurizer, models, objectives, pools
 from molpal.exceptions import IncompatibilityError, InvalidExplorationError
-from molpal.pools.base import PruneMethod
 
 T = TypeVar("T")
 
@@ -131,9 +130,7 @@ class Explorer:
         budget: Union[int, float] = 1.0,
         prune: bool = False,
         prune_min_hit_prob: float = 0.025,
-        # prune_threshold: Union[int, float] = 0.1,
-        # prune_beta: float = 2.,
-        # prune_max_fp: Union[int, float] = 0.01,
+        use_observed_threshold: bool = False,
         write_final: bool = True,
         write_intermediate: bool = False,
         chkpt_freq: int = 0,
@@ -173,10 +170,8 @@ class Explorer:
 
         # pruning attributes
         self.prune = prune
-        # self.prune_threshold = prune_threshold
-        # self.prune_beta = prune_beta
-        # self.prune_max_fp = prune_max_fp
         self.prune_min_hit_prob = prune_min_hit_prob
+        self.use_observed_threshold = use_observed_threshold
         self.full_pool_size = len(self.pool)
 
         # logging attributes
@@ -188,12 +183,11 @@ class Explorer:
         # stateful attributes (not including model)
         self.iter = 0
         self.scores = {}
-        # self.failures = {}
         self.new_scores = {}
         self.adjustment = 0
         self.updated_model = None
         self.recent_avgs = []
-        self.Y_pred = np.array([])
+        self.Y_mean = np.array([])
         self.Y_var = np.array([])
 
         self._validate_model()
@@ -229,38 +223,35 @@ class Explorer:
 
     @property
     def k(self) -> int:
-        """the number of top-scoring inputs from which to calculate an
-        average"""
-        k = self.__k
-
-        return min(k, len(self.pool))
+        """the number of top-scoring inputs from which to calculate an average"""
+        return self.__k
 
     @k.setter
     def k(self, k: Union[int, float]):
         """Set k either as an integer or as a fraction of the pool.
 
-        NOTE: Specifying either a fraction greater than 1 or or a number
-        larger than the pool size will default to using the full pool.
+        NOTE: Specifying either a fraction greater than 1 or or a number larger than the pool size 
+        will default to using the full pool.
         """
         if isinstance(k, float):
             k = int(k * len(self.pool))
         if k <= 0:
             raise ValueError(f"k(={k}) must be greater than 0!")
 
-        self.__k = k
+        self.__k = min(k, len(self.pool))
 
     @property
     def budget(self) -> int:
-        """the maximum budget expressed in terms of the number of allowed
-        objective function evaluations"""
+        """the maximum budget expressed in terms of the number of allowed objective function 
+        evaluations"""
         return self.__budget
 
     @budget.setter
     def budget(self, budget: Union[int, float]):
         """Set budget either as an integer or as a fraction of the pool.
 
-        NOTE: Specifying either a fraction greater than 1 or or a number
-        larger than the pool size will default to using the full pool.
+        NOTE: Specifying either a fraction greater than 1 or or a number larger than the pool size 
+        will default to using the full pool.
         """
         if isinstance(budget, float):
             budget = int(budget * len(self.pool))
@@ -271,8 +262,8 @@ class Explorer:
 
     @property
     def top_k_avg(self) -> Optional[float]:
-        """The most recent top-k average of the explored inputs. None if k
-        inputs have not yet been explored"""
+        """The most recent top-k average of the explored inputs. None if k inputs have not yet been 
+        explored"""
         try:
             return self.recent_avgs[-1]
         except IndexError:
@@ -421,15 +412,20 @@ class Explorer:
             print("MoleculePool has been exhausted! No additional exploration will be performed.")
             return None
 
-        self._update_model()
-        self._update_predictions()
+        self.fit_model()
+        self.update_predictions()
 
         if self.prune:
+            if self.use_observed_threshold:
+                threshold = self.top_explored(self.k)[-1][1]
+            else:
+                threshold = np.partition(self.Y_mean, -self.k)[-self.k]
+
             idxs = self.pool.prune(
-                self.k, self.Y_pred, self.Y_var, self.prune_min_hit_prob
+                threshold, self.Y_mean, self.Y_var, self.prune_min_hit_prob
             )
             expected_tp = pools.MoleculePool.expected_positives_pruned(
-                self.k, self.Y_pred, self.Y_var, idxs
+                threshold, self.Y_mean, self.Y_var, idxs
             )
             chkpt_dir = Path(self.path / "chkpts" / f"iter_{self.iter}")
             np.save(chkpt_dir / "retained_idxs.npy", idxs)
@@ -438,12 +434,12 @@ class Explorer:
                 print(f"Pruned pool to {len(self.pool)} molecules!")
                 print(f"Expected number of true positives pruned: {expected_tp:0.2f}")
             
-            self.Y_pred = self.Y_pred[idxs]
+            self.Y_mean = self.Y_mean[idxs]
             self.Y_var = self.Y_var[idxs]
 
         inputs = self.acquirer.acquire_batch(
             self.pool.smis(),
-            self.Y_pred,
+            self.Y_mean,
             self.Y_var,
             self.scores,
             self.k,
@@ -515,8 +511,7 @@ class Explorer:
         Returns
         -------
         top_explored : List[Tuple[T, float]]
-            a list of tuples containing the identifier and score of the
-            top-k inputs, sorted by their score
+            a list of the top-k points sorted by their objective values
         """
         n = n or self.k
         if isinstance(n, float):
@@ -537,12 +532,12 @@ class Explorer:
 
         return top_explored
 
-    def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
-        """Get the current top predicted molecules and their scores
+    def top_preds(self, n: Union[int, float, None] = None) -> List[Tuple]:
+        """Get the top-n predicted molecules ranked by their predicted means
 
         Parameter
         ---------
-        k : Union[int, float, None], default=None
+        n : Union[int, float, None], default=None
             the number of molecules to consider when calculating the average, expressed either as an
             integer or as a fraction of the pool. If the value specified is greater than the
             number of successfully evaluated inputs, return the average of all succesfully 
@@ -554,19 +549,17 @@ class Explorer:
             a list of tuples containing the identifier and predicted score of
             the top-k predicted inputs, sorted by their predicted score
         """
-        k = k or self.k
-        if isinstance(k, float):
-            k = int(k * len(self.pool))
-        k = min(k, len(self.scores))
+        n = n or self.k
+        if isinstance(n, float):
+            n = int(n * len(self.pool))
+        n = min(n, len(self.scores))
 
-        selected = []
-        for x, y in zip(self.pool.smis(), self.Y_pred):
-            if len(selected) < k:
-                heapq.heappush(selected, (y, x))
-            else:
-                heapq.heappushpop(selected, (y, x))
+        idxs = np.argpartition(self.Y_mean, -n)[-n:]
+        smis = self.pool.get_smis(idxs)
+        y_means = self.Y_mean[idxs]
+        selected = zip(smis, y_means)
 
-        return [(x, y) for y, x in selected]
+        return sorted(selected, key=lambda xy: xy[1], reverse=True)
 
     def write_scores(self, final: bool = False):
         """Write all scores to a CSV file
@@ -620,12 +613,10 @@ class Explorer:
         if self.verbose > 0:
             print(f'Loading scores from "{previous_scores}" ... ', end="")
 
-        scores, failures = self._read_scores(previous_scores)
-        self.adjustment += len(scores) + len(failures)
+        scores = self._read_scores(previous_scores)
+        self.adjustment += len(scores)
 
         self.scores.update(scores)
-        self.scores.update(failures)
-        # self.failures.update(failures)
 
         if self.iter == 0:
             self.iter = 1
@@ -654,20 +645,15 @@ class Explorer:
         scores_pkl = chkpt_dir / "scores.pkl"
         scores_pkl.write_bytes(pickle.dumps(self.scores))
 
-        # failures_pkl = chkpt_dir / "failures.pkl"
-        # failures_pkl.write_bytes(pickle.dumps(self.failures))
-        # pickle.dump(self.failures, open(failures_pkl, "wb"))
-
         new_scores_pkl = chkpt_dir / "new_scores.pkl"
         new_scores_pkl.write_bytes(pickle.dumps(self.new_scores))
 
         preds_npz = chkpt_dir / "preds.npz"
-        np.savez(preds_npz, Y_pred=self.Y_pred, Y_var=self.Y_var)
+        np.savez(preds_npz, Y_pred=self.Y_mean, Y_var=self.Y_var)
 
         state = {
             "iter": self.iter,
             "scores": str(scores_pkl.absolute()),
-            # "failures": str(failures_pkl.absolute()),
             "new_scores": str(new_scores_pkl.absolute()),
             "adjustment": self.adjustment,
             "updated_model": self.updated_model,
@@ -695,7 +681,6 @@ class Explorer:
         self.iter = state["iter"]
 
         self.scores = pickle.load(open(state["scores"], "rb"))
-        # self.failures = pickle.load(open(state["failures"], "rb"))
         self.new_scores = pickle.load(open(state["new_scores"], "rb"))
         self.adjustment = state["adjustment"]
 
@@ -703,7 +688,7 @@ class Explorer:
         self.recent_avgs.extend(state["recent_avgs"])
 
         preds_npz = np.load(state["preds"])
-        self.Y_pred = preds_npz["Y_pred"]
+        self.Y_mean = preds_npz["Y_mean"]
         self.Y_var = preds_npz["Y_var"]
 
         self.model.load(state["model"])
@@ -731,45 +716,8 @@ class Explorer:
 
         return str(config_file)
 
-    # def _clean_and_update_scores(self, new_scores: Dict[T, Optional[float]]):
-    #     """Remove the None entries from new_scores and update the attributes
-    #     new_scores, scores, and failed accordingly
-
-    #     Parameter
-    #     ---------
-    #     new_scores : Dict[T, Optional[float]]
-    #         a dictionary containing the corresponding values of the objective
-    #         function for a batch of inputs
-
-    #     Side effects
-    #     ------------
-    #     (mutates) self.scores : Dict[T, float]
-    #         updates self.scores with the non-None entries from new_scores
-    #     (mutates) self.new_scores : Dict[T, float]
-    #         updates self.new_scores with the non-None entries from new_scores
-    #     (mutates) self.failures : Dict[T, None]
-    #         a dictionary storing the inputs for which scoring failed
-    #     """
-    #     for x, y in new_scores.items():
-    #         if y is None:
-    #             self.failures[x] = y
-    #         else:
-    #             self.scores[x] = y
-    #             self.new_scores[x] = y
-
-    def _update_model(self):
-        """Update the prior distribution to generate a posterior distribution
-
-        Side effects
-        ------------
-        (mutates) self.model : Type[Model]
-            updates the model with new data, if there are any
-        (sets) self.new_scores : Dict[str, Optional[float]]
-            reinitializes self.new_scores to an empty dictionary
-        (sets) self.updated_model : bool
-            sets self.updated_model to True, indicating that the predictions
-            must be updated as well
-        """
+    def fit_model(self):
+        """fit the surrogate model on the observed data and empty the `new_scores` dictionary"""
         if len(self.new_scores) == 0:
             self.updated_model = False
             return
@@ -789,22 +737,9 @@ class Explorer:
         self.new_scores = {}
         self.updated_model = True
 
-    def _update_predictions(self):
-        """Update the predictions over the pool with the new model
-
-        Side effects
-        ------------
-        (sets) self.Y_pred : np.ndarray
-            a list of floats parallel to the pool inputs containing the mean
-            predicted score for each input
-        (sets) self.Y_var : np.ndarray
-            a list of floats parallel to the pool inputs containing the
-            predicted variance for each input
-        (sets) self.updated_model : bool
-            sets self.updated_model to False, indicating that the predictions
-            are now up-to-date with the current model
-        """
-        if not self.updated_model and self.Y_pred.size > 0:
+    def update_predictions(self):
+        """Update the predictions over the pool with the new model"""
+        if not self.updated_model and self.Y_mean.size > 0:
             if self.verbose > 1:
                 print(
                     "Model has not been updated since the last time ",
@@ -812,7 +747,7 @@ class Explorer:
                 )
             return
 
-        self.Y_pred, self.Y_var = self.model.apply(
+        self.Y_mean, self.Y_var = self.model.apply(
             x_ids=self.pool.smis(),
             x_feats=self.pool.fps(),
             batched_size=None,
@@ -826,25 +761,24 @@ class Explorer:
         """Ensure that the model provides necessary values for the Acquirer and during pruning"""
         if self.acquirer.needs > self.model.provides:
             raise IncompatibilityError(
-                f"{self.acquirer.metric} metric needs: "
-                + f"{self.acquirer.needs} "
-                + f"but {self.model.type_} only provides: "
-                + f"{self.model.provides}"
+                f"{self.acquirer.metric} metric needs: {self.acquirer.needs} "
+                + f"but {self.model.type_} only provides: {self.model.provides}"
             )
         if self.prune and ("vars" not in self.model.provides):
             pass
 
-    def _read_scores(self, scores_csv: str) -> Tuple[Dict, Dict]:
+    def _read_scores(self, scores_csv: str) -> Dict:
         """read the scores contained in the file located at scores_csv"""
         scores = {}
-        failures = {}
         with open(scores_csv) as fid:
             reader = csv.reader(fid)
             next(reader)
             for row in reader:
+                k = row[0]
                 try:
-                    scores[row[0]] = float(row[1])
+                    v = float(row[1])
                 except:
-                    failures[row[0]] = None
+                    v = None
+                scores[k] = v
 
-        return scores, failures
+        return scores
