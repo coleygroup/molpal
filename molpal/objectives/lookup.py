@@ -28,10 +28,9 @@ class LookupObjective(Objective):
     **kwargs
         unused and addditional keyword arguments
     """
+
     def __init__(self, objective_config: str, minimize: bool = True, **kwargs):
-        path, delimiter, title_line, smiles_col, score_col = parse_config(
-            objective_config
-        )
+        path, delimiter, title_line, smiles_col, score_col = parse_config(objective_config)
 
         if Path(path).suffix == ".gz":
             open_ = partial(gzip.open, mode="rt")

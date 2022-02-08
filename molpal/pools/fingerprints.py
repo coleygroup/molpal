@@ -42,7 +42,7 @@ def feature_matrix_hdf5(
     Returns
     -------
     fps_h5 : Path
-        the filepath of an hdf5 file containing the feature matrix of the representations generated 
+        the filepath of an hdf5 file containing the feature matrix of the representations generated
         from the molecules in the input file. The row ordering corresponds to the ordering of smis
     invalid_idxs : Set[int]
         the set of indices in xs containing invalid inputs
@@ -75,12 +75,12 @@ def feature_matrix_hdf5(
         ):
             fps = feature_matrix(smis_batch, featurizer, disable=False)
 
-            invalid_fp_idxs = {j+k for k, fp in enumerate(fps) if fp is None}
+            invalid_fp_idxs = {j + k for k, fp in enumerate(fps) if fp is None}
             invalid_idxs.update(invalid_fp_idxs)
             j += len(fps)
 
             valid_fps = np.array([fp for fp in fps if fp is not None])
-            fps_dset[i:i+len(valid_fps)] = valid_fps
+            fps_dset[i : i + len(valid_fps)] = valid_fps
             i += len(valid_fps)
 
         valid_size = size - len(invalid_idxs)
