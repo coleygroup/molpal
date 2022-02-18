@@ -232,8 +232,8 @@ def main():
     args = parser.parse_args()
     args.title_line = not args.no_title_line
     
-    path = args.path or Path(args.library).parent
-    name = args.name or Path(args.library).stem
+    path = args.path or Path(args.libraries[0]).parent
+    name = args.name or Path(args.libraries[0]).stem
     filepath = (path / name).with_suffix('.h5')
 
     print('Precalculating feature matrix ...', end=' ')
