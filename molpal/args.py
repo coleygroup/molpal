@@ -1,17 +1,7 @@
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
-from itertools import repeat
-import os
 from pathlib import Path
-import tempfile
 from typing import Optional, Union
 
-# os.sched_getaffinity(0) returns the set of CPUs this process can use,
-# but it is defined only for some UNIX platforms, so try to use it and, failing
-# that, assume this process can use all system CPUs
-try:
-    MAX_CPU = len(os.sched_getaffinity(0))
-except AttributeError:
-    MAX_CPU = os.cpu_count()
 
 def gen_args(args: Optional[str] = None) -> Namespace:
     parser = ArgumentParser()
@@ -37,8 +27,8 @@ def gen_args(args: Optional[str] = None) -> Namespace:
 def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument('--config', is_config_file=True,
                         help='the filepath of the configuration file')
-    parser.add_argument('--name',
-                        help='the general name to be used for outputs')
+    parser.add_argument('--output-dir',
+                        help='the name of the output directory')
     parser.add_argument('--seed', type=int,
                         help='the random seed to use for initialization.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
@@ -54,7 +44,7 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--chkpt-freq', type=int,
                         nargs='?', default=0, const=-1,
-                        help='The number of iterations that should pass without writing a checkpoint. A value of 0 (or below) means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. Not specifying this flag will result in checkpointing every iteration. Specifying the flag with no value will result in no checkpointing at all.')
+                        help='The number of iterations that should pass without writing a checkpoint. A value of 0 means writing a checkpoint file every iteration. A value of 1 corresponds to skipping one iteration between checkpoints and so on. A value of -1 or below will result in no checkpointing. By default, checkpointing occurs every iteration. For convenience, passing solely the flag with no argument will result in no checkpointing at all.')
     parser.add_argument('--checkpoint-file',
                         help='the checkpoint file containing the state of a previous molpal run.')
     parser.add_argument('--previous-scores',
@@ -95,15 +85,13 @@ def add_pool_args(parser: ArgumentParser) -> None:
     parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library files')
     parser.add_argument('--cxsmiles', default=False, action='store_true',
-                        help='whether the file uses CXSMILES strings')
-    parser.add_argument('--fps', metavar='FPS_FILEPATH.<h5/hdf5>',
+                        help='whether the files use CXSMILES strings')
+    parser.add_argument('--fps', metavar='FPS_HDF5',
                         help='an HDF5 file containing the precalculated feature representation of each molecule in the pool')
     parser.add_argument('--cluster', action='store_true', default=False,
                         help='whether to cluster the MoleculePool')
     parser.add_argument('--cache', action='store_true', default=False,
-                        help='whether to store the full MoleculePool in memory')
-    parser.add_argument('--validated', action='store_true', default=False,
-                        help='DEPRECATED. whether the pool has been manually validated and invalid SMILES strings have been removed.')
+                        help='whether to store the SMILES strings of the MoleculePool in memory')
     parser.add_argument('--invalid-idxs', '--invalid-lines',
                         type=int, nargs='*',
                         help='the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings')
@@ -142,14 +130,13 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
 #       OBJECTIVE ARGUMENTS       #
 ###################################
 def add_objective_args(parser: ArgumentParser) -> None:
-    parser.add_argument('-t', '--tasks', required=True, nargs='+',
+    parser.add_argument('-o', '--objective', required=True,
                         choices={'lookup', 'docking'},
-                        help='the tasks comprising the objective function')
-    parser.add_argument('--objective-configs', nargs='+',
-                        help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations for each corresponding task')
-    parser.add_argument('--minimize', action='store_true', nargs='+',
-                        default=repeat(False),
-                        help='whether to minimize the respective task in the objective function')
+                        help='the objective function to use')
+    parser.add_argument('--minimize', action='store_true', default=False,
+                        help='whether to minimize the objective function')
+    parser.add_argument('--objective-config',
+                        help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
 
     # DockingObjective args
     # parser.add_argument('--software', default='vina',
@@ -196,8 +183,8 @@ def add_objective_args(parser: ArgumentParser) -> None:
 #       MODEL ARGUMENTS       #
 ###############################
 def add_model_args(parser: ArgumentParser) -> None:
-    parser.add_argument('--models', nargs='+', default=repeat('rf'),
-                        choices=('rf', 'gp', 'nn', 'mpn'),
+    parser.add_argument('--model', choices=('rf', 'gp', 'nn', 'mpn'),
+                        default='rf',
                         help='the model type to use')
     parser.add_argument('--test-batch-size', type=int,
                         help='the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.')

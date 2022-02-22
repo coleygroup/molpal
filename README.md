@@ -26,9 +26,9 @@ This repository contains the source of MolPAL, a software for the accelerated di
 ## Requirements
 - Python (>= 3.6)
 
-_if utilizing GPU accelerated model inference_
-- CUDA (>= 10.2)
 _if utilizing GPU accelerated model training and inference_
+- CUDA (>= 10.2)
+_if utilizing distributed GPU accelerated model training and inference_
 - CUDA (>= 11.1)
 
 _if performing docking online_
@@ -85,13 +85,13 @@ The resulting fingerprint file will be located in your current working directory
 ### Configuration files
 The general command to run MolPAL is as follows:
 
-`python molpal.py -o <objective_type> [additional objective arguments] --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
+`python molpal.py -o {LOOKUP,DOCKING} --objective-config <path/to/objective_config> --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
 
 Alternatively, you may use a configuration file to run MolPAL, like so:
 
 `python molpal.py --config <path/to/config_file>`
 
-Two sample configuration files are provided: [minimal_config.ini](config/minimal_config.ini), a configuration file specifying only the necessary arguments to run MolPAL, and [sample_config.ini](config/sample_config.ini), a configuration file containing a few common options to specify (but not _all_ possible options.)
+Two sample configuration files are provided: [minimal_config.ini](examples/config/minimal_config.ini), a configuration file specifying only the necessary arguments to run MolPAL, and [sample_config.ini](examples/config/sample_config.ini), a configuration file containing a few common options to specify (but not _all_ possible options.)
 
 Configuration files accept the following syntaxes:
 - `--arg value` (argparse)
@@ -106,7 +106,7 @@ A sample command to run one of the experiments used to generate data in the init
 
 or the full command:
 
-`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config objective-configs/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-epochs 5`
+`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config objective-configs/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-iters 5`
 
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
@@ -126,7 +126,7 @@ MolPAL also has a number of different model architectures, encodings, acquisitio
 - `-k`: the fraction (if between 0 and 1) or number (if greather than 1) of top scores to evaluate when calculating an average. (Default = 0.005)
 - `--window-size` and `--delta`: the principle stopping criterion of MolPAL is whether or not the current top-k average score is better than the moving average of the `window_size` most recent top-k average scores by at least `delta`. (Default: `window_size` = 3, `delta` = 0.1)
 - `--budget`: if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
-- `--max-epochs`: Alternatively, you may specify the maximum number of epochs of exploration. (Default = 50)
+- `--max-iters`: Alternatively, you may specify the maximum number of iterations of exploration. (Default = 50)
 - `--model`: the type of model to use. Choices include `rf`, `gp`, `nn`, and `mpn`. (Default = `rf`)  
   * `--conf-method`: the confidence estimation method to use for the NN or MPN models. Choices include `ensemble`, `dropout`, `mve`, and `none`. (Default = 'none'). NOTE: the MPN model does not support ensembling
 - `--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the β value for `ucb`.) 
@@ -142,7 +142,7 @@ __Acquirer__: An [`Acquirer`](molpal/acquirer/acquirer.py) handles acquisition o
 
 __Featurizer__: A [`Featurizer`](molpal/featurizer.py) computes the uncompressed feature representation of an input based on its identifier for use with clustering and models that expect vectors as inputs.
 
-__Model__: A [`Model`](molpal/model/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
+__Model__: A [`Model`](molpal/models/base.py) is trained on labeled data to produce a posterior distribution that guides the sequential round of acquisition
 
 __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation of the objective function for unlabeled inputs
 

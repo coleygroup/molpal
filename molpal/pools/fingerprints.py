@@ -1,27 +1,27 @@
-from itertools import islice
 from pathlib import Path
-from typing import Iterable, Iterator, List, Set, Tuple, TypeVar
+from typing import Iterable, Set, Tuple, TypeVar
 
 import h5py
 import ray
 from tqdm import tqdm
 
 from molpal.featurizer import Featurizer, feature_matrix
+from molpal.utils import batches
 
-T = TypeVar('T')
+T = TypeVar("T")
 
-def batches(it: Iterable, chunk_size: int) -> Iterator[List]:
-    """Consume an iterable in batches of size chunk_size"""
-    it = iter(it)
-    return iter(lambda: list(islice(it, chunk_size)), [])
 
-def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
-                        featurizer: Featurizer = Featurizer(),
-                        name: str = 'fps.h5',
-                        path: str = '.') -> Tuple[str, Set[int]]:
+def feature_matrix_hdf5(
+    smis: Iterable[str],
+    size: int,
+    *,
+    featurizer: Featurizer = Featurizer(),
+    name: str = "fps.h5",
+    path: str = "."
+) -> Tuple[str, Set[int]]:
     """Precalculate the fature matrix of xs with the given featurizer and store
     the matrix in an HDF5 file
-    
+
     Parameters
     ----------
     xs: Iterable[T]
@@ -47,35 +47,38 @@ def feature_matrix_hdf5(smis: Iterable[str], size: int, *,
     invalid_idxs : Set[int]
         the set of indices in xs containing invalid inputs
     """
-    fps_h5 = str((Path(path) / name).with_suffix('.h5'))
+    fps_h5 = str((Path(path) / name).with_suffix(".h5"))
 
-    ncpu = int(ray.cluster_resources()['CPU'])
-    with h5py.File(fps_h5, 'w') as h5f:
+    ncpu = int(ray.cluster_resources()["CPU"])
+    with h5py.File(fps_h5, "w") as h5f:
         CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
-            'fps', (size, len(featurizer)),
-            chunks=(CHUNKSIZE, len(featurizer)), dtype='int8'
+            "fps",
+            (size, len(featurizer)),
+            chunks=(CHUNKSIZE, len(featurizer)),
+            dtype="int8",
         )
-        
+
         batch_size = CHUNKSIZE * 2 * ncpu
-        n_batches = size//batch_size + 1
+        n_batches = size // batch_size + 1
 
         invalid_idxs = set()
         i = 0
         offset = 0
 
         for smis_batch in tqdm(
-            batches(smis, batch_size), total=n_batches,
-            desc='Precalculating fps', unit='smi', unit_scale=batch_size
+            batches(smis, batch_size),
+            "Precalculating fps",
+            n_batches,
+            unit="batch",
         ):
             fps = feature_matrix(smis_batch, featurizer, disable=True)
             for fp in tqdm(
-                fps, desc='Writing', total=batch_size,
-                smoothing=0., leave=False
+                fps, "Writing", batch_size, False, unit="smi", smoothing=0.0
             ):
                 if fp is None:
-                    invalid_idxs.add(i+offset)
+                    invalid_idxs.add(i + offset)
                     offset += 1
                     continue
 

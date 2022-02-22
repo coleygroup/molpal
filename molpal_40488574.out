@@ -1,0 +1,80 @@
+Start
+config saved
+activated molpal
+num_gpus set
+IP Head: 10.1.12.37:57958
+*********************************************************************
+*  __    __     ______     __         ______   ______     __        *
+* /\ "-./  \   /\  __ \   /\ \       /\  == \ /\  __ \   /\ \       *
+* \ \ \-./\ \  \ \ \/\ \  \ \ \____  \ \  _-/ \ \  __ \  \ \ \____  *
+*  \ \_\ \ \_\  \ \_____\  \ \_____\  \ \_\    \ \_\ \_\  \ \_____\ *
+*   \/_/  \/_/   \/_____/   \/_____/   \/_/     \/_/\/_/   \/_____/ *
+*********************************************************************
+Welcome to MolPAL!
+MolPAL will be run with the following arguments:
+  batch_sizes: [0.01]
+  budget: 1.0
+  cache: False
+  checkpoint_file: None
+  chkpt_freq: 0
+  cluster: False
+  config: examples/config/Enamine10k_retrain.ini
+  cxsmiles: False
+  ddp: False
+  delimiter: ,
+  delta: 0.1
+  epsilon: 0.0
+  fingerprint: pair
+  fps: None
+  init_size: 0.01
+  invalid_idxs: []
+  k: 0.01
+  length: 2048
+  libraries: ['libraries/Enamine10k.csv.gz']
+  max_depth: 8
+  max_iters: 5
+  metric: random
+  min_samples_leaf: 1
+  minimize: True
+  model: rf
+  model_seed: None
+  n_estimators: 100
+  ncpu: 8
+  objective: lookup
+  objective_config: examples/objective/Enamine10k_lookup.ini
+  output_dir: molpal_10k
+  pool: eager
+  precision: 32
+  previous_scores: None
+  radius: 2
+  retrain_from_scratch: True
+  scores_csvs: None
+  seed: None
+  smiles_col: 0
+  test_batch_size: None
+  title_line: True
+  verbose: 0
+  window_size: 10
+  write_final: True
+  write_intermediate: True
+
+Ray cluster online with resources:
+{'object_store_memory': 158178095923.0, 'accelerator_type:RTX': 1.0, 'memory': 359082223821.0, 'CPU': 8.0, 'node:10.1.12.37': 1.0}
+
+Starting exploration...
+ITER: 0/5 | TOP-105 AVE: N/A (no scores) | BUDGET: 0/10560.
+ITER: 1/5 | TOP-105 AVE: 7.597 | BUDGET: 106/10560. Continuing...
+ITER: 2/5 | TOP-105 AVE: 8.268 | BUDGET: 212/10560. Continuing...
+ITER: 3/5 | TOP-105 AVE: 8.512 | BUDGET: 318/10560. Continuing...
+ITER: 4/5 | TOP-105 AVE: 8.635 | BUDGET: 424/10560. Continuing...
+ITER: 5/5 | TOP-105 AVE: 8.739 | BUDGET: 530/10560. Continuing...
+Finished exploring!
+FINAL TOP-105 AVE: 8.828 | FINAL BUDGET: 636/10560.
+Final averages
+--------------
+TOP-0.01%: 9.900
+TOP-0.05%: 9.700
+TOP-0.10%: 9.590
+TOP-0.50%: 9.085
+Total time for exploration: 0d 0h 0m 15.99s
+Thanks for using MolPAL!

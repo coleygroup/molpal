@@ -51,4 +51,4 @@ for ((  i=1; i<=$worker_num; i++ )); do
 done
 ###############################################################################
 
-python run.py --config $config --ncpu $SLURM_CPUS_PER_TASK -vvvv
+python run.py --config $config --ncpu $SLURM_CPUS_PER_TASK

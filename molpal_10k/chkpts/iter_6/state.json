@@ -1,0 +1,18 @@
+{
+    "iter": 6,
+    "scores": "/home/jfromer/molpal-jenna/molpal_10k/chkpts/iter_6/scores.pkl",
+    "failures": "/home/jfromer/molpal-jenna/molpal_10k/chkpts/iter_6/failures.pkl",
+    "new_scores": "/home/jfromer/molpal-jenna/molpal_10k/chkpts/iter_6/new_scores.pkl",
+    "adjustment": 0,
+    "updated_model": false,
+    "recent_avgs": [
+        7.597142857142854,
+        8.26761904761905,
+        8.512380952380958,
+        8.6352380952381,
+        8.739047619047614,
+        8.827619047619052
+    ],
+    "preds": "/home/jfromer/molpal-jenna/molpal_10k/chkpts/iter_6/preds.npz",
+    "model": "molpal_10k/chkpts/iter_6/model/model.pkl"
+}
