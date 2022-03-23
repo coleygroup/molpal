@@ -2,7 +2,7 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-from typing import Collection, Dict, Optional
+from typing import Collection, Dict, Optional, Union
 
 from configargparse import ArgumentParser
 from tqdm import tqdm
@@ -90,7 +90,7 @@ def parse_config(config: str):
     parser.add_argument('--sep', default=',')
     parser.add_argument('--no-title-line', action='store_true', default=False)
     parser.add_argument('--smiles-col', type=int, default=0)
-    parser.add_argument('--score-col', type=int, default=1)
+    parser.add_argument('--score-col', nargs='*', default=1)
     parser.add_argument('--minimize', action='store_true', default=False)
 
     args = parser.parse_args(config)
