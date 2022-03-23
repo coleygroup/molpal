@@ -8,7 +8,7 @@ from typing import (Callable, Iterable, List, Optional,
 import numpy as np
 from tqdm import tqdm
 
-from molpal.models.utils import batches
+from molpal.utils import batches
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
