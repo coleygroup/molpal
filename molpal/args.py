@@ -54,8 +54,6 @@ def add_general_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--root', default='.',
                         help='the root directory under which to organize all program outputs')
-    parser.add_argument('--tmp-dir', default=tempfile.gettempdir(),
-                        help='the root directory under which to organize all program outputs')
 
 #####################################
 #       ENCODER ARGUMENTS           #
