@@ -13,7 +13,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 
 from molpal.featurizer import feature_matrix
-from molpal.models.base import Model
+from molpal.models.base import MultiTaskModel
+from molpal.models.base import SingleTaskModel as Model
 
 T = TypeVar('T')
 
