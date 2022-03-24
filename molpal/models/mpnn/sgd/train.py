@@ -1,15 +1,13 @@
-from typing import Dict, Tuple
+from typing import Dict
 
 from ray import train
 import ray.train.torch
-from ray.util.sgd.v2 import sgd
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
-from tqdm import trange
 
 from molpal.models import mpnn
 from molpal.models.chemprop.data.data import construct_molecule_batch
