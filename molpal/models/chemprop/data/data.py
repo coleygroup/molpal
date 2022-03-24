@@ -4,6 +4,7 @@ from random import Random
 from typing import Dict, Iterator, List, Optional, Union
 
 import numpy as np
+import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
 from rdkit import Chem
 
@@ -46,62 +47,18 @@ class MoleculeDatapoint:
 
     def __init__(self,
                  smiles: List[str],
-                 targets: List[Optional[float]] = None,
-                 row: OrderedDict = None,
-                 features: np.ndarray = None,
-                 features_generator: List[str] = None,
-                 atom_features: np.ndarray = None,
-                 atom_descriptors: np.ndarray = None):
+                 targets: List[Optional[float]] = None):
         """
         :param smiles: A list of the SMILES strings for the molecules.
         :param targets: A list of targets for the molecule (contains None for unknown target values).
         :param row: The raw CSV row containing the information for this molecule.
         :param features: A numpy array containing additional features (e.g., Morgan fingerprint).
         :param features_generator: A list of features generators to use.
-        """
-        if features is not None and features_generator is not None:
-            raise ValueError('Cannot provide both loaded features and a features generator.')
-
+        """            
         self.smiles = smiles
         self.targets = targets
-        self.row = row
-        self.features = features
-        self.features_generator = features_generator
-        self.atom_descriptors = atom_descriptors
-        self.atom_features = atom_features
 
-        # Generate additional features if given a generator
-        if self.features_generator is not None:
-            pass
-            # self.features = []
-
-            # for fg in self.features_generator:
-            #     features_generator = get_features_generator(fg)
-            #     for m in self.mol:
-            #         if m is not None and m.GetNumHeavyAtoms() > 0:
-            #             self.features.extend(features_generator(m))
-            #         # for H2
-            #         elif m is not None and m.GetNumHeavyAtoms() == 0:
-            #             # not all features are equally long, so use methane as dummy molecule to determine length
-            #             self.features.extend(np.zeros(len(features_generator(Chem.MolFromSmiles('C')))))
-
-            # self.features = np.array(self.features)
-
-        # Fix nans in features
-        replace_token = 0
-        if self.features is not None:
-            self.features = np.where(np.isnan(self.features), replace_token, self.features)
-
-        # Fix nans in atom_descriptors
-        if self.atom_descriptors is not None:
-            self.atom_descriptors = np.where(np.isnan(self.atom_descriptors), replace_token, self.atom_descriptors)
-
-        # Fix nans in atom_features
-        if self.atom_features is not None:
-            self.atom_features = np.where(np.isnan(self.atom_features), replace_token, self.atom_features)
-
-        # Save a copy of the raw features and targets to enable different scaling later on
-        self.raw_features, self.raw_targets = self.features, self.targets
+        self.raw_targets = self.targets
 
     @property
     def mol(self) -> List[Chem.Mol]:
@@ -123,22 +80,6 @@ class MoleculeDatapoint:
         """
         return len(self.smiles)
 
-    def set_features(self, features: np.ndarray) -> None:
-        """
-        Sets the features of the molecule.
-
-        :param features: A 1D numpy array of features for the molecule.
-        """
-        self.features = features
-
-    def extend_features(self, features: np.ndarray) -> None:
-        """
-        Extends the features of the molecule.
-
-        :param features: A 1D numpy array of extra features for the molecule.
-        """
-        self.features = np.append(self.features, features) if self.features is not None else features
-
     def num_tasks(self) -> int:
         """
         Returns the number of prediction tasks.
@@ -155,9 +96,9 @@ class MoleculeDatapoint:
         """
         self.targets = targets
 
-    def reset_features_and_targets(self) -> None:
-        """Resets the features and targets to their raw values."""
-        self.features, self.targets = self.raw_features, self.raw_targets
+    def reset_targets(self):
+        """Resets the targets to their raw values."""
+        self.targets = self.raw_targets
 
 
 class MoleculeDataset(Dataset):
@@ -172,8 +113,7 @@ class MoleculeDataset(Dataset):
         self._batch_graph = None
         self._random = Random()
 
-    def smiles(self,
-               flatten: bool = False) -> Union[List[str], List[List[str]]]:
+    def smiles(self, flatten: bool = False) -> Union[List[str], List[List[str]]]:
         """
         Returns a list containing the SMILES list associated with each :class:`MoleculeDatapoint`.
 
@@ -185,8 +125,7 @@ class MoleculeDataset(Dataset):
 
         return [d.smiles for d in self._data]
 
-    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol], 
-                                                   List[List[Chem.Mol]]]:
+    def mols(self, flatten: bool = False) -> Union[List[Chem.Mol], List[List[Chem.Mol]]]:
         """
         Returns a list of the RDKit molecules associated with each :class:`MoleculeDatapoint`.
 
@@ -224,26 +163,9 @@ class MoleculeDataset(Dataset):
             self._batch_graph = []
 
             mol_graphss = [
-                [MolGraph(m, d.atom_features) for m in d.mol]
+                [MolGraph(m) for m in d.mol]
                 for d in self._data
             ]
-            # mol_graphss = []
-            # for d in self._data:
-            #     mol_graphs = [MolGraph(m, d.atom_features) for m in d.mol]
-            #     # mol_graphs = []
-            #     # for _, m in zip(d.smiles, d.mol):
-            #     #     # if s in SMILES_TO_GRAPH:
-            #     #     #     mol_graph = SMILES_TO_GRAPH[s]
-            #     #     # else:
-            #     #     #     if len(d.smiles) > 1 and d.atom_features is not None:
-            #     #     #         raise NotImplementedError('Atom descriptors are currently only supported with one molecule '
-            #     #     #                                   'per input (i.e., number_of_molecules = 1).')
-            #     #         # mol_graph = MolGraph(m, d.atom_features)
-            #     #     mol_graph = MolGraph(m, d.atom_features)
-            #     #         # if cache_graph():
-            #     #         #     SMILES_TO_GRAPH[s] = mol_graph
-            #     #     mol_graphs.append(mol_graph)
-            #     mol_graphss.append(mol_graphs)
 
             self._batch_graph = [
                 BatchMolGraph([g[i] for g in mol_graphss])
@@ -497,7 +419,7 @@ def construct_molecule_batch(data: List[MoleculeDatapoint]) -> MoleculeDataset:
 
     # print(data.batch_graph())
     componentss = [bmg.get_components() for bmg in data.batch_graph()]
-    return componentss, data.targets()
+    return componentss, torch.tensor(data.targets())
 
 
 class MoleculeDataLoader(DataLoader):

@@ -218,6 +218,7 @@ class MPNN:
             data = MoleculeDataset(
                 [MoleculeDatapoint(smiles=[x], targets=y) for x, y in zip(xs, ys)]
             )
+            
         train_data, val_data, _ = split_data(data, sizes=(0.8, 0.2, 0.0), seed=self.seed)
 
         self.scaler = train_data.normalize_targets()
@@ -254,6 +255,7 @@ class MPNN:
             for smis in batches(smis, 20000)
         ]
         preds_chunks = [ray.get(r) for r in tqdm(refs, "Prediction", unit="chunk", leave=False)]
+        
         return np.concatenate(preds_chunks)
 
     def save(self, path) -> str:
