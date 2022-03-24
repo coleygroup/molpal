@@ -5,6 +5,7 @@ from typing import Dict, List
 from ray.util.sgd.v2 import SGDCallback
 from tqdm import tqdm
 
+
 class EarlyStoppingCallback(SGDCallback):
     def __init__(
         self,
@@ -12,7 +13,7 @@ class EarlyStoppingCallback(SGDCallback):
         min_delta: float = 0.0,
         patience: int = 10,
         minimize: bool = True,
-        verbose: bool = False
+        verbose: bool = False,
     ):
         self.monitor = monitor
         self.min_delta = min_delta
@@ -22,7 +23,7 @@ class EarlyStoppingCallback(SGDCallback):
         self.verbose = verbose
 
         super().__init__()
-    
+
     def handle_result(self, results: List[Dict], **info):
         avg_result = sum(results[self.monitor]) / len(results)
 
@@ -41,6 +42,7 @@ class EarlyStoppingCallback(SGDCallback):
     def start_training(self, logdir: str, **info):
         self.curr_best = float("inf") if self.minimize else float("-inf")
 
+
 class PrintingCallback(SGDCallback):
     def handle_result(self, results: List[Dict], **info):
         print(results)
@@ -56,19 +58,13 @@ class TqdmCallback(SGDCallback):
         train_loss = sum([result["train_loss"] for result in results]) / len(results)
         val_loss = sum([result["val_loss"] for result in results]) / len(results)
 
-        self.epoch_bar.set_postfix_str(
-            f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
-        )
+        self.epoch_bar.set_postfix_str(f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} ")
         self.epoch_bar.update()
 
     def start_training(self, logdir: str, **info):
         self.epoch_bar = tqdm(
-            desc="Training",
-            unit="epoch",
-            leave=True,
-            dynamic_ncols=True,
-            total=self.max_epochs,
+            desc="Training", unit="epoch", leave=True, dynamic_ncols=True, total=self.max_epochs
         )
-    
+
     def finish_training(self, error: bool = False, **info):
         self.epoch_bar.close()

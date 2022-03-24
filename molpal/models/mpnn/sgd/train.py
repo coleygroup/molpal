@@ -62,10 +62,7 @@ def train_epoch(
 
 @torch.no_grad()
 def validate_epoch(
-    val_loader: DataLoader,
-    model: nn.Module,
-    metric: nn.Module,
-    uncertainty: str = "none",
+    val_loader: DataLoader, model: nn.Module, metric: nn.Module, uncertainty: str = "none"
 ):
     model.eval()
 
@@ -111,7 +108,6 @@ def train_func(config: Dict):
     max_lr = config.get("max_lr", 1e-3)
     final_lr = config.get("final_lr", 1e-4)
     ncpu = config.get("ncpu", 1)
-
 
     train_loader = DataLoader(
         train_data,
@@ -166,7 +162,7 @@ def train_func(config: Dict):
             model,
             metric,
             # device,
-            uncertainty
+            uncertainty,
         )
 
         train_loss = train_res["loss"]
@@ -175,6 +171,6 @@ def train_func(config: Dict):
         # bar.set_postfix_str(
         #     f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
         # )
-        sgd.report(epoch=i, train_loss=train_loss, val_loss=val_loss)
+        # sgd.report(epoch=i, train_loss=train_loss, val_loss=val_loss)
 
     return model.module.to("cpu")

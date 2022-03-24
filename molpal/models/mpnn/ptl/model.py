@@ -40,12 +40,8 @@ class LitMPNN(pl.LightningModule):
         componentss, targets = batch
 
         preds = self.mpnn(componentss)
-        mask = torch.tensor(
-            [[bool(y) for y in ys] for ys in targets], device=self.device
-        )
-        targets = torch.tensor(
-            [[y or 0 for y in ys] for ys in targets], device=self.device
-        )
+        mask = torch.tensor([[bool(y) for y in ys] for ys in targets], device=self.device)
+        targets = torch.tensor([[y or 0 for y in ys] for ys in targets], device=self.device)
         class_weights = torch.ones(targets.shape, device=self.device)
 
         # if args.dataset_type == 'multiclass':
@@ -89,9 +85,7 @@ class LitMPNN(pl.LightningModule):
         self.log("val_loss", val_loss)
 
     def configure_optimizers(self) -> List:
-        opt = Adam(
-            [{"params": self.mpnn.parameters(), "lr": self.init_lr, "weight_decay": 0}]
-        )
+        opt = Adam([{"params": self.mpnn.parameters(), "lr": self.init_lr, "weight_decay": 0}])
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],

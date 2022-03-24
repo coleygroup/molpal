@@ -3,9 +3,7 @@ from typing import Optional
 from torch import clamp, nn
 
 
-def get_loss_func(
-    dataset_type: str, uncertainty_method: Optional[str] = None
-) -> nn.Module:
+def get_loss_func(dataset_type: str, uncertainty_method: Optional[str] = None) -> nn.Module:
     """Get the loss function corresponding to a given dataset type
 
     Parameters
