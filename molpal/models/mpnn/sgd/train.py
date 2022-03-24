@@ -171,6 +171,6 @@ def train_func(config: Dict):
         # bar.set_postfix_str(
         #     f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
         # )
-        # sgd.report(epoch=i, train_loss=train_loss, val_loss=val_loss)
+        train.report(epoch=i, train_loss=train_loss, val_loss=val_loss)
 
     return model.module.to("cpu")
