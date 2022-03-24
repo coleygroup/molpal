@@ -104,7 +104,7 @@ class Experiment:
         return new_pointss
 
     def predictions(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
-        """get the predictions for exploration iteration i.
+        """get the predictions for iteration i.
 
         The exploration iterations are 1-indexed to account for the initialization batch. I.e.,
         self.predictions(1) corresponds to the first exploration iteration
@@ -119,13 +119,13 @@ class Experiment:
         ValueError
             if i is less than 1
         """
-        if not hasattr(self, "chkpt_dirs"):
+        if not hasattr(self, "chkpts"):
             raise NotImplementedError("this experiment has no checkpoints!")
 
         if i not in range(1, self.num_iters):
-            raise ValueError(f"arg: i must be in {{1..{self.num_iters}}}. got {i}")
+            raise ValueError(f"arg: i must be in {{1..{self.num_iters-1}}}. got {i}")
 
-        npz = np.load(self.chkpts[i - 1] / "preds.npz")
+        npz = np.load(self.chkpts[i] / "preds.npz")
         return npz["Y_pred"], npz["Y_var"]
 
     def curve(self, true_points: List[Point], reward: str = "scores"):
