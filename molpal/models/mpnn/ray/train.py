@@ -24,40 +24,40 @@ def train_epoch(
 ):
     model.train()
 
-    losses = []
+    Ls = []
     num_samples = 0
 
     for i, batch in enumerate(train_loader):
         # batch_info = {"batch_idx": i}
-        componentss, targets = batch
+        Xs, Y = batch
 
-        mask = torch.tensor([[bool(y) for y in ys] for ys in targets], device=targets.device)
-        targets = torch.tensor([[y or 0 for y in ys] for ys in targets], device=targets.device)
-        class_weights = torch.ones(targets.shape, device=targets.device)
+        mask = ~torch.isnan(Y)
+        Y = torch.nan_to_num(Y, nan=0.)
+        class_weights = torch.ones_like(Y)
 
-        preds = model(componentss)
+        Y_pred = model(Xs)
 
         if uncertainty == "mve":
-            pred_means = preds[:, 0::2]
-            pred_vars = preds[:, 1::2]
-            loss = criterion(pred_means, pred_vars, targets)
+            Y_pred_mean = Y_pred[:, 0::2]
+            Y_pred_var = Y_pred[:, 1::2]
+            L = criterion(Y_pred_mean, Y_pred_var, Y)
         else:
-            loss = criterion(preds, targets) * class_weights * mask
+            L = criterion(Y_pred, Y) * class_weights * mask
 
-        loss = loss.sum() / mask.sum()
+        L = L.sum() / mask.sum()
 
         optimizer.zero_grad()
-        loss.backward()
+        L.backward()
 
         optimizer.step()
         scheduler.step()
 
-        losses.append(loss)
-        num_samples += len(targets)
+        Ls.append(L)
+        num_samples += len(Y)
 
-    loss = torch.stack(losses).mean().item()
+    L = torch.stack(Ls).mean().item()
 
-    return {"loss": loss, "num_samples": num_samples}
+    return {"loss": L, "num_samples": num_samples}
 
 
 @torch.no_grad()
@@ -66,7 +66,7 @@ def validate_epoch(
 ):
     model.eval()
 
-    losses = []
+    Ls = []
     num_samples = 0
 
     for i, batch in enumerate(val_loader):
@@ -74,23 +74,18 @@ def validate_epoch(
         # step_results = validate_step(batch, model, metric, device, uncertainty)
         # losses.append(step_results["loss"])
         # num_samples += step_results["num_samples"]
-        componentss, targets = batch
+        Xs, Y = batch
 
-        model = model
-        metric = metric
-
-        preds = model(componentss)
-
+        Y_pred = model(Xs)
         if uncertainty == "mve":
-            preds = preds[:, 0::2]
+            Y_pred = Y_pred[:, 0::2]
 
-        loss = metric(preds, targets)
-        losses.append(loss)
-        num_samples += len(targets)
+        Ls.append(metric(Y_pred, Y))
+        num_samples += len(Y)
 
-    loss = torch.cat(losses).mean().item()
+    L = torch.cat(Ls).mean().item()
 
-    return {"loss": loss, "num_samples": num_samples}
+    return {"loss": L, "num_samples": num_samples}
 
 
 def train_func(config: Dict):
@@ -112,14 +107,14 @@ def train_func(config: Dict):
     train_loader = DataLoader(
         train_data,
         batch_size,
-        sampler=DistributedSampler(train_data),
+        # sampler=DistributedSampler(train_data),
         num_workers=ncpu,
         collate_fn=construct_molecule_batch,
     )
     val_loader = DataLoader(
         val_data,
         batch_size,
-        sampler=DistributedSampler(val_data),
+        # sampler=DistributedSampler(val_data),
         num_workers=ncpu,
         collate_fn=construct_molecule_batch,
     )

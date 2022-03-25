@@ -50,7 +50,6 @@ class PrintingCallback(SGDCallback):
 
 class TqdmCallback(SGDCallback):
     def __init__(self, max_epochs: int):
-        print("hello!", flush=True)
         self.max_epochs = max_epochs
         super().__init__()
 
