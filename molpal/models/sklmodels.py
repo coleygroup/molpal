@@ -143,11 +143,9 @@ class GPModel(Model):
     ):
         test_batch_size = test_batch_size or 1024
 
-        kernel = {
-            "dot": kernels.DotProduct,
-            "matern": kernels.Matern,
-            "rbf": kernels.RBF,
-        }[gp_kernel]()
+        kernel = {"dot": kernels.DotProduct, "matern": kernels.Matern, "rbf": kernels.RBF}[
+            gp_kernel
+        ]()
 
         self.model = GaussianProcessRegressor(
             kernel=kernel, normalize_y=True, random_state=model_seed
