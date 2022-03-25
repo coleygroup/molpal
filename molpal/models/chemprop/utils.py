@@ -25,7 +25,7 @@ import torch.nn as nn
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from .data import StandardScaler, MoleculeDataset
+from .data import MoleculeDataset
 from .nn_utils import NoamLR
 
 

@@ -1,4 +1,4 @@
-"""This module contains Model implementations that utilize the sklearn models 
+"""This module contains Model implementations that utilize the sklearn models
 as their underlying model"""
 import logging
 from pathlib import Path

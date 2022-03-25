@@ -7,7 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader
 
 from molpal.models import mpnn
 from molpal.models.chemprop.data.data import construct_molecule_batch

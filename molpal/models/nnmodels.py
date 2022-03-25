@@ -1,4 +1,4 @@
-"""This module contains Model implementations that utilize an NN model as their 
+"""This module contains Model implementations that utilize an NN model as their
 underlying model"""
 from functools import partial
 import logging
@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 from typing import Callable, Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # FATAL
-logging.getLogger("tensorflow").setLevel(logging.ERROR)
+# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # FATAL
+# logging.getLogger("tensorflow").setLevel(logging.ERROR)
 
 import numpy as np
 from numpy import ndarray

@@ -1,4 +1,4 @@
-"""This module contains Model implementations that utilize the MPNN model as 
+"""This module contains Model implementations that utilize the MPNN model as
 their underlying model"""
 from functools import partial
 import json

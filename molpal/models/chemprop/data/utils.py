@@ -201,10 +201,11 @@ def get_data(
 
     # Load features
     if features_path is not None:
-        features_data = []
-        for feat_path in features_path:
-            features_data.append(load_features(feat_path))  # each is num_data x num_features
-        features_data = np.concatenate(features_data, axis=1)
+        raise NotImplementedError
+        # features_data = []
+        # for feat_path in features_path:
+        #     features_data.append(load_features(feat_path))  # each is num_data x num_features
+        # features_data = np.concatenate(features_data, axis=1)
     else:
         features_data = None
 
@@ -256,17 +257,18 @@ def get_data(
         atom_features = None
         atom_descriptors = None
         if args is not None and args.atom_descriptors is not None:
-            try:
-                descriptors = load_valid_atom_features(
-                    atom_descriptors_path, [x[0] for x in all_smiles]
-                )
-            except Exception as e:
-                raise ValueError(f"Failed to load or valid custom atomic descriptors: {e}")
+            raise NotImplementedError
+            # try:
+            #     descriptors = load_valid_atom_features(
+            #         atom_descriptors_path, [x[0] for x in all_smiles]
+            #     )
+            # except Exception as e:
+            #     raise ValueError(f"Failed to load or valid custom atomic descriptors: {e}")
 
-            if args.atom_descriptors == "feature":
-                atom_features = descriptors
-            elif args.atom_descriptors == "descriptor":
-                atom_descriptors = descriptors
+            # if args.atom_descriptors == "feature":
+            #     atom_features = descriptors
+            # elif args.atom_descriptors == "descriptor":
+            #     atom_descriptors = descriptors
 
         data = MoleculeDataset(
             [
@@ -422,49 +424,51 @@ def split_data(
         return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
 
     elif split_type == "predetermined":
-        if not val_fold_index and sizes[2] != 0:
-            raise ValueError(
-                "Test size must be zero since test set is created separately "
-                "and we want to put all other data in train and validation"
-            )
+        raise NotImplementedError
+        # if not val_fold_index and sizes[2] != 0:
+        #     raise ValueError(
+        #         "Test size must be zero since test set is created separately "
+        #         "and we want to put all other data in train and validation"
+        #     )
 
-        assert folds_file is not None
-        assert test_fold_index is not None
+        # assert folds_file is not None
+        # assert test_fold_index is not None
 
-        try:
-            with open(folds_file, "rb") as f:
-                all_fold_indices = pickle.load(f)
-        except UnicodeDecodeError:
-            with open(folds_file, "rb") as f:
-                all_fold_indices = pickle.load(
-                    f, encoding="latin1"
-                )  # in case we're loading indices from python2
+        # try:
+        #     with open(folds_file, "rb") as f:
+        #         all_fold_indices = pickle.load(f)
+        # except UnicodeDecodeError:
+        #     with open(folds_file, "rb") as f:
+        #         all_fold_indices = pickle.load(
+        #             f, encoding="latin1"
+        #         )  # in case we're loading indices from python2
 
-        log_scaffold_stats(data, all_fold_indices, logger=logger)
+        # log_scaffold_stats(data, all_fold_indices, logger=logger)
 
-        folds = [[data[i] for i in fold_indices] for fold_indices in all_fold_indices]
+        # folds = [[data[i] for i in fold_indices] for fold_indices in all_fold_indices]
 
-        test = folds[test_fold_index]
-        if val_fold_index is not None:
-            val = folds[val_fold_index]
+        # test = folds[test_fold_index]
+        # if val_fold_index is not None:
+        #     val = folds[val_fold_index]
 
-        train_val = []
-        for i in range(len(folds)):
-            if i != test_fold_index and (val_fold_index is None or i != val_fold_index):
-                train_val.extend(folds[i])
+        # train_val = []
+        # for i in range(len(folds)):
+        #     if i != test_fold_index and (val_fold_index is None or i != val_fold_index):
+        #         train_val.extend(folds[i])
 
-        if val_fold_index is not None:
-            train = train_val
-        else:
-            random.shuffle(train_val)
-            train_size = int(sizes[0] * len(train_val))
-            train = train_val[:train_size]
-            val = train_val[train_size:]
+        # if val_fold_index is not None:
+        #     train = train_val
+        # else:
+        #     random.shuffle(train_val)
+        #     train_size = int(sizes[0] * len(train_val))
+        #     train = train_val[:train_size]
+        #     val = train_val[train_size:]
 
-        return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
+        # return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
 
     elif split_type == "scaffold_balanced":
-        return scaffold_split(data, sizes=sizes, balanced=True, seed=seed, logger=logger)
+        raise NotImplementedError
+        # return scaffold_split(data, sizes=sizes, balanced=True, seed=seed, logger=logger)
 
     elif split_type == "random":
         indices = list(range(len(data)))
