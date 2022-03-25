@@ -1,7 +1,7 @@
 from typing import Dict
 
 from ray import train
-import ray.train.torch
+import ray.train.torch  # noqa: F401
 import torch
 from torch import nn
 from torch.nn import functional as F
