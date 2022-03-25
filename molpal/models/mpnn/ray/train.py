@@ -32,7 +32,7 @@ def train_epoch(
         Xs, Y = batch
 
         mask = ~torch.isnan(Y)
-        Y = torch.nan_to_num(Y, nan=0.)
+        Y = torch.nan_to_num(Y, nan=0.0)
         class_weights = torch.ones_like(Y)
 
         Y_pred = model(Xs)

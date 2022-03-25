@@ -2,11 +2,11 @@ __all__ = ["PrintingCallback", "TqdmCallback"]
 
 from typing import Dict, List
 
-from ray.util.sgd.v2 import SGDCallback
+from ray.train import TrainingCallback
 from tqdm import tqdm
 
 
-class EarlyStoppingCallback(SGDCallback):
+class EarlyStoppingCallback(TrainingCallback):
     def __init__(
         self,
         monitor: str,
@@ -43,12 +43,12 @@ class EarlyStoppingCallback(SGDCallback):
         self.curr_best = float("inf") if self.minimize else float("-inf")
 
 
-class PrintingCallback(SGDCallback):
+class PrintingCallback(TrainingCallback):
     def handle_result(self, results: List[Dict], **info):
         print(results)
 
 
-class TqdmCallback(SGDCallback):
+class TqdmCallback(TrainingCallback):
     def __init__(self, max_epochs: int):
         self.max_epochs = max_epochs
         super().__init__()
