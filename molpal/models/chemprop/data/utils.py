@@ -366,14 +366,14 @@ def split_data(
 
     random = Random(seed)
 
-    if args is not None:
-        folds_file, val_fold_index, test_fold_index = (
-            args.folds_file,
-            args.val_fold_index,
-            args.test_fold_index,
-        )
-    else:
-        folds_file = val_fold_index = test_fold_index = None
+    # if args is not None:
+    #     folds_file, val_fold_index, test_fold_index = (
+    #         args.folds_file,
+    #         args.val_fold_index,
+    #         args.test_fold_index,
+    #     )
+    # else:
+    #     folds_file = val_fold_index = test_fold_index = None
 
     if split_type == "crossval":
         index_set = args.crossval_index_sets[args.seed]
