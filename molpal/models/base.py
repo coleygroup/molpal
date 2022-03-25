@@ -69,7 +69,7 @@ class Model(ABC):
         ys: Sequence[float],
         *,
         featurizer: Callable[[T], T_feat],
-        retrain: bool = False
+        retrain: bool = False,
     ) -> bool:
         """Train the model on the input data
 

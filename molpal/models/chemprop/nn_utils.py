@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from .data import MoleculeDataLoader, MoleculeDataset
 
+
 def compute_pnorm(model: nn.Module) -> float:
     """
     Computes the norm of the parameters of a model.
@@ -27,7 +28,9 @@ def compute_gnorm(model: nn.Module) -> float:
     :param model: A PyTorch model.
     :return: The norm of the gradients of the model.
     """
-    return math.sqrt(sum([p.grad.norm().item() ** 2 for p in model.parameters() if p.grad is not None]))
+    return math.sqrt(
+        sum([p.grad.norm().item() ** 2 for p in model.parameters() if p.grad is not None])
+    )
 
 
 def param_count(model: nn.Module) -> int:
@@ -54,7 +57,9 @@ def index_select_ND(source: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
     suffix_dim = source.size()[1:]  # (hidden_size,)
     final_size = index_size + suffix_dim  # (num_atoms/num_bonds, max_num_bonds, hidden_size)
 
-    target = source.index_select(dim=0, index=index.view(-1))  # (num_atoms/num_bonds * max_num_bonds, hidden_size)
+    target = source.index_select(
+        dim=0, index=index.view(-1)
+    )  # (num_atoms/num_bonds * max_num_bonds, hidden_size)
     target = target.view(final_size)  # (num_atoms/num_bonds, max_num_bonds, hidden_size)
 
     return target
@@ -76,17 +81,17 @@ def get_activation_function(activation: str) -> nn.Module:
     :param activation: The name of the activation function.
     :return: The activation function module.
     """
-    if activation == 'ReLU':
+    if activation == "ReLU":
         return nn.ReLU()
-    elif activation == 'LeakyReLU':
+    elif activation == "LeakyReLU":
         return nn.LeakyReLU(0.1)
-    elif activation == 'PReLU':
+    elif activation == "PReLU":
         return nn.PReLU()
-    elif activation == 'tanh':
+    elif activation == "tanh":
         return nn.Tanh()
-    elif activation == 'SELU':
+    elif activation == "SELU":
         return nn.SELU()
-    elif activation == 'ELU':
+    elif activation == "ELU":
         return nn.ELU()
     else:
         raise ValueError(f'Activation "{activation}" not supported.')
@@ -105,10 +110,9 @@ def initialize_weights(model: nn.Module) -> None:
             nn.init.xavier_normal_(param)
 
 
-def compute_molecule_vectors(model: nn.Module,
-                             data: MoleculeDataset,
-                             batch_size: int,
-                             num_workers: int = 8) -> List[np.ndarray]:
+def compute_molecule_vectors(
+    model: nn.Module, data: MoleculeDataset, batch_size: int, num_workers: int = 8
+) -> List[np.ndarray]:
     """
     Computes the molecule vectors output from the last layer of a :class:`~chemprop.models.MoleculeModel`.
 
@@ -121,11 +125,7 @@ def compute_molecule_vectors(model: nn.Module,
     """
     training = model.training
     model.eval()
-    data_loader = MoleculeDataLoader(
-        dataset=data,
-        batch_size=batch_size,
-        num_workers=num_workers
-    )
+    data_loader = MoleculeDataLoader(dataset=data, batch_size=batch_size, num_workers=num_workers)
 
     vecs = []
     for batch in tqdm(data_loader, total=len(data_loader)):
@@ -143,26 +143,29 @@ def compute_molecule_vectors(model: nn.Module,
 
 
 class NoamLR(_LRScheduler):
-    """Noam learning rate scheduler with piecewise linear increase and 
+    """Noam learning rate scheduler with piecewise linear increase and
     exponential decay.
 
     The learning rate increases linearly from init_lr to max_lr over the
     course of the first warmup_steps (where :code:`warmup_steps =
-    warmup_epochs * steps_per_epoch`). Then the learning rate decreases 
-    exponentially from :code:`max_lr` to :code:`final_lr` over the course of 
+    warmup_epochs * steps_per_epoch`). Then the learning rate decreases
+    exponentially from :code:`max_lr` to :code:`final_lr` over the course of
     the remaining :code:`total_steps - warmup_steps` (where :code:`total_steps =
     total_epochs * steps_per_epoch`). This is roughly based on the learning rate
     schedule from `Attention is All You Need <https://arxiv.org/abs/1706.
     03762>`_, section 5.3.
     """
-    def __init__(self,
-                 optimizer: Optimizer,
-                 warmup_epochs: List[Union[float, int]],
-                 total_epochs: List[int],
-                 steps_per_epoch: int,
-                 init_lr: List[float],
-                 max_lr: List[float],
-                 final_lr: List[float]):
+
+    def __init__(
+        self,
+        optimizer: Optimizer,
+        warmup_epochs: List[Union[float, int]],
+        total_epochs: List[int],
+        steps_per_epoch: int,
+        init_lr: List[float],
+        max_lr: List[float],
+        final_lr: List[float],
+    ):
         """
         :param optimizer: A PyTorch optimizer.
         :param warmup_epochs: The number of epochs during which to linearly increase the learning rate.
@@ -172,9 +175,14 @@ class NoamLR(_LRScheduler):
         :param max_lr: The maximum learning rate (achieved after :code:`warmup_epochs`).
         :param final_lr: The final learning rate (achieved after :code:`total_epochs`).
         """
-        assert len(optimizer.param_groups) == len(warmup_epochs) \
-                == len(total_epochs) == len(init_lr) \
-                == len(max_lr) == len(final_lr)
+        assert (
+            len(optimizer.param_groups)
+            == len(warmup_epochs)
+            == len(total_epochs)
+            == len(init_lr)
+            == len(max_lr)
+            == len(final_lr)
+        )
 
         self.num_lrs = len(optimizer.param_groups)
 
@@ -188,13 +196,13 @@ class NoamLR(_LRScheduler):
 
         self.current_step = 0
         self.lr = init_lr
-        self.warmup_steps = (
-            self.warmup_epochs * self.steps_per_epoch
-        ).astype(int)
+        self.warmup_steps = (self.warmup_epochs * self.steps_per_epoch).astype(int)
         self.total_steps = self.total_epochs * self.steps_per_epoch
         self.linear_increment = (self.max_lr - self.init_lr) / self.warmup_steps
 
-        self.exponential_gamma = (self.final_lr / self.max_lr) ** (1 / (self.total_steps - self.warmup_steps))
+        self.exponential_gamma = (self.final_lr / self.max_lr) ** (
+            1 / (self.total_steps - self.warmup_steps)
+        )
 
         super(NoamLR, self).__init__(optimizer)
 
@@ -210,7 +218,7 @@ class NoamLR(_LRScheduler):
         """
         Updates the learning rate by taking a step.
 
-        :param current_step: Optionally specify what step to set the learning   
+        :param current_step: Optionally specify what step to set the learning
             rate to. If None, :code:`current_step = self.current_step + 1`.
         """
         if current_step is not None:
@@ -220,19 +228,14 @@ class NoamLR(_LRScheduler):
 
         for i in range(self.num_lrs):
             if self.current_step <= self.warmup_steps[i]:
-                self.lr[i] = (
-                    self.init_lr[i]
-                    + self.current_step * self.linear_increment[i]
-                )
+                self.lr[i] = self.init_lr[i] + self.current_step * self.linear_increment[i]
             elif self.current_step <= self.total_steps[i]:
-                self.lr[i] = (
-                    self.max_lr[i]
-                    * (self.exponential_gamma[i]
-                       ** (self.current_step - self.warmup_steps[i]))
+                self.lr[i] = self.max_lr[i] * (
+                    self.exponential_gamma[i] ** (self.current_step - self.warmup_steps[i])
                 )
             else:
-                # theoretically this case should never be reached since 
+                # theoretically this case should never be reached since
                 # training should stop at total_steps
                 self.lr[i] = self.final_lr[i]
 
-            self.optimizer.param_groups[i]['lr'] = self.lr[i]
+            self.optimizer.param_groups[i]["lr"] = self.lr[i]
