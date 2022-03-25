@@ -8,6 +8,7 @@ from molpal.models.chemprop.models.mpn import MPN
 from molpal.models.chemprop.nn_utils import get_activation_function, initialize_weights
 from molpal.models.chemprop.utils import UncertaintyType
 
+
 class EvaluationDropout(nn.Dropout):
     def forward(self, input):
         return nn.functional.dropout(input, p=self.p)
@@ -51,13 +52,12 @@ class MoleculeModel(nn.Module):
         super().__init__()
 
         if uncertainty is not None:
-            self.uncertainty = {
-                "dropout": UncertaintyType.DROPOUT,
-                "mve": UncertaintyType.MVE
-            }[uncertainty.lower()]
+            self.uncertainty = {"dropout": UncertaintyType.DROPOUT, "mve": UncertaintyType.MVE}[
+                uncertainty.lower()
+            ]
         else:
             self.uncertainty = None
-            
+
         self.classification = dataset_type.lower() == "classification"
         if self.classification:
             self.sigmoid = nn.Sigmoid()
@@ -146,9 +146,7 @@ class MoleculeModel(nn.Module):
 
             ffn = [dropout, nn.Linear(first_linear_dim, ffn_hidden_size)]
             for _ in range(ffn_num_layers - 2):
-                ffn.extend(
-                    [activation, dropout, nn.Linear(ffn_hidden_size, ffn_hidden_size)]
-                )
+                ffn.extend([activation, dropout, nn.Linear(ffn_hidden_size, ffn_hidden_size)])
             ffn.extend([activation, dropout, nn.Linear(ffn_hidden_size, output_size)])
 
         return nn.Sequential(*ffn)

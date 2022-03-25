@@ -12,6 +12,7 @@ from molpal.models.chemprop.data import (
     MoleculeDatapoint,
 )
 
+
 @torch.inference_mode()
 def predict(
     model: MoleculeModel,
@@ -63,15 +64,10 @@ def predict(
 
     pred_batches = []
 
-    for batch in tqdm(
-        data_loader, desc="Inference", unit="batch", leave=False, disable=disable
-    ):
+    for batch in tqdm(data_loader, desc="Inference", unit="batch", leave=False, disable=disable):
         componentss, _ = batch
         componentss = [
-            [
-                X.to(device) if isinstance(X, torch.Tensor) else X
-                for X in components
-            ]
+            [X.to(device) if isinstance(X, torch.Tensor) else X for X in components]
             for components in componentss
         ]
         pred_batch = model(componentss)
@@ -84,7 +80,7 @@ def predict(
         if scaler:
             preds[:, 0::2] *= scaler.stds
             preds[:, 0::2] += scaler.means
-            preds[:, 1::2] *= scaler.stds**2
+            preds[:, 1::2] *= scaler.stds ** 2
 
         return preds
 

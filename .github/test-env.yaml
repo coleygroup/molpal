@@ -5,7 +5,7 @@ channels:
   - defaults
 
 dependencies:
-  - pytorch::pytorch >=1.9
+  - pytorch::pytorch >=1.10
   - pytorch::cpuonly
   - pip
   - rdkit
@@ -13,7 +13,7 @@ dependencies:
     - configargparse
     - h5py
     - numpy
-    - ray >= 1.7
+    - ray >= 1.11
     - ray[tune]
     - pytest
     - pytorch-lightning

@@ -11,25 +11,29 @@ from time import time
 from typing import Any, Callable, List, Type, Union
 
 from sklearn.metrics import (
-    auc, mean_absolute_error,
+    auc,
+    mean_absolute_error,
     mean_squared_error,
     precision_recall_curve,
     r2_score,
-    roc_auc_score, accuracy_score,
-    log_loss
+    roc_auc_score,
+    accuracy_score,
+    log_loss,
 )
 import torch
 import torch.nn as nn
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from .data import StandardScaler, MoleculeDataset
+from .data import MoleculeDataset
 from .nn_utils import NoamLR
+
 
 class UncertaintyType(Enum):
 
     DROPOUT = auto()
     MVE = auto()
+
 
 def get_loss_func(args: Namespace) -> nn.Module:
     """
@@ -38,16 +42,17 @@ def get_loss_func(args: Namespace) -> nn.Module:
     :param args: Arguments containing the dataset type ("classification", "regression", or "multiclass").
     :return: A PyTorch loss function.
     """
-    if args.dataset_type == 'classification':
-        return nn.BCEWithLogitsLoss(reduction='none')
+    if args.dataset_type == "classification":
+        return nn.BCEWithLogitsLoss(reduction="none")
 
-    if args.dataset_type == 'regression':
-        return nn.MSELoss(reduction='none')
+    if args.dataset_type == "regression":
+        return nn.MSELoss(reduction="none")
 
-    if args.dataset_type == 'multiclass':
-        return nn.CrossEntropyLoss(reduction='none')
+    if args.dataset_type == "multiclass":
+        return nn.CrossEntropyLoss(reduction="none")
 
     raise ValueError(f'Dataset type "{args.dataset_type}" not supported.')
+
 
 def prc_auc(targets: List[int], preds: List[float]) -> float:
     """
@@ -60,6 +65,7 @@ def prc_auc(targets: List[int], preds: List[float]) -> float:
     precision, recall, _ = precision_recall_curve(targets, preds)
     return auc(recall, precision)
 
+
 def bce(targets: List[int], preds: List[float]) -> float:
     """
     Computes the binary cross entropy loss.
@@ -69,10 +75,11 @@ def bce(targets: List[int], preds: List[float]) -> float:
     :return: The computed binary cross entropy.
     """
     # Don't use logits because the sigmoid is added in all places except training itself
-    bce_func = nn.BCELoss(reduction='mean')
+    bce_func = nn.BCELoss(reduction="mean")
     loss = bce_func(target=torch.Tensor(targets), input=torch.Tensor(preds)).item()
 
     return loss
+
 
 def rmse(targets: List[float], preds: List[float]) -> float:
     """
@@ -84,6 +91,7 @@ def rmse(targets: List[float], preds: List[float]) -> float:
     """
     return math.sqrt(mean_squared_error(targets, preds))
 
+
 def mse(targets: List[float], preds: List[float]) -> float:
     """
     Computes the mean squared error.
@@ -94,8 +102,10 @@ def mse(targets: List[float], preds: List[float]) -> float:
     """
     return mean_squared_error(targets, preds)
 
-def accuracy(targets: List[int], preds: Union[List[float], List[List[float]]], 
-             threshold: float = 0.5) -> float:
+
+def accuracy(
+    targets: List[int], preds: Union[List[float], List[List[float]]], threshold: float = 0.5
+) -> float:
     """
     Computes the accuracy of a binary prediction task using a given threshold for generating hard predictions.
 
@@ -113,8 +123,8 @@ def accuracy(targets: List[int], preds: Union[List[float], List[List[float]]],
 
     return accuracy_score(targets, hard_preds)
 
-def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], 
-                                                    List[float]], float]:
+
+def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], List[float]], float]:
     r"""
     Gets the metric function corresponding to a given metric name.
 
@@ -133,34 +143,35 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]],
     :param metric: Metric name.
     :return: A metric function which takes as arguments a list of targets and a list of predictions and returns.
     """
-    if metric == 'auc':
+    if metric == "auc":
         return roc_auc_score
 
-    if metric == 'prc-auc':
+    if metric == "prc-auc":
         return prc_auc
 
-    if metric == 'rmse':
+    if metric == "rmse":
         return rmse
 
-    if metric == 'mse':
+    if metric == "mse":
         return mse
 
-    if metric == 'mae':
+    if metric == "mae":
         return mean_absolute_error
 
-    if metric == 'r2':
+    if metric == "r2":
         return r2_score
 
-    if metric == 'accuracy':
+    if metric == "accuracy":
         return accuracy
 
-    if metric == 'cross_entropy':
+    if metric == "cross_entropy":
         return log_loss
 
-    if metric == 'binary_cross_entropy':
+    if metric == "binary_cross_entropy":
         return bce
 
     raise ValueError(f'Metric "{metric}" not supported.')
+
 
 def build_optimizer(model: nn.Module, init_lr: float) -> Optimizer:
     """
@@ -170,15 +181,20 @@ def build_optimizer(model: nn.Module, init_lr: float) -> Optimizer:
     :param args: A :class:`~chemprop.args.TrainArgs` object containing optimizer arguments.
     :return: An initialized Optimizer.
     """
-    return Adam([
-        {'params': model.parameters(), 'lr': init_lr, 'weight_decay': 0}
-    ])
+    return Adam([{"params": model.parameters(), "lr": init_lr, "weight_decay": 0}])
+
 
 def build_lr_scheduler(
-        optimizer: Optimizer, warmup_epochs: Union[float, int],
-        epochs: int, num_lrs: int, train_data_size: int, batch_size: int,
-        init_lr: float, max_lr: float, final_lr: float
-    ) -> Type[_LRScheduler]:
+    optimizer: Optimizer,
+    warmup_epochs: Union[float, int],
+    epochs: int,
+    num_lrs: int,
+    train_data_size: int,
+    batch_size: int,
+    init_lr: float,
+    max_lr: float,
+    final_lr: float,
+) -> Type[_LRScheduler]:
     """
     Builds a PyTorch learning rate scheduler.
 
@@ -212,12 +228,14 @@ def build_lr_scheduler(
         steps_per_epoch=train_data_size // batch_size,
         init_lr=[init_lr],
         max_lr=[max_lr],
-        final_lr=[final_lr]
+        final_lr=[final_lr],
     )
+
 
 def makedirs(*args, **kwargs):
     raise NotImplementedError
-    
+
+
 def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> logging.Logger:
     """
     Creates a logger with a stream handler and two file handlers.
@@ -252,15 +270,16 @@ def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> loggi
     if save_dir is not None:
         makedirs(save_dir)
 
-        fh_v = logging.FileHandler(os.path.join(save_dir, 'verbose.log'))
+        fh_v = logging.FileHandler(os.path.join(save_dir, "verbose.log"))
         fh_v.setLevel(logging.DEBUG)
-        fh_q = logging.FileHandler(os.path.join(save_dir, 'quiet.log'))
+        fh_q = logging.FileHandler(os.path.join(save_dir, "quiet.log"))
         fh_q.setLevel(logging.INFO)
 
         logger.addHandler(fh_v)
         logger.addHandler(fh_q)
 
     return logger
+
 
 def timeit(logger_name: str = None) -> Callable[[Callable], Callable]:
     """
@@ -269,6 +288,7 @@ def timeit(logger_name: str = None) -> Callable[[Callable], Callable]:
     :param logger_name: The name of the logger used to record output. If None, uses :code:`print` instead.
     :return: A decorator which wraps a function with a timer that prints the elapsed time.
     """
+
     def timeit_decorator(func: Callable) -> Callable:
         """
         A decorator which wraps a function with a timer that prints the elapsed time.
@@ -276,13 +296,14 @@ def timeit(logger_name: str = None) -> Callable[[Callable], Callable]:
         :param func: The function to wrap with the timer.
         :return: The function wrapped with the timer.
         """
+
         @wraps(func)
         def wrap(*args, **kwargs) -> Any:
             start_time = time()
             result = func(*args, **kwargs)
             delta = timedelta(seconds=round(time() - start_time))
             info = logging.getLogger(logger_name).info if logger_name is not None else print
-            info(f'Elapsed time = {delta}')
+            info(f"Elapsed time = {delta}")
 
             return result
 
@@ -290,12 +311,15 @@ def timeit(logger_name: str = None) -> Callable[[Callable], Callable]:
 
     return timeit_decorator
 
-def save_smiles_splits(data_path: str,
-                       save_dir: str,
-                       train_data: MoleculeDataset = None,
-                       val_data: MoleculeDataset = None,
-                       test_data: MoleculeDataset = None,
-                       smiles_column: str = None) -> None:
+
+def save_smiles_splits(
+    data_path: str,
+    save_dir: str,
+    train_data: MoleculeDataset = None,
+    val_data: MoleculeDataset = None,
+    test_data: MoleculeDataset = None,
+    smiles_column: str = None,
+) -> None:
     """
     Saves indices of train/val/test split as a pickle file.
 
@@ -325,18 +349,17 @@ def save_smiles_splits(data_path: str,
             indices_by_smiles[smiles] = i
 
     all_split_indices = []
-    for dataset, name in [(train_data, 'train'), (val_data, 'val'),
-                          (test_data, 'test')]:
+    for dataset, name in [(train_data, "train"), (val_data, "val"), (test_data, "test")]:
         if dataset is None:
             continue
 
-        with open(os.path.join(save_dir, f'{name}_smiles.csv'), 'w') as f:
+        with open(os.path.join(save_dir, f"{name}_smiles.csv"), "w") as f:
             writer = csv.writer(f)
-            writer.writerow(['smiles'])
+            writer.writerow(["smiles"])
             for smiles in dataset.smiles():
                 writer.writerow([smiles])
 
-        with open(os.path.join(save_dir, f'{name}_full.csv'), 'w') as f:
+        with open(os.path.join(save_dir, f"{name}_full.csv"), "w") as f:
             writer = csv.writer(f)
             writer.writerow(header)
             for smiles in dataset.smiles():
@@ -348,5 +371,5 @@ def save_smiles_splits(data_path: str,
             split_indices = sorted(split_indices)
         all_split_indices.append(split_indices)
 
-    with open(os.path.join(save_dir, 'split_indices.pckl'), 'wb') as f:
+    with open(os.path.join(save_dir, "split_indices.pckl"), "wb") as f:
         pickle.dump(all_split_indices, f)

@@ -9,10 +9,17 @@ from tqdm import tqdm
 from molpal.models.chemprop.data import MoleculeDataLoader
 from molpal.models.chemprop.nn_utils import NoamLR
 
-def train(model: nn.Module, data_loader: MoleculeDataLoader,
-          loss_func: Callable, optimizer: Optimizer,
-          scheduler: _LRScheduler, uncertainty: bool,
-          n_iter: int = 0, disable: bool = False) -> int:
+
+def train(
+    model: nn.Module,
+    data_loader: MoleculeDataLoader,
+    loss_func: Callable,
+    optimizer: Optimizer,
+    scheduler: _LRScheduler,
+    uncertainty: bool,
+    n_iter: int = 0,
+    disable: bool = False,
+) -> int:
     """Trains a model for an epoch
 
     Parameters
@@ -43,25 +50,20 @@ def train(model: nn.Module, data_loader: MoleculeDataLoader,
     # loss_sum = 0
     # iter_count = 0
 
-    for batch in tqdm(data_loader, desc='Training', unit='step',
-                      leave=False, disable=disable,):
+    for batch in tqdm(data_loader, desc="Training", unit="step", leave=False, disable=disable):
         # Prepare batch
-        mol_batch, targets = batch#.batch_graph()
+        mol_batch, targets = batch  # .batch_graph()
         # features_batch = batch.features()
 
         # Run model
         model.zero_grad()
-        preds = model(mol_batch)#, features_batch)        
+        preds = model(mol_batch)  # , features_batch)
 
         # targets = batch.targets()   # targets might have None's
-        mask = torch.tensor(
-            [list(map(bool, ys)) for ys in targets]
-        ).to(preds.device)
-        targets = torch.tensor(
-            [[y or 0 for y in ys] for ys in targets]
-        ).to(preds.device)
+        mask = torch.tensor([list(map(bool, ys)) for ys in targets]).to(preds.device)
+        targets = torch.tensor([[y or 0 for y in ys] for ys in targets]).to(preds.device)
         class_weights = torch.ones(targets.shape).to(preds.device)
-        
+
         # if args.dataset_type == 'multiclass':
         #     targets = targets.long()
         #     loss = (torch.cat([

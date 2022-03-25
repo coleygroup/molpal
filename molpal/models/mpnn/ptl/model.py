@@ -37,17 +37,13 @@ class LitMPNN(pl.LightningModule):
         }.get(config.get("metric", "rmse"), "rmse")
 
     def training_step(self, batch: Tuple, batch_idx) -> torch.Tensor:
-        componentss, targets = batch
+        Xs, Y = batch
 
-        preds = self.mpnn(componentss)
-        mask = torch.tensor(
-            [[bool(y) for y in ys] for ys in targets], device=self.device
-        )
-        targets = torch.tensor(
-            [[y or 0 for y in ys] for ys in targets], device=self.device
-        )
-        class_weights = torch.ones(targets.shape, device=self.device)
+        mask = ~torch.isnan(Y)
+        Y = torch.nan_to_num(Y, nan=0.0)
+        class_weights = torch.ones_like(Y)
 
+        Y_pred = self.mpnn(Xs)
         # if args.dataset_type == 'multiclass':
         #     targets = targets.long()
         #     loss = (torch.cat([
@@ -58,15 +54,14 @@ class LitMPNN(pl.LightningModule):
         #     )
 
         if self.uncertainty == "mve":
-            pred_means = preds[:, 0::2]
-            pred_vars = preds[:, 1::2]
+            Y_pred_mean = Y_pred[:, 0::2]
+            Y_pred_var = Y_pred[:, 1::2]
 
-            loss = self.criterion(pred_means, pred_vars, targets)
+            L = self.criterion(Y_pred_mean, Y_pred_var, Y)
         else:
-            loss = self.criterion(preds, targets) * class_weights * mask
+            L = self.criterion(Y_pred, Y) * class_weights * mask
 
-        loss = loss.sum() / mask.sum()
-        return loss
+        return L.sum() / mask.sum()
 
     def training_epoch_end(self, outputs):
         losses = [d["loss"] for d in outputs]
@@ -74,24 +69,22 @@ class LitMPNN(pl.LightningModule):
         self.log("train_loss", train_loss)
 
     def validation_step(self, batch: Tuple, batch_idx) -> List[float]:
-        componentss, targets = batch
+        Xs, Y = batch
 
-        preds = self.mpnn(componentss)
+        Y_pred = self.mpnn(Xs)
         if self.uncertainty == "mve":
-            preds = preds[:, 0::2]
+            Y_pred = Y_pred[:, 0::2]
 
-        targets = torch.tensor(targets, device=self.device)
+        Y = torch.tensor(Y, device=self.device)
 
-        return self.metric(preds, targets)
+        return self.metric(Y_pred, Y)
 
     def validation_epoch_end(self, outputs):
         val_loss = torch.cat(outputs).mean()
         self.log("val_loss", val_loss)
 
     def configure_optimizers(self) -> List:
-        opt = Adam(
-            [{"params": self.mpnn.parameters(), "lr": self.init_lr, "weight_decay": 0}]
-        )
+        opt = Adam([{"params": self.mpnn.parameters(), "lr": self.init_lr, "weight_decay": 0}])
         sched = NoamLR(
             optimizer=opt,
             warmup_epochs=[self.warmup_epochs],
