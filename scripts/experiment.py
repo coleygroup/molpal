@@ -38,16 +38,15 @@ class Experiment:
             warnings.warn("Experiment has no score csvs!")
 
     def __len__(self) -> int:
-        """the total number of inputs sampled in this experiment. Equal to -1 if the experiment is 
+        """the total number of inputs sampled in this experiment. Equal to -1 if the experiment is
         incomplete"""
         if self.__size is None:
             try:
                 self.__size = (
-                    len(
-                        (self.path / "data" / "all_explored_final.csv").read_text().splitlines()
-                    ) - 1
+                    len((self.path / "data" / "all_explored_final.csv").read_text().splitlines())
+                    - 1
                 )
-            except:
+            except FileNotFoundError:
                 warnings.warn("Experiment is incomplete!")
                 self.__size = -1
 
@@ -78,9 +77,7 @@ class Experiment:
         """The total number of points acquired *by* iteration i, where i=0 is the
         initialization batch"""
         if self.__sizes is None:
-            self.__sizes = [
-                len(p.read_text().splitlines()) - 1 for p in self.scores_csvs
-            ]
+            self.__sizes = [len(p.read_text().splitlines()) - 1 for p in self.scores_csvs]
 
         return self.__sizes
 
@@ -88,7 +85,8 @@ class Experiment:
         """get the top-N molecules explored at iteration i"""
         return sorted(
             Experiment.read_scores(self.scores_csvs[i]),
-            key=lambda xy: xy[1] or -float("inf"), reverse=True
+            key=lambda xy: xy[1] or -float("inf"),
+            reverse=True,
         )[:N]
 
     def new_pointss(self) -> List[List[Point]]:
@@ -204,10 +202,10 @@ class Experiment:
         s, m, l = true_clusters
 
         all_points_in_order = self[-1]
-        N = np.zeros((len(all_points_in_order)+1, len(true_clusters)))
+        N = np.zeros((len(all_points_in_order) + 1, len(true_clusters)))
 
         for i, (smi, _) in enumerate(all_points_in_order):
-            N[i+1] = N[i]
+            N[i + 1] = N[i]
 
             if smi in s:
                 j = 0
@@ -217,8 +215,8 @@ class Experiment:
                 j = 2
             else:
                 continue
-            
-            N[i+1, j] = N[i, j] + 1
+
+            N[i + 1, j] = N[i, j] + 1
 
         Y = N / [len(s), len(m), len(l)]
         return Y
@@ -314,9 +312,7 @@ class Experiment:
             reader = csv.reader(fid)
             next(reader)
 
-            smis_scores = [
-                (row[0], float(row[1])) if row[1] else (row[0], None) for row in reader
-            ]
+            smis_scores = [(row[0], float(row[1])) if row[1] else (row[0], None) for row in reader]
 
         return smis_scores
 

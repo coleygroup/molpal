@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 
+
 def collate(root, size: str):
     targets = [p.stem for p in (root / size / "full").iterdir()]
     Y_np = np.array(
@@ -21,21 +22,21 @@ def collate(root, size: str):
     )
     return Y_np, Y_p, targets
 
+
 def main():
     parser = ArgumentParser()
     parser.add_argument(
-        "root",
-        metavar="ROOT",
-        type=Path,
-        help="the root directory containing all DOCKSTRING runs"
+        "root", metavar="ROOT", type=Path, help="the root directory containing all DOCKSTRING runs"
     )
-    parser.add_argument("-s", "--sizes", nargs="+", required=True, help="the batch sizes to process")
+    parser.add_argument(
+        "-s", "--sizes", nargs="+", required=True, help="the batch sizes to process"
+    )
     parser.add_argument(
         "-o",
         "--output",
         default=Path("dockstring"),
         type=Path,
-        help="the base output filename. Files will be named OUTPUT-SIZE-{Y,targets}.{npy,pkl}"
+        help="the base output filename. Files will be named OUTPUT-SIZE-{Y,targets}.{npy,pkl}",
     )
 
     args = parser.parse_args()
@@ -45,6 +46,7 @@ def main():
 
         np.save(f"{args.output}-{size}-Y.npy", Y)
         Path(f"{args.output}-{size}-targets.pkl").write_bytes(pickle.dumps(targets))
-        
+
+
 if __name__ == "__main__":
     main()
