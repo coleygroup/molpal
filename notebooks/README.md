@@ -3,7 +3,6 @@
 ## Design Space Pruning
 
 ### Step 1: Run MolPAL on the given targets.
-
 The general setup for each run was as follows:
 - `model=MPN`
 - `--conf-method=mve`
@@ -90,8 +89,8 @@ HTS_AL_ROOT
    ...
     └── rep-N
 ```
-### Step 2: **(DOCKSTRING only)** Process and collate the data
 
+### Step 2: **(DOCKSTRING only)** Process and collate the data
 First, run the [`process.py`](../scripts/process.py) script for each group of experiments (i.e., the group of repetitions) as the arguments to `--expts`. Organize the resulting `.npy` files in a similar hierarchy as above, naming each file simply `TARGET.npy`. We analyzed the top 250 scores for each task.
 
 **NOTE:** you must have the same number of repetitions for each group of experiments before proceeding.
@@ -99,7 +98,6 @@ First, run the [`process.py`](../scripts/process.py) script for each group of ex
 Next, run the [`collate.py`](../scripts/collate.py) script, supplying the proper `root` directory of the top of the hierarchy and the batch sizes for which you've run the experiments.
 
 ### Step 3: Make the figures
-
 See the corresponding notebooks for the figures you'd like to make.
 
 ## Original MolPAL figures
