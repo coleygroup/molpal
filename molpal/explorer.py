@@ -281,7 +281,7 @@ class Explorer:
         Stopping Conditions
         -------------------
         a. explored the entire pool
-           (not implemented right now due to complications with warm starting)
+            (not implemented right now due to complications with warm starting)
         b. explored for at least <max_iters> iters
         c. exceeded the maximum budget
         d. the current top-k average is within a fraction <delta> of the moving top-k average. This

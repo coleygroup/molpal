@@ -14,7 +14,7 @@ def set_seed(seed: Optional[int] = None) -> None:
     RG = np.random.default_rng(seed)
 
 
-def get_metric(metric: str) -> Callable[..., float]:
+def get_metric(metric: str) -> Callable[..., np.ndarray]:
     """Get the corresponding metric function"""
     try:
         return {
@@ -33,7 +33,7 @@ def get_metric(metric: str) -> Callable[..., float]:
         raise ValueError(f'Unrecognized metric: "{metric}"')
 
 
-def get_needs(metric: str) -> Set[str]:
+def get_needs(metric: str) -> Set:
     """Get the values needed to compute this metric"""
     return {
         "random": set(),
@@ -46,6 +46,9 @@ def get_needs(metric: str) -> Set[str]:
         "ts": {"means", "vars"},
         "threshold": {"means"},
     }.get(metric, set())
+
+def valid_metrics() -> Set[str]:
+    return {"random", "threshold", "greedy", "noisy", "ucb", "lcb", "ts", "thompson", "ei", "pi"}
 
 
 def calc(
@@ -78,7 +81,7 @@ def calc(
     if metric == "pi":
         return pi(Y_mean, Y_var, current_max, xi)
 
-    raise ValueError(f'Unrecognized metric: "{metric}"')
+    raise ValueError(f'Unrecognized metric "{metric}". Expected one of {valid_metrics()}')
 
 
 def random(Y_mean: np.ndarray) -> np.ndarray:
@@ -99,7 +102,7 @@ def random(Y_mean: np.ndarray) -> np.ndarray:
     return RG.random(len(Y_mean))
 
 
-def threshold(Y_mean: np.ndarray, t: float) -> float:
+def threshold(Y_mean: np.ndarray, t: float) -> np.ndarray:
     """Random acquisition score [0, 1) if at or above threshold. Otherwise,
     return -1.
 
@@ -147,7 +150,7 @@ def noisy(Y_mean: np.ndarray) -> np.ndarray:
     return Y_mean + noise
 
 
-def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
+def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> np.ndarray:
     """Upper confidence bound acquisition score
 
     Parameters
@@ -166,7 +169,7 @@ def ucb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
     return Y_mean + beta * np.sqrt(Y_var)
 
 
-def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
+def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> np.ndarray:
     """Lower confidence bound acquisition score
 
     Parameters
@@ -183,7 +186,7 @@ def lcb(Y_mean: np.ndarray, Y_var: np.ndarray, beta: int = 2) -> float:
     return Y_mean - beta * np.sqrt(Y_var)
 
 
-def thompson(Y_mean: np.ndarray, Y_var: np.ndarray, stochastic: bool = False) -> float:
+def thompson(Y_mean: np.ndarray, Y_var: np.ndarray, stochastic: bool = False) -> np.ndarray:
     """Thompson acquisition score
 
     Parameters
@@ -206,7 +209,7 @@ def thompson(Y_mean: np.ndarray, Y_var: np.ndarray, stochastic: bool = False) ->
     return RG.normal(Y_mean, Y_sd)
 
 
-def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.01) -> float:
+def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.01) -> np.ndarray:
     """Exected improvement acquisition score
 
     Parameters
@@ -229,8 +232,7 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.
         Z = I / Y_sd
     E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
-    # if the expected variance is 0, the expected improvement
-    # is the predicted improvement
+    # if the expected variance is 0, the expected improvement is the predicted improvement
     mask = Y_var == 0
     E_imp[mask] = I[mask]
 
@@ -257,8 +259,8 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.
         Z = I / np.sqrt(Y_var)
     P_imp = norm.cdf(Z)
 
-    # if expected variance is 0, probability of improvement is 0 or 1
-    # depending on whether the predicted improvement is negative or positive
+    # if expected variance is 0, probability of improvement is 0 or 1 depending on whether the 
+    # predicted improvement is <= 0 or >0
     mask = Y_var == 0
     P_imp[mask] = np.where(I > 0, 1, 0)[mask]
 
