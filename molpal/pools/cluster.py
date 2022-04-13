@@ -41,8 +41,7 @@ def cluster_fps_h5(fps_h5: str, ncluster: int = 100) -> List[int]:
             clusterer.partial_fit(fps[idxs])
 
         cluster_ids = [
-            clusterer.predict(fps[i : i + BATCH_SIZE])
-            for i in range(0, len(fps), BATCH_SIZE)
+            clusterer.predict(fps[i : i + BATCH_SIZE]) for i in range(0, len(fps), BATCH_SIZE)
         ]
 
     elapsed = timeit.default_timer() - begin

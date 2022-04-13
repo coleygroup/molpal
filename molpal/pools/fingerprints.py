@@ -17,7 +17,7 @@ def feature_matrix_hdf5(
     *,
     featurizer: Featurizer = Featurizer(),
     name: str = "fps.h5",
-    path: str = "."
+    path: str = ".",
 ) -> Tuple[str, Set[int]]:
     """Precalculate the fature matrix of xs with the given featurizer and store
     the matrix in an HDF5 file
@@ -54,10 +54,7 @@ def feature_matrix_hdf5(
         CHUNKSIZE = 512
 
         fps_dset = h5f.create_dataset(
-            "fps",
-            (size, len(featurizer)),
-            chunks=(CHUNKSIZE, len(featurizer)),
-            dtype="int8",
+            "fps", (size, len(featurizer)), chunks=(CHUNKSIZE, len(featurizer)), dtype="int8"
         )
 
         batch_size = CHUNKSIZE * 2 * ncpu
@@ -68,15 +65,10 @@ def feature_matrix_hdf5(
         offset = 0
 
         for smis_batch in tqdm(
-            batches(smis, batch_size),
-            "Precalculating fps",
-            n_batches,
-            unit="batch",
+            batches(smis, batch_size), "Precalculating fps", n_batches, unit="batch"
         ):
             fps = feature_matrix(smis_batch, featurizer, disable=True)
-            for fp in tqdm(
-                fps, "Writing", batch_size, False, unit="smi", smoothing=0.0
-            ):
+            for fp in tqdm(fps, "Writing", batch_size, False, unit="smi", smoothing=0.0):
                 if fp is None:
                     invalid_idxs.add(i + offset)
                     offset += 1
