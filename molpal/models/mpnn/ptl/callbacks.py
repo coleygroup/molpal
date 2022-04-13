@@ -15,11 +15,7 @@ class EpochAndStepProgressBar(ProgressBarBase):
     def on_train_start(self, trainer, pl_module):
         super().on_train_start(trainer, pl_module)
         self.epoch_bar = tqdm(
-            desc="Training",
-            unit="epoch",
-            leave=True,
-            dynamic_ncols=True,
-            total=trainer.max_epochs,
+            desc="Training", unit="epoch", leave=True, dynamic_ncols=True, total=trainer.max_epochs
         )
         self.step_bar = tqdm(
             desc="Epoch (train)",
@@ -35,12 +31,8 @@ class EpochAndStepProgressBar(ProgressBarBase):
         self.step_bar.reset()
         self.step_bar.set_description_str("Epoch (train)")
 
-    def on_train_batch_end(
-        self, trainer, pl_module, outputs, batch, batch_idx
-    ):
-        super().on_train_batch_end(
-            trainer, pl_module, outputs, batch, batch_idx
-        )
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
 
         # loss = trainer.progress_bar_dict["loss"]
         loss = self.get_metrics(trainer, pl_module)["loss"]
@@ -77,8 +69,7 @@ class EpochAndStepProgressBar(ProgressBarBase):
             train_loss = trainer.callback_metrics["train_loss"].item()
             val_loss = trainer.callback_metrics["val_loss"].item()
             self.epoch_bar.set_postfix_str(
-                f"train_loss={train_loss:0.3f}, val_loss={val_loss:0.3f})",
-                refresh=False,
+                f"train_loss={train_loss:0.3f}, val_loss={val_loss:0.3f})", refresh=False
             )
         except KeyError:
             pass

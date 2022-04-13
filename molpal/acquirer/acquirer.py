@@ -272,7 +272,7 @@ class Acquirer:
             self.threshold,
             self.beta,
             self.xi,
-            self.stochastic_preds
+            self.stochastic_preds,
         )
 
         idxs = np.random.choice(U.size, math.ceil(batch_size * self.epsilon), False)
@@ -369,9 +369,7 @@ class Acquirer:
             if len(heap) == 0:
                 continue
 
-            pred_local_max = max(
-                heap, key=lambda yx: -1 if math.isinf(yx[0]) else yx[0]
-            )
+            pred_local_max = max(heap, key=lambda yx: -1 if math.isinf(yx[0]) else yx[0])
             lam = Acquirer.decay(global_pred_max, pred_local_max, temp)
 
             new_heap_size = math.ceil(lam * heap_size)

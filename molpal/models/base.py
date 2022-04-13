@@ -8,8 +8,9 @@ from tqdm import tqdm
 
 from molpal.utils import batches
 
-T = TypeVar('T')
-T_feat = TypeVar('T_feat')
+T = TypeVar("T")
+T_feat = TypeVar("T_feat")
+
 
 class Model(ABC):
     """A Model can be trained on input data to predict the values for inputs
@@ -44,6 +45,7 @@ class Model(ABC):
     test_batch_size : int
     ncpu : int (Default = 1)
     """
+
     def __init__(self, test_batch_size: int, **kwargs):
         self.test_batch_size = test_batch_size
 
@@ -61,10 +63,16 @@ class Model(ABC):
         """The underlying architecture of the Model"""
 
     @abstractmethod
-    def train(self, xs: Iterable[T], ys: Sequence[float], *,
-              featurizer: Callable[[T], T_feat], retrain: bool = False) -> bool:
+    def train(
+        self,
+        xs: Iterable[T],
+        ys: Sequence[float],
+        *,
+        featurizer: Callable[[T], T_feat],
+        retrain: bool = False,
+    ) -> bool:
         """Train the model on the input data
-        
+
         Parameters
         ----------
         xs : Iterable[T]
@@ -89,9 +97,12 @@ class Model(ABC):
         """Get both the predicted mean and variance for a sequence of inputs"""
 
     def apply(
-        self, x_ids: Iterable[T], x_feats: Iterable[T_feat],
+        self,
+        x_ids: Iterable[T],
+        x_feats: Iterable[T_feat],
         batched_size: Optional[int] = None,
-        size: Optional[int] = None, mean_only: bool = True
+        size: Optional[int] = None,
+        mean_only: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Apply the model to the inputs
 
@@ -117,44 +128,38 @@ class Model(ABC):
         variances: np.ndarray
             the variance in the predicted means, empty if mean_only is True
         """
-        if self.type_ == 'mpn':
+        if self.type_ == "mpn":
             xs = x_ids
             batched_size = None
         else:
             xs = x_feats
 
         if batched_size:
-            n_batches = (size//batched_size) + 1 if size else None
+            n_batches = (size // batched_size) + 1 if size else None
         else:
             xs = batches(xs, self.test_batch_size)
-            n_batches = (size//self.test_batch_size) + 1 if size else None
+            n_batches = (size // self.test_batch_size) + 1 if size else None
 
         meanss = []
         variancess = []
 
         if mean_only:
-            for batch_xs in tqdm(
-                xs, total=n_batches, desc='Inference',
-                smoothing=0., unit='smi'
-            ):
+            for batch_xs in tqdm(xs, total=n_batches, desc="Inference", smoothing=0.0, unit="smi"):
                 means = self.get_means(batch_xs)
                 meanss.append(means)
                 variancess.append([])
         else:
-            for batch_xs in tqdm(
-                xs, total=n_batches, desc='Inference',
-                smoothing=0., unit='smi'
-            ):
+            for batch_xs in tqdm(xs, total=n_batches, desc="Inference", smoothing=0.0, unit="smi"):
                 means, variances = self.get_means_and_vars(batch_xs)
                 meanss.append(means)
                 variancess.append(variances)
 
         return np.concatenate(meanss), np.concatenate(variancess)
-    
+
     @abstractmethod
     def save(self, path) -> str:
         """Save the model under path"""
-    
+
     @abstractmethod
     def load(self, path):
         """load the model from path"""

@@ -33,13 +33,7 @@ def train_epoch(
         # batch_info = {"batch_idx": batch_idx}
 
         step_results = train_step(
-            batch,
-            model,
-            criterion,
-            optimizer,
-            scheduler,
-            device,
-            uncertainty,
+            batch, model, criterion, optimizer, scheduler, device, uncertainty
         )
 
         losses.append(step_results["loss"])
@@ -64,10 +58,7 @@ def train_step(
     optimizer.zero_grad()
 
     componentss = [
-        [
-            X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X
-            for X in components
-        ]
+        [X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X for X in components]
         for components in componentss
     ]
 
@@ -132,10 +123,7 @@ def validate_step(
     metric = metric
 
     componentss = [
-        [
-            X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X
-            for X in components
-        ]
+        [X.to(device, non_blocking=True) if isinstance(X, torch.Tensor) else X for X in components]
         for components in componentss
     ]
     targets = torch.tensor(targets, device=device)
@@ -166,9 +154,7 @@ def train_func(config: Dict):
     final_lr = config.get("final_lr", 1e-4)
     ncpu = config.get("ncpu", 1)
 
-    device = torch.device(
-        f"cuda:{sgd.local_rank()}" if torch.cuda.is_available() else "cpu"
-    )
+    device = torch.device(f"cuda:{sgd.local_rank()}" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
 
@@ -176,8 +162,6 @@ def train_func(config: Dict):
     model = DistributedDataParallel(
         model, device_ids=[sgd.local_rank()] if torch.cuda.is_available() else None
     )
-
-    # print(list(model.parameters())[1])
 
     train_loader = DataLoader(
         train_data,
@@ -210,26 +194,16 @@ def train_func(config: Dict):
         "rmse": lambda X, Y: torch.sqrt(F.mse_loss(X, Y, reduction="none")),
     }[metric]
 
-    with trange(
-        max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True
-    ) as bar:
+    with trange(max_epochs, desc="Training", unit="epoch", dynamic_ncols=True, leave=True) as bar:
         for _ in bar:
             train_res = train_epoch(
-                train_loader,
-                model,
-                criterion,
-                optimizer,
-                scheduler,
-                device,
-                uncertainty,
+                train_loader, model, criterion, optimizer, scheduler, device, uncertainty
             )
             val_res = validate_epoch(val_loader, model, metric, device, uncertainty)
 
             train_loss = train_res["loss"]
             val_loss = val_res["loss"]
 
-            bar.set_postfix_str(
-                f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} "
-            )
+            bar.set_postfix_str(f"train_loss={train_loss:0.3f} | val_loss={val_loss:0.3f} ")
 
     return model.module.to("cpu")

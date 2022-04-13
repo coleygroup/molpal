@@ -239,11 +239,7 @@ class MoleculePool(Sequence):
 
     def get_mols(self, idxs: Sequence[int]) -> List[Mol]:
         return list(
-            zip(
-                self.get_smis(idxs),
-                self.get_fps(idxs),
-                self.get_cluster_ids(idxs) or repeat(None),
-            )
+            zip(self.get_smis(idxs), self.get_fps(idxs), self.get_cluster_ids(idxs) or repeat(None))
         )
 
     def get_smis(self, idxs: Sequence[int]) -> List[str]:
@@ -435,11 +431,7 @@ class MoleculePool(Sequence):
             path = path or Path(self.libraries[0]).parent
 
             self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
-                self.smis(),
-                total_size,
-                featurizer=featurizer,
-                name=filename.stem,
-                path=path,
+                self.smis(), total_size, featurizer=featurizer, name=filename.stem, path=path
             )
             if self.verbose > 0:
                 print("Done!")
@@ -480,9 +472,7 @@ class MoleculePool(Sequence):
             else:
                 if cache:
                     self.smis_ = [
-                        smi
-                        for i, smi in enumerate(self.smis())
-                        if i not in self.invalid_idxs
+                        smi for i, smi in enumerate(self.smis()) if i not in self.invalid_idxs
                     ]
                     self.size = len(self.smis_)
                 else:

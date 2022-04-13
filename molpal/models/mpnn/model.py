@@ -7,9 +7,10 @@ from torch import nn
 from molpal.models.chemprop.models.mpn import MPN
 from molpal.models.chemprop.nn_utils import get_activation_function, initialize_weights
 
+
 class EvaluationDropout(nn.Dropout):
     def forward(self, input):
-        return nn.functional.dropout(input, p = self.p)
+        return nn.functional.dropout(input, p=self.p)
 
 
 class MoleculeModel(nn.Module):
@@ -32,85 +33,112 @@ class MoleculeModel(nn.Module):
     ffn : nn.Sequential
         the feed-forward network of the message-passing network
     """
-    def __init__(self,
-                 uncertainty: Optional[str] = None,
-                 dataset_type: str = 'regression', num_tasks: int = 1,
-                 atom_messages: bool = False, bias: bool = False,
-                 depth: int = 3, dropout: float = 0.0, undirected: bool = False,
-                 aggregation: str = 'mean', aggregation_norm: int = 100,
-                 activation: str = 'ReLU', hidden_size: int = 300, 
-                 ffn_hidden_size: Optional[int] = None,
-                 ffn_num_layers: int = 2):
+
+    def __init__(
+        self,
+        uncertainty: Optional[str] = None,
+        dataset_type: str = "regression",
+        num_tasks: int = 1,
+        atom_messages: bool = False,
+        bias: bool = False,
+        depth: int = 3,
+        dropout: float = 0.0,
+        undirected: bool = False,
+        aggregation: str = "mean",
+        aggregation_norm: int = 100,
+        activation: str = "ReLU",
+        hidden_size: int = 300,
+        ffn_hidden_size: Optional[int] = None,
+        ffn_num_layers: int = 2,
+    ):
         super().__init__()
 
         self.uncertainty = uncertainty
-        self.classification = dataset_type == 'classification'
+        self.classification = dataset_type == "classification"
         if self.classification:
             self.sigmoid = nn.Sigmoid()
 
         self.output_size = num_tasks
 
         self.encoder = self.build_encoder(
-            atom_messages=atom_messages, hidden_size=hidden_size,
-            bias=bias, depth=depth, dropout=dropout, undirected=undirected,
-            aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation
+            atom_messages,
+            bias,
+            hidden_size,
+            depth,
+            dropout,
+            undirected,
+            aggregation,
+            aggregation_norm,
+            activation,
         )
         self.ffn = self.build_ffn(
-            output_size=num_tasks, hidden_size=hidden_size, dropout=dropout, 
-            activation=activation, ffn_num_layers=ffn_num_layers, 
-            ffn_hidden_size=ffn_hidden_size
+            num_tasks, hidden_size, dropout, activation, ffn_num_layers, ffn_hidden_size
         )
 
         initialize_weights(self)
-    
-    def build_encoder(self, atom_messages: bool = False, bias: bool = False,
-                      hidden_size: int = 300, depth: int = 3,
-                      dropout: float = 0.0, undirected: bool = False,
-                      aggregation: str = 'mean', aggregation_norm: int = 100,
-                      activation: str = 'ReLU'):
-         return MPN(Namespace(
-            atom_messages=atom_messages, hidden_size=hidden_size,
-            bias=bias, depth=depth, dropout=dropout, undirected=undirected,
-            features_only=False, use_input_features=False,
-            aggregation=aggregation, aggregation_norm=aggregation_norm,
-            activation=activation, number_of_molecules=1,
-            atom_descriptors=None, mpn_shared=False
-        ))
 
-    def build_ffn(self, output_size: int, 
-                  hidden_size: int = 300, dropout: float = 0.0,
-                  activation: str = 'ReLU', ffn_num_layers: int = 2,
-                  ffn_hidden_size: Optional[int] = None) -> None:
+    def build_encoder(
+        self,
+        atom_messages: bool = False,
+        bias: bool = False,
+        hidden_size: int = 300,
+        depth: int = 3,
+        dropout: float = 0.0,
+        undirected: bool = False,
+        aggregation: str = "mean",
+        aggregation_norm: int = 100,
+        activation: str = "ReLU",
+    ):
+        return MPN(
+            Namespace(
+                atom_messages=atom_messages,
+                hidden_size=hidden_size,
+                bias=bias,
+                depth=depth,
+                dropout=dropout,
+                undirected=undirected,
+                features_only=False,
+                use_input_features=False,
+                aggregation=aggregation,
+                aggregation_norm=aggregation_norm,
+                activation=activation,
+                number_of_molecules=1,
+                atom_descriptors=None,
+                mpn_shared=False,
+            )
+        )
+
+    def build_ffn(
+        self,
+        output_size: int,
+        hidden_size: int = 300,
+        dropout: float = 0.0,
+        activation: str = "ReLU",
+        ffn_num_layers: int = 2,
+        ffn_hidden_size: Optional[int] = None,
+    ) -> None:
         first_linear_dim = hidden_size
 
-        # If dropout uncertainty method, use for both evaluation and training
-        if self.uncertainty == 'dropout':
+        if self.uncertainty == "dropout":
             dropout = EvaluationDropout(dropout)
         else:
             dropout = nn.Dropout(dropout)
 
         activation = get_activation_function(activation)
 
-        if self.uncertainty == 'mve':
+        if self.uncertainty == "mve":
             output_size *= 2
 
         if ffn_num_layers == 1:
-            ffn = [dropout,
-                   nn.Linear(first_linear_dim, output_size)]
+            ffn = [dropout, nn.Linear(first_linear_dim, output_size)]
         else:
             if ffn_hidden_size is None:
                 ffn_hidden_size = hidden_size
 
-            ffn = [dropout,
-                   nn.Linear(first_linear_dim, ffn_hidden_size)]
+            ffn = [dropout, nn.Linear(first_linear_dim, ffn_hidden_size)]
             for _ in range(ffn_num_layers - 2):
-                ffn.extend([activation,
-                            dropout,
-                            nn.Linear(ffn_hidden_size, ffn_hidden_size)])
-            ffn.extend([activation,
-                        dropout,
-                        nn.Linear(ffn_hidden_size, output_size)])
+                ffn.extend([activation, dropout, nn.Linear(ffn_hidden_size, ffn_hidden_size)])
+            ffn.extend([activation, dropout, nn.Linear(ffn_hidden_size, output_size)])
 
         return nn.Sequential(*ffn)
 
@@ -122,8 +150,7 @@ class MoleculeModel(nn.Module):
         """Runs the MoleculeModel on the input."""
         z = self.ffn(self.encoder(*inputs))
 
-        if self.uncertainty == 'mve':
-            pred_means = z[:, 0::2]
+        if self.uncertainty == "mve":
             pred_vars = z[:, 1::2]
             capped_vars = nn.functional.softplus(pred_vars)
 
@@ -131,7 +158,6 @@ class MoleculeModel(nn.Module):
             z[:, 1::2] = capped_vars
             # z = torch.stack((pred_means, capped_vars), dim=2).view(z.size())
 
-        # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
         if self.classification and not self.training:
             z = self.sigmoid(z)
 
