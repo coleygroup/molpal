@@ -2,12 +2,8 @@
 underlying model"""
 from functools import partial
 import json
-import math
 from pathlib import Path
 from typing import Callable, Iterable, List, NoReturn, Optional, Sequence, Tuple, TypeVar
-
-# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # FATAL
-# logging.getLogger("tensorflow").setLevel(logging.ERROR)
 
 import numpy as np
 from numpy import ndarray
@@ -21,6 +17,7 @@ from molpal.models.base import Model
 
 T = TypeVar("T")
 T_feat = TypeVar("T_feat")
+Dataset = tf.data.Dataset
 
 
 def mve_loss(y_true, y_pred):
@@ -28,7 +25,7 @@ def mve_loss(y_true, y_pred):
     var = tf.math.softplus(y_pred[:, 1])
 
     return tf.reduce_mean(
-        tf.math.log(2 * math.pi) / 2 + tf.math.log(var) / 2 + (mu - y_true) ** 2 / (2 * var)
+        tf.math.log(2 * np.pi) / 2 + tf.math.log(var) / 2 + (mu - y_true) ** 2 / (2 * var)
     )
 
 
@@ -102,8 +99,6 @@ class NN:
 
     def build(self, input_size, num_tasks, layer_sizes, dropout, uncertainty, activation):
         """Build the model, optimizer, and loss function"""
-        # self.model = keras.Sequential()
-
         dropout_at_predict = uncertainty == "dropout"
         output_size = 2 * num_tasks if self.uncertainty else num_tasks
 
@@ -229,7 +224,7 @@ class NNModel(Model):
 
     Attributes
     ----------
-    model : Type[NN]
+    model : NN
         the underlying neural net on which to train and perform inference
 
     Parameters
@@ -296,7 +291,7 @@ class NNModel(Model):
         return self.model.predict(xs)[:, 0]
 
     def get_means_and_vars(self, xs: List) -> NoReturn:
-        raise NotImplementedError("NNModel can't predict variances!")
+        raise TypeError("NNModel can't predict variances!")
 
     def save(self, path) -> str:
         return self.model.save(path)
@@ -311,7 +306,7 @@ class NNEnsembleModel(Model):
 
     Attributes
     ----------
-    models : List[Type[NN]]
+    models : List[NN]
         the underlying neural nets on which to train and perform inference
 
     Parameters
@@ -412,7 +407,7 @@ class NNTwoOutputModel(Model):
 
     Attributes
     ----------
-    model : Type[NN]
+    model : NN
         the underlying neural net on which to train and perform inference
 
     Parameters
@@ -497,9 +492,10 @@ class NNDropoutModel(Model):
 
     Attributes
     ----------
-    model : Type[NN]
+    model : NN
         the underlying neural net on which to train and perform inference
     dropout_size : int
+        the number of forward passes to perform to through the model at inference time
 
     Parameters
     ----------

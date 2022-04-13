@@ -2,13 +2,13 @@
 model is used to predict an input's objective function based on prior
 training data."""
 
-from typing import Optional, Set, Type
+from typing import Optional, Set
 
 import pytorch_lightning
 from molpal.models.base import Model
 
 
-def model(model: str, **kwargs) -> Type[Model]:
+def model(model: str, **kwargs) -> Model:
     """Model factory function"""
     if model == "rf":
         from molpal.models.sklmodels import RFModel
@@ -34,7 +34,7 @@ def model(model: str, **kwargs) -> Type[Model]:
     raise NotImplementedError(f'Unrecognized model: "{model}"')
 
 
-def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
+def nn(conf_method: Optional[str] = None, **kwargs) -> Model:
     """NN-type Model factory function"""
     from molpal.models.nnmodels import NNModel, NNDropoutModel, NNEnsembleModel, NNTwoOutputModel
 
@@ -50,7 +50,7 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
         raise NotImplementedError(f'Unrecognized NN confidence method: "{conf_method}"')
 
 
-def mpn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
+def mpn(conf_method: Optional[str] = None, **kwargs) -> Model:
     """MPN-type Model factory function"""
     from molpal.models.mpnmodels import MPNModel, MPNDropoutModel, MPNTwoOutputModel
 

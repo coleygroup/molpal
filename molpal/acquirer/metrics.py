@@ -5,7 +5,6 @@ from typing import Callable, Optional, Set
 import numpy as np
 from scipy.stats import norm
 
-# this module maintains an independent random number generator
 RG = np.random.default_rng()
 
 

@@ -55,7 +55,7 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--write-final",
         action="store_true",
-        default=True,
+        default=False,
         help="whether to write a summary file with all of the explored inputs and their associated scores",
     )
 
@@ -161,13 +161,6 @@ def add_pool_args(parser: ArgumentParser) -> None:
 def add_prune_args(parser):
     parser.add_argument("--prune", action="store_true")
     parser.add_argument("--prune-min-hit-prob", type=restricted_float)
-    # parser.add_argument(
-    #     '--prune-threshold',
-    #     type=restricted_float_or_int,
-    #     help="the number or fraction of top-predicted molecules to keep after the first round of exploration"
-    # )
-    # parser.add_argument('--prune-beta', type=float)
-    # parser.add_argument('--prune-max-fp', type=restricted_float_or_int)
 
 
 #####################################

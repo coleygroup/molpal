@@ -17,7 +17,7 @@ class DockingObjective(Objective):
     ----------
     c : int
         the min/maximization constant, depending on the objective
-    virtual_screen : pyscreener.docking.VirtualScreen
+    virtual_screen : pyscreener.docking.DockingVirtualScreen
         the VirtualScreen object that calculated docking scores of molecules against a given
         receptor with specfied docking parameters
 
@@ -59,9 +59,7 @@ class DockingObjective(Objective):
             args.base_name,
             path,
             args.score_mode,
-            args.repeat_score_mode,
             args.ensemble_score_mode,
-            args.repeats,
             args.k,
             verbose,
         )

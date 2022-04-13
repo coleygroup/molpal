@@ -19,6 +19,8 @@ T = TypeVar("T")
 
 register_ray()
 
+logger = logging.getLogger(__name__)
+
 
 class RFModel(Model):
     """A Random Forest model ensemble for estimating mean and variance
@@ -81,8 +83,8 @@ class RFModel(Model):
             Y_pred = self.model.predict(X)
 
         errors = Y_pred - Y
-        logging.info(
-            f"  training MAE: {np.mean(np.abs(errors)):0.2f}," f"MSE: {(errors**2).mean():0.2f}"
+        logger.info(
+            f"training MAE: {np.abs(errors).mean():0.2f}," f"MSE: {(errors**2).mean():0.2f}"
         )
         return True
 
@@ -169,10 +171,7 @@ class GPModel(Model):
         self.model.fit(X, Y)
         Y_pred = self.model.predict(X)
         errors = Y_pred - Y
-        logging.info(
-            f"  training MAE: {np.abs(errors).mean():0.2f}, " f"MSE: {(errors**2).mean():0.2f}"
-        )
-
+        logger.info(f"training MAE: {np.abs(errors).mean():0.2f}, MSE: {(errors**2).mean():0.2f}")
         return True
 
     def get_means(self, xs: Sequence) -> np.ndarray:

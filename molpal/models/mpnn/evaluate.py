@@ -43,8 +43,6 @@ def evaluate_predictions(
     if len(preds) == 0:
         return [float("nan")] * num_tasks
 
-    # Filter out empty targets
-    # valid_preds and valid_targets have shape (num_tasks, data_size)
     valid_preds = [[]] * num_tasks
     valid_targets = [[]] * num_tasks
 
@@ -56,7 +54,6 @@ def evaluate_predictions(
             valid_preds[j].append(preds[i][j])
             valid_targets[j].append(targets[i][j])
 
-    # Compute metric
     results = []
     for preds, targets in zip(valid_preds, valid_targets):
         # if all targets or preds are identical classification will crash
@@ -118,13 +115,6 @@ def evaluate(
         preds = preds[0]
 
     targets = list(chain(*[dataset.targets() for dataset in data_loader]))
-    results = evaluate_predictions(
-        preds=preds,
-        targets=targets,
-        num_tasks=num_tasks,
-        metric_func=metric_func,
-        dataset_type=dataset_type,
-        logger=logger,
-    )
+    results = evaluate_predictions(preds, targets, num_tasks, metric_func, dataset_type, logger)
 
     return results

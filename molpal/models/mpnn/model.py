@@ -9,6 +9,7 @@ from molpal.models.chemprop.nn_utils import get_activation_function, initialize_
 from molpal.models.chemprop.utils import UncertaintyType
 
 
+
 class EvaluationDropout(nn.Dropout):
     def forward(self, input):
         return nn.functional.dropout(input, p=self.p)
@@ -65,23 +66,18 @@ class MoleculeModel(nn.Module):
         self.output_size = num_tasks
 
         self.encoder = self.build_encoder(
-            atom_messages=atom_messages,
-            hidden_size=hidden_size,
-            bias=bias,
-            depth=depth,
-            dropout=dropout,
-            undirected=undirected,
-            aggregation=aggregation,
-            aggregation_norm=aggregation_norm,
-            activation=activation,
+            atom_messages,
+            bias,
+            hidden_size,
+            depth,
+            dropout,
+            undirected,
+            aggregation,
+            aggregation_norm,
+            activation,
         )
         self.ffn = self.build_ffn(
-            output_size=num_tasks,
-            hidden_size=hidden_size,
-            dropout=dropout,
-            activation=activation,
-            ffn_num_layers=ffn_num_layers,
-            ffn_hidden_size=ffn_hidden_size,
+            num_tasks, hidden_size, dropout, activation, ffn_num_layers, ffn_hidden_size
         )
 
         initialize_weights(self)
@@ -166,7 +162,6 @@ class MoleculeModel(nn.Module):
             z = torch.clone(z)
             z[:, 1::2] = capped_vars
 
-        # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
         if self.classification and not self.training:
             z = self.sigmoid(z)
 

@@ -1,5 +1,5 @@
-"""This module contains the Explorer class, which is an abstraction
-for batch Bayesian optimization."""
+"""This module contains the Explorer class, which is an abstraction for batch Bayesian
+optimization."""
 from collections.abc import Iterable
 import csv
 import heapq
@@ -25,70 +25,64 @@ class Explorer:
     pool : MoleculePool
         the pool of inputs to explore
     featurizer : Featurizer
-        the featurizer this explorer will use convert molecules from SMILES
-        strings into feature representations
+        the featurizer this explorer will use convert molecules from SMILES strings into feature 
+        representations
     acquirer : Acquirer
-        an acquirer which selects molecules to explore next using a prior
-        distribution over the inputs
+        an acquirer which selects molecules to explore next using a prior distribution over the 
+        inputs
     objective : Objective
         an objective calculates the objective function of a set of inputs
     model : Model
-        a model that generates a posterior distribution over the inputs using
-        observed data
+        a model that generates a posterior distribution over the inputs using observed data
     retrain_from_scratch : bool
-        whether the model will be retrained from scratch at each iteration.
-        If False, train the model online.
-        NOTE: The definition of 'online' is model-specific.
+        whether the model will be retrained from scratch at each iteration. If False, train the 
+        model online. NOTE: The definition of 'online' is model-specific.
     iter : int
-        the current iteration of exploration. I.e., the loop iteration the
-        explorer has yet to start. This means that the current predictions will
-        be the ones used in the previous iteration (because they have yet to be
-        updated for the current iteration)
+        the current iteration of exploration. I.e., the loop iteration the explorer has yet to
+        start. This means that the current predictions will be the ones used in the previous
+        iteration (because they have yet to be updated for the current iteration)
     scores : Dict[T, float]
-        a dictionary mapping an input's identifier to its corresponding
-        objective function value
+        a dictionary mapping an input's identifier to its corresponding objective function value
     failed : Dict[T, None]
-        a dictionary containing the inputs for which the objective function
-        failed to evaluate
+        a dictionary containing the inputs for which the objective function failed to evaluate
     adjustment : int
-        the number of results that have been read from a file as
-        opposed to being actually calculated
+        the number of results that have been read from a file as opposed to being actually
+        calculated
     new_scores : Dict[T, float]
-        a dictionary mapping an input's identifier to its corresponding
-        objective function value for the most recent batch of labeled inputs
+        a dictionary mapping an input's identifier to its corresponding objective function value
+        for the most recent batch of labeled inputs
     updated_model : bool
         whether the predictions are currently out-of-date with the model
     top_k_avg : float
         the average of the top-k explored inputs
     Y_pred : np.ndarray
-        a list parallel to the pool containing the mean predicted score
-        for an input
+        a list parallel to the pool containing the mean predicted score for an input
     Y_var : np.ndarray
-        a list parallel to the pool containing the variance in the predicted
-        score for an input. Will be empty if model does not provide variance
+        a list parallel to the pool containing the variance in the predicted score for an input.
+        Will be empty if model does not provide variance
     recent_avgs : List[float]
         a list containing the recent top-k averages
     delta : float
-        the minimum acceptable fractional difference between the current
-        average and the moving average in order to continue exploration
+        the minimum acceptable fractional difference between the current average and the moving
+        average in order to continue exploration
     max_iters : int
         the maximum number of batches to explore
     window_size : int
         the number of recent averages from which to calculate a moving average
     write_final : bool
-        whether the list of explored inputs and their scores should be written
-        to a file at the end of exploration
+        whether the list of explored inputs and their scores should be written to a file at the end
+        of exploration
     write_intermediate : bool
-        whether the list of explored inputs and their scores should be written
-        to a file after each round of exploration
+        whether the list of explored inputs and their scores should be written to a file after each
+        round of exploration
     save_preds : bool
         whether the predictions should be written after each exploration batch
     verbose : int
         the level of output the Explorer prints
     config : str
-        the filepath of a configuration file containing the options necessary
-        to recreate this Explorer. NOTE: this does not necessarily ensure
-        reproducibility if a random seed was not set
+        the filepath of a configuration file containing the options necessary to recreate this
+        Explorer. NOTE: this does not necessarily ensure reproducibility if a random seed was not
+        set
 
     Parameters
     ----------
@@ -105,13 +99,12 @@ class Explorer:
     save_preds : bool, default=False
     retrain_from_scratch : bool, default=False
     previous_scores : Optional[str], default=None
-        the filepath of a CSV file containing previous scoring data which will
-        be treated as the initialization batch (instead of randomly selecting
-        from the bool.)
+        the filepath of a CSV file containing previous scoring data which will be treated as the
+        initialization batch (instead of randomly selecting from the bool.)
     verbose : int, default=0
     **kwargs
-        keyword arguments to initialize an Encoder, MoleculePool, Acquirer,
-        Model, and Objective classes
+        keyword arguments to initialize an Encoder, MoleculePool, Acquirer, Model, and Objective
+        classes
 
     Raises
     ------
@@ -290,14 +283,15 @@ class Explorer:
 
         Stopping Conditions
         -------------------
-        - explored for at least <max_iters> iters
-        - exceeded the maximum budget
-        - no unexplored inputs remaining in the pool
-        - the current top-k average is within a fraction <delta> of the moving
-           top-k average. This requires two sub-conditions to be met:
-           1. the explorer has successfully explored at least k inputs
-           2. the explorer has completed at least <window_size> iters after
-              sub-condition (1) has been met
+        a. explored the entire pool
+           (not implemented right now due to complications with warm starting)
+        b. explored for at least <max_iters> iters
+        c. exceeded the maximum budget
+        d. the current top-k average is within a fraction <delta> of the moving top-k average. This
+            requires two sub-conditions to be met:
+            1. the explorer has successfully explored at least k inputs
+            2. the explorer has completed at least <window_size> iters after
+                sub-condition (1) has been met
 
         Returns
         -------
@@ -505,7 +499,8 @@ class Explorer:
         Returns
         -------
         top_explored : List[Tuple[T, float]]
-            a list of the top-k points sorted by their objective values
+            a list of tuples containing the identifier and score of the
+            top-k inputs, sorted by their score
         """
         n = n or self.k
         if isinstance(n, float):
@@ -597,11 +592,10 @@ class Explorer:
         Parameter
         ---------
         previous_scores : str
-            the filepath of a CSV file containing previous scoring information.
-            The 0th column of this CSV must contain the input identifier and
-            the 1st column must contain a float corresponding to its score.
-            A failure to parse the 1st column as a float will treat that input
-            as a failure.
+            the filepath of a CSV file containing previous scoring information. The 0th column of 
+            this CSV must contain the input identifier and the 1st column must contain a float 
+            corresponding to its score. A failure to parse the 1st column as a float will treat 
+            that input as a failure.
         """
         if self.verbose > 0:
             print(f'Loading scores from "{previous_scores}" ... ', end="")
@@ -618,8 +612,8 @@ class Explorer:
             print("Done!")
 
     def checkpoint(self, path: Optional[str] = None) -> str:
-        """write a checkpoint file for the explorer's current state and return
-        the corresponding filepath
+        """write a checkpoint file for the explorer's current state and return the corresponding 
+        filepath
 
         Parameters
         ----------
@@ -724,8 +718,8 @@ class Explorer:
         self.model.train(
             xs,
             np.array(ys),
-            retrain=self.retrain_from_scratch,
             featurizer=self.featurizer,
+            retrain=self.retrain_from_scratch,
         )
         self.new_scores = {}
         self.updated_model = True
@@ -741,10 +735,10 @@ class Explorer:
             return
 
         self.Y_mean, self.Y_var = self.model.apply(
-            x_ids=self.pool.smis(),
-            x_feats=self.pool.fps(),
-            batched_size=None,
-            size=len(self.pool),
+            self.pool.smis(),
+            self.pool.fps(),
+            None,
+            len(self.pool),
             mean_only="vars" not in self.acquirer.needs,
         )
 

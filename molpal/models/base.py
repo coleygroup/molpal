@@ -149,9 +149,13 @@ class Model(ABC):
                 meanss.append(means)
                 variancess.append([])
         else:
+<<<<<<< HEAD
             for batch_xs in tqdm(
                 xs, total=n_batches, desc="Inference", smoothing=0.0, unit="chunk"
             ):
+=======
+            for batch_xs in tqdm(xs, total=n_batches, desc="Inference", smoothing=0.0, unit="smi"):
+>>>>>>> 05a5aa29ef43e65f654271b43730f8d9411aee92
                 means, variances = self.get_means_and_vars(batch_xs)
                 meanss.append(means)
                 variancess.append(variances)

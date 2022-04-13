@@ -1,5 +1,5 @@
-"""This module contains Model implementations that utilize the MPNN model as
-their underlying model"""
+"""This module contains Model implementations that utilize the MPNN model as their underlying
+model"""
 from functools import partial
 import json
 import logging
@@ -18,7 +18,6 @@ from tqdm import tqdm
 from molpal.models.chemprop.data.data import MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
 from molpal.models.chemprop.data.scaler import StandardScaler
 from molpal.models.chemprop.data.utils import split_data
-
 from molpal.models.base import Model
 from molpal.models import mpnn
 from molpal.utils import batches
@@ -108,7 +107,7 @@ class MPNN:
         self.ncpu = ncpu
         self.ddp = ddp
         if precision not in (16, 32):
-            raise ValueError(f'arg: "precision" can only be (16, 32). got: {precision}')
+            raise ValueError(f'arg: "precision" can only be (16, 32)! got: {precision}')
         self.precision = precision
 
         self.model = mpnn.MoleculeModel(
@@ -207,7 +206,7 @@ class MPNN:
         return True
 
     def make_datasets(
-        self, xs: Iterable[str], ys: Sequence[float]
+        self, xs: Iterable[str], ys: np.ndarray
     ) -> Tuple[MoleculeDataset, MoleculeDataset]:
         """Split xs and ys into train and validation datasets"""
         if len(ys.shape) == 1:
@@ -218,7 +217,6 @@ class MPNN:
             data = MoleculeDataset(
                 [MoleculeDatapoint(smiles=[x], targets=y) for x, y in zip(xs, ys)]
             )
-
         train_data, val_data, _ = split_data(data, sizes=(0.8, 0.2, 0.0), seed=self.seed)
 
         self.scaler = train_data.normalize_targets()
@@ -255,7 +253,6 @@ class MPNN:
             for smis in batches(smis, 20000)
         ]
         preds_chunks = [ray.get(r) for r in tqdm(refs, "Prediction", unit="chunk", leave=False)]
-
         return np.concatenate(preds_chunks)
 
     def save(self, path) -> str:
@@ -283,9 +280,6 @@ class MPNN:
 
         self.model.load_state_dict(torch.load(state["model_path"]))
         try:
-            self.scaler.means = state["means"]
-            self.scaler.stds = state["stds"]
-        except AttributeError:
             self.scaler = StandardScaler(state["means"], state["stds"])
         except KeyError:
             pass
@@ -311,7 +305,7 @@ class MPNModel(Model):
         )
         self.model = self.build_model()
 
-        super().__init__(test_batch_size=test_batch_size, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def provides(self):
@@ -373,7 +367,7 @@ class MPNDropoutModel(Model):
 
         self.dropout_size = dropout_size
 
-        super().__init__(test_batch_size=test_batch_size, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def type_(self):
@@ -413,8 +407,8 @@ class MPNDropoutModel(Model):
 
 
 class MPNTwoOutputModel(Model):
-    """Message-passing network model that predicts means and variances
-    through mean-variance estimation"""
+    """Message-passing network model that predicts means and variances through mean-variance
+    estimation"""
 
     def __init__(
         self,
@@ -432,7 +426,7 @@ class MPNTwoOutputModel(Model):
         )
         self.model = self.build_model()
 
-        super().__init__(test_batch_size=test_batch_size, **kwargs)
+        super().__init__(test_batch_size, **kwargs)
 
     @property
     def type_(self):

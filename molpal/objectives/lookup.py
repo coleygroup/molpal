@@ -87,10 +87,4 @@ def parse_config(config: str):
     parser.add_argument("--score-col", type=int, default=1)
 
     args = parser.parse_args(config)
-    return (
-        args.path,
-        args.sep,
-        not args.no_title_line,
-        args.smiles_col,
-        args.score_col,
-    )
+    return (args.path, args.sep, not args.no_title_line, args.smiles_col, args.score_col)
