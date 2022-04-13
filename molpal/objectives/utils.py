@@ -2,15 +2,17 @@ from itertools import chain, product
 from pathlib import Path
 import tempfile
 from typing import List, Tuple, TypeVar
-T = TypeVar('T')
-U = TypeVar('U')
+
+T = TypeVar("T")
+U = TypeVar("U")
+
 
 def get_temp_file():
     p_tmp = Path(tempfile.gettempdir()) / next(tempfile._get_candidate_names())
     return str(p_tmp)
 
-def distribute_and_flatten(
-        xs_yss: List[Tuple[T, List[U]]]) -> List[Tuple[T, U]]:
+
+def distribute_and_flatten(xs_yss: List[Tuple[T, List[U]]]) -> List[Tuple[T, U]]:
     """Distribute x over a list ys for each item in a list of 2-tuples and
     flatten the resulting lists.
 
