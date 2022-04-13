@@ -4,6 +4,7 @@ import numpy as np
 
 from molpal.models import Model
 
+
 class RandomModel(Model):
     """A baseline model that returns values at random
 
@@ -11,12 +12,13 @@ class RandomModel(Model):
     ----------
     rg : np.random.Generator
         the model's random number generator
-    
+
     Parameters
     ----------
     seed : Optional[int], default=None
         the seed for the random number generator
     """
+
     def __init__(self, seed: Optional[int] = None, **kwargs):
         self.rg = np.random.default_rng(seed)
 
@@ -24,11 +26,11 @@ class RandomModel(Model):
 
     @property
     def provides(self):
-        return {'means', 'vars'}
+        return {"means", "vars"}
 
     @property
     def type_(self):
-        return 'random'
+        return "random"
 
     def train(self, *args, **kwargs):
         return True
