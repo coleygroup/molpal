@@ -4,10 +4,9 @@ import csv
 from typing import Dict, Iterable, Optional
 
 import numpy as np
+import pyscreener as ps
 
 from molpal.objectives.base import Objective
-
-import pyscreener as ps
 
 
 class DockingObjective(Objective):
@@ -18,7 +17,7 @@ class DockingObjective(Objective):
     ----------
     c : int
         the min/maximization constant, depending on the objective
-    virtual_screen : pyscreener.docking.VirtualScreen
+    virtual_screen : pyscreener.docking.DockingVirtualScreen
         the VirtualScreen object that calculated docking scores of molecules against a given
         receptor with specfied docking parameters
 
@@ -44,7 +43,6 @@ class DockingObjective(Objective):
         minimize: bool = True,
         **kwargs,
     ):
-
         args = ps.args.gen_args(f"--config {objective_config}")
 
         metadata_template = ps.build_metadata(args.screen_type, args.metadata_template)
@@ -61,9 +59,7 @@ class DockingObjective(Objective):
             args.base_name,
             path,
             args.score_mode,
-            args.repeat_score_mode,
             args.ensemble_score_mode,
-            args.repeats,
             args.k,
             verbose,
         )
