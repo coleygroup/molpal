@@ -1,5 +1,5 @@
-"""This module contains functions for calculating the acquisition score of an
-input based on various metrics"""
+"""This module contains functions for calculating the acquisition score of an input based on 
+various metrics"""
 from typing import Callable, Optional, Set
 
 import numpy as np
