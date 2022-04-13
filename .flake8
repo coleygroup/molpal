@@ -4,13 +4,8 @@ max-line-length = 100
 max-complexity = 18
 per-file-ignores =
     __init__.py: F401
-<<<<<<< HEAD
     main.py: W605
 exclude = 
-    test
-=======
-exclude = 
     tests
->>>>>>> 05a5aa29ef43e65f654271b43730f8d9411aee92
     scripts
     build

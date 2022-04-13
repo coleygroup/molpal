@@ -61,7 +61,7 @@ class LazyMoleculePool(MoleculePool):
     def _cluster_mols(self, *args, **kwargs) -> None:
         """A LazyMoleculePool can't cluster molecules
 
-        Doing so would require precalculating all uncompressed representations, which is what a 
+        Doing so would require precalculating all uncompressed representations, which is what a
         LazyMoleculePool is designed to avoid. If clustering is desired, use the base
         (Eager)MoleculePool
         """

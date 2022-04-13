@@ -4,7 +4,6 @@ from collections.abc import Iterable
 import csv
 import heapq
 import json
-from operator import itemgetter
 from pathlib import Path
 import pickle
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
@@ -25,17 +24,17 @@ class Explorer:
     pool : MoleculePool
         the pool of inputs to explore
     featurizer : Featurizer
-        the featurizer this explorer will use convert molecules from SMILES strings into feature 
+        the featurizer this explorer will use convert molecules from SMILES strings into feature
         representations
     acquirer : Acquirer
-        an acquirer which selects molecules to explore next using a prior distribution over the 
+        an acquirer which selects molecules to explore next using a prior distribution over the
         inputs
     objective : Objective
         an objective calculates the objective function of a set of inputs
     model : Model
         a model that generates a posterior distribution over the inputs using observed data
     retrain_from_scratch : bool
-        whether the model will be retrained from scratch at each iteration. If False, train the 
+        whether the model will be retrained from scratch at each iteration. If False, train the
         model online. NOTE: The definition of 'online' is model-specific.
     iter : int
         the current iteration of exploration. I.e., the loop iteration the explorer has yet to
@@ -138,9 +137,7 @@ class Explorer:
         self.verbose = kwargs.get("verbose", 0)
 
         self.featurizer = featurizer.Featurizer(
-            kwargs["fingerprint"],
-            kwargs["radius"],
-            kwargs["length"],
+            kwargs["fingerprint"], kwargs["radius"], kwargs["length"]
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
         self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
@@ -334,8 +331,8 @@ class Explorer:
             f"FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | "
             f"FINAL BUDGET: {len(self)}/{self.budget}."
         )
-        print(f"Final averages")
-        print(f"--------------")
+        print("Final averages")
+        print("--------------")
         for k in [0.0001, 0.0005, 0.001, 0.005]:
             print(f"TOP-{k:0.2%}: {self.avg(k):0.3f}")
 
@@ -353,9 +350,7 @@ class Explorer:
             to each input failing or no inputs being acquired
         """
         inputs = self.acquirer.acquire_initial(
-            self.pool.smis(),
-            self.pool.cluster_ids(),
-            self.pool.cluster_sizes,
+            self.pool.smis(), self.pool.cluster_ids(), self.pool.cluster_sizes
         )
         self.exhausted_pool = len(inputs) == 0
 
@@ -569,7 +564,7 @@ class Explorer:
         p_data.mkdir(parents=True, exist_ok=True)
 
         if final:
-            p_scores = p_data / f"all_explored_final.csv"
+            p_scores = p_data / "all_explored_final.csv"
             points = self.top_explored(n)
         else:
             p_scores = p_data / f"top_{n}_explored_iter_{self.iter}.csv"
@@ -592,9 +587,9 @@ class Explorer:
         Parameter
         ---------
         previous_scores : str
-            the filepath of a CSV file containing previous scoring information. The 0th column of 
-            this CSV must contain the input identifier and the 1st column must contain a float 
-            corresponding to its score. A failure to parse the 1st column as a float will treat 
+            the filepath of a CSV file containing previous scoring information. The 0th column of
+            this CSV must contain the input identifier and the 1st column must contain a float
+            corresponding to its score. A failure to parse the 1st column as a float will treat
             that input as a failure.
         """
         if self.verbose > 0:
@@ -612,7 +607,7 @@ class Explorer:
             print("Done!")
 
     def checkpoint(self, path: Optional[str] = None) -> str:
-        """write a checkpoint file for the explorer's current state and return the corresponding 
+        """write a checkpoint file for the explorer's current state and return the corresponding
         filepath
 
         Parameters
@@ -661,7 +656,7 @@ class Explorer:
         """Load in the state of a previous Explorer's checkpoint"""
 
         if self.verbose > 0:
-            print(f"Loading in previous state ... ", end="")
+            print("Loading in previous state ... ", end="")
 
         state = json.load(open(chkpt_file))
 
@@ -694,7 +689,7 @@ class Explorer:
         config_file = self.path / "config.ini"
         with open(config_file, "w") as fid:
             for k, v in args.items():
-                if v is None or v == False:
+                if v is None or v is False:
                     continue
                 if isinstance(v, Iterable) and not isinstance(v, str):
                     v = map(str, v)
@@ -716,10 +711,7 @@ class Explorer:
         xs, ys = zip(*[(x, y) for x, y in xs_ys if y is not None])
 
         self.model.train(
-            xs,
-            np.array(ys),
-            featurizer=self.featurizer,
-            retrain=self.retrain_from_scratch,
+            xs, np.array(ys), featurizer=self.featurizer, retrain=self.retrain_from_scratch
         )
         self.new_scores = {}
         self.updated_model = True
@@ -728,10 +720,7 @@ class Explorer:
         """Update the predictions over the pool with the new model"""
         if not self.updated_model and self.Y_mean.size > 0:
             if self.verbose > 1:
-                print(
-                    "Model has not been updated since the last time ",
-                    "predictions were set. Skipping update!",
-                )
+                print("Model hasn't been updated since previous prediction update! Skipping...")
             return
 
         self.Y_mean, self.Y_var = self.model.apply(
@@ -764,7 +753,7 @@ class Explorer:
                 k = row[0]
                 try:
                     v = float(row[1])
-                except:
+                except ValueError:
                     v = None
                 scores[k] = v
 

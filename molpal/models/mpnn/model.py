@@ -9,7 +9,6 @@ from molpal.models.chemprop.nn_utils import get_activation_function, initialize_
 from molpal.models.chemprop.utils import UncertaintyType
 
 
-
 class EvaluationDropout(nn.Dropout):
     def forward(self, input):
         return nn.functional.dropout(input, p=self.p)

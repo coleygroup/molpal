@@ -1,6 +1,5 @@
 import csv
 from collections import Counter
-from enum import auto
 from functools import partial
 import gzip
 from itertools import islice, repeat
@@ -569,10 +568,7 @@ class MoleculePool(Sequence):
 
     @staticmethod
     def prune_prob(
-        threshold: float,
-        Y_mean: np.ndarray,
-        Y_var: np.ndarray,
-        p_min: float = 0.025,
+        threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, p_min: float = 0.025
     ) -> np.ndarray:
         """Prune all predictions with a probabilty less than min_hit_prob of being above a given
         threshold

@@ -1,5 +1,5 @@
-"""A featurizer transforms input representations into uncompressed feature 
-representations for use with clustering and model training/prediction."""
+"""A featurizer transforms input representations into uncompressed feature representations for use
+with clustering and model training/prediction."""
 from dataclasses import dataclass
 from itertools import chain
 import math
