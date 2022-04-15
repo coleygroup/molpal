@@ -21,7 +21,7 @@ from molpal.models.chemprop.data.data import (
 from molpal.models.chemprop.data.scaler import StandardScaler
 from molpal.models.chemprop.data.utils import split_data
 
-from molpal.models.base import Model
+from molpal.models.base import SingleTaskModel as Model
 from molpal.models import mpnn
 from molpal.utils import batches
 
