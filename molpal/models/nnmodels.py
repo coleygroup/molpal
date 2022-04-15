@@ -19,7 +19,7 @@ import tensorflow_addons as tfa
 from tensorflow import keras
 
 from molpal.featurizer import Featurizer, feature_matrix
-from molpal.models.base import Model
+from molpal.models.base import SingleTaskModel as Model
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
@@ -180,14 +180,14 @@ class NN:
 
         self.model.fit(
             X, Y, batch_size=self.batch_size, validation_split=0.2,
-            epochs=50, validation_freq=2, verbose=0,
-            callbacks=[
-                keras.callbacks.EarlyStopping(
-                    monitor='val_loss', patience=5,
-                    restore_best_weights=True, verbose=0
-                ),
-                tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
-            ]
+            epochs=50, validation_freq=2, verbose=0 #,
+            #callbacks=[
+            #    keras.callbacks.EarlyStopping(
+            #        monitor='val_loss', patience=5,
+            #        restore_best_weights=True, verbose=0
+            #    ),
+            #    tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
+            #]
         )
 
         return True
