@@ -58,8 +58,8 @@ class DockingObjective(Objective):
             args.ncpu,
             args.base_name,
             path,
-            args.score_mode,
-            args.ensemble_score_mode,
+            args.reduction,
+            args.receptor_reduction,
             args.k,
             verbose,
         )
@@ -90,7 +90,7 @@ class DockingObjective(Objective):
         return dict(zip(smis, Y))
 
     def cleanup(self):
-        results = self.virtual_screen.all_results()
+        results = self.virtual_screen.results()
         self.virtual_screen.collect_files()
 
         with open(self.virtual_screen.path / "extended.csv", "w") as fid:
