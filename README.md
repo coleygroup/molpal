@@ -4,7 +4,7 @@
 ![overview of molpal structure and implementation](molpal_overview.png)
 
 ## Overview
-This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://pubs.rsc.org/en/content/articlelanding/2021/sc/d0sc06805e).
+This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://pubs.rsc.org/en/content/articlelanding/2021/sc/d0sc06805e). The original code used in that paper lives at the [`publication`](https://github.com/coleygroup/molpal/releases/tag/publication) tag. This repository also contains the updated code used in the paper "Self-focusing virtual screening with active design space pruning," the code for which lives at the [`dsp-pub`](https://github.com/coleygroup/molpal/releases/tag/dsp-pub) tag
 
 ## Table of Contents
 - [Overview](#overview)
