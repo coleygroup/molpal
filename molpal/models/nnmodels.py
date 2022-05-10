@@ -144,10 +144,10 @@ class NN:
         model = keras.Model(inputs, outputs)
 
         if uncertainty not in {'mve'}:
-            optimizer = keras.optimizers.Adam(lr=0.01)
+            optimizer = keras.optimizers.Adam(learning_rate=0.01)
             loss = keras.losses.mse
         elif uncertainty == 'mve':
-            optimizer = keras.optimizers.Adam(lr=0.05)
+            optimizer = keras.optimizers.Adam(learning_rate=0.05)
             loss = mve_loss
         else:
             raise ValueError(
