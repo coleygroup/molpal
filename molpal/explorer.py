@@ -1,15 +1,16 @@
 """This module contains the Explorer class, which is an abstraction for batch Bayesian
 optimization."""
-from collections.abc import Iterable
 import csv
 import heapq
 import json
+import pickle
+from collections.abc import Iterable
 from operator import itemgetter
 from pathlib import Path
-import pickle
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
+from molpal.objectives import glide_docking
 
 from molpal import acquirer, featurizer, models, objectives, pools
 
@@ -126,6 +127,7 @@ class Explorer:
         checkpoint_file: Optional[str] = None,
         retrain_from_scratch: bool = False,
         previous_scores: Optional[str] = None,
+        is_glide: bool = False,
         **kwargs,
     ):
         args = locals()
@@ -145,8 +147,8 @@ class Explorer:
         self.model = models.model(input_size=len(self.featurizer), **kwargs)
         self.acquirer.stochastic_preds = "stochastic" in self.model.provides
         self.retrain_from_scratch = retrain_from_scratch
-
-        self.objective = objectives.objective(**kwargs)
+        if not is_glide:
+            self.objective = objectives.objective(**kwargs)
 
         self._validate_acquirer()
 
@@ -186,6 +188,11 @@ class Explorer:
 
         if checkpoint_file:
             self.load(checkpoint_file)
+        # glide
+        if is_glide:
+            self.is_glide = is_glide
+            self.glide_GRIDFILE = kwargs["glide_GRIDFILE"]
+        #self.glide = glide_docking.glide()
 
     def __len__(self) -> int:
         """The total expended budget expressed in terms of the number of
@@ -353,8 +360,10 @@ class Explorer:
             cluster_ids=self.pool.cluster_ids(),
             cluster_sizes=self.pool.cluster_sizes,
         )
-
-        new_scores = self.objective(inputs)
+        if self.is_glide:           
+            new_scores = glide_docking.glide(smis=inputs,receptor_file=self.glide_GRIDFILE,iter=self.iter)
+        else:
+            new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
@@ -405,8 +414,10 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes,
             t=(self.iter - 1),
         )
-
-        new_scores = self.objective(inputs)
+        if self.is_glide:
+            new_scores = glide_docking.glide(smis=inputs,receptor_file=self.glide_GRIDFILE,iter=self.iter)
+        else:
+            new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
         if len(self.scores) >= self.k:

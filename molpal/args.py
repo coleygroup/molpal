@@ -1,5 +1,6 @@
-from configargparse import ArgumentTypeError, ArgumentParser, Namespace
 from typing import Optional, Union
+
+from configargparse import ArgumentParser, ArgumentTypeError, Namespace
 
 
 def gen_args(args: Optional[str] = None) -> Namespace:
@@ -12,6 +13,7 @@ def gen_args(args: Optional[str] = None) -> Namespace:
     add_objective_args(parser)
     add_model_args(parser)
     add_stopping_args(parser)
+    add_glide_args(parser)
 
     args = parser.parse_args(args)
 
@@ -411,3 +413,18 @@ def restricted_float(arg: str) -> float:
 
 def optional_int(arg: str):
     pass
+
+
+##############################
+#      GLIDE                 #
+##############################
+
+def add_glide_args(parser: ArgumentParser) -> None:
+    parser.add_argument(
+        "--glide_GRIDFILE", help="the  receptor filepath")
+    parser.add_argument(
+        "--is_glide",
+        action="store_true",
+        default=False,
+        help="to do a glide docking",
+    )
