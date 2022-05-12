@@ -20,7 +20,7 @@ NUM_STEREOISOMERS   1'''
 def smi2csv(smi,iter):
     df = pd.DataFrame({'smiles':smi,'title':smi})
     filename = "input_smiles_iter_{}.csv".format(iter)
-    df.to_csv('{}.csv'.format(filename),index=None)
+    df.to_csv(filename,index=None)
     return filename
 
 
@@ -30,7 +30,7 @@ def ligperp(ligand_filename,iter):
     com = 'ligprep -inp {} -HOST localhost:96 -NJOBS 96 -TMPLAUNCHDIR -WAIT'.format(config_file)
     with open(config_file,'w') as f:
         config = ligperp_inp.split('\n')
-        config[0] = 'INPUT_FILE_NAME   {}.csv'.format(ligand_filename)
+        config[0] = 'INPUT_FILE_NAME   {}'.format(ligand_filename)
         config[1] = 'OUT_SD   {}'.format(outname)
         config = ['{}\n'.format(i) for i in config]
         f.writelines(config)
