@@ -191,7 +191,7 @@ class Explorer:
         # glide
         if is_glide:
             self.is_glide = is_glide
-            self.glide_GRIDFILE = kwargs["glide_GRIDFILE"]
+            self.glide_config = kwargs["glide_config"]
         #self.glide = glide_docking.glide()
 
     def __len__(self) -> int:
@@ -361,7 +361,7 @@ class Explorer:
             cluster_sizes=self.pool.cluster_sizes,
         )
         if self.is_glide:           
-            new_scores = glide_docking.glide(smis=inputs,receptor_file=self.glide_GRIDFILE,iter=self.iter)
+            new_scores = glide_docking.glide(smis=inputs,glide_config=self.glide_config,iter=self.iter)
         else:
             new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
@@ -415,7 +415,7 @@ class Explorer:
             t=(self.iter - 1),
         )
         if self.is_glide:
-            new_scores = glide_docking.glide(smis=inputs,receptor_file=self.glide_GRIDFILE,iter=self.iter)
+            new_scores = glide_docking.glide(smis=inputs,glide_config=self.glide_config,iter=self.iter)
         else:
             new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)

@@ -421,7 +421,7 @@ def optional_int(arg: str):
 
 def add_glide_args(parser: ArgumentParser) -> None:
     parser.add_argument(
-        "--glide_GRIDFILE", help="the  receptor filepath")
+        "--glide_config", help="the  receptor filepath")
     parser.add_argument(
         "--is_glide",
         action="store_true",

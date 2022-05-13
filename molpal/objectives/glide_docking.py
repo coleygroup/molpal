@@ -37,28 +37,16 @@ def ligperp(ligand_filename,iter):
     subprocess.run(com,shell=True)
     return outname
 
-glide_docking_inp='''GRIDFILE   ???
-LIGANDFILE   ???
-CANONICALIZE   False
-EXPANDED_SAMPLING   True
-FORCEFIELD   OPLS_2005
-POSE_OUTTYPE   ligandlib_sd
-POSTDOCK_NPOSE   100
-POSTDOCKSTRAIN   True
-PRECISION   SP
-WRITE_CSV True
-'''
 
-
-def _glide_docking(receptor_file,ligand_file,iter):
+def _glide_docking(config_file,ligand_file,iter):
     jobname = "glide_docking_iter_{}".format(iter)
-    config_file = "glide_docking_config_iter_{}.in".format(iter)
+    #config_file = "glide_docking_config_iter_{}.in".format(iter)
     com = "glide {} -OVERWRITE -adjust -HOST localhost:96 -TMPLAUNCHDIR -WAIT -JOBNAME {}".format(config_file,jobname)
+    with open(config_file,'r') as f:
+        config = f.readlines()
+        config[1] = 'LIGANDFILE   {}\n'.format(ligand_file)
+        #config = ['{}\n'.format(i) for i in config]
     with open(config_file,'w') as f:
-        config = glide_docking_inp.split('\n')
-        config[0] = 'GRIDFILE   {}'.format(receptor_file)
-        config[1] = 'LIGANDFILE   {}'.format(ligand_file)
-        config = ['{}\n'.format(i) for i in config]
         f.writelines(config)
     subprocess.run(com,shell=True)
     return jobname
@@ -66,16 +54,19 @@ def _glide_docking(receptor_file,ligand_file,iter):
 def process_docking_result(fliename,c=-1):
     df = pd.read_csv(fliename)
     df = df[['title','r_i_docking_score']]
-    df1 = df.iloc[:,1]
-    df1*=c
-    new_scores = df.set_index('title').T.to_dict('records')[0]
+    df = df.groupby('title').agg('min')
+    df.dropna(inplace=True)
+    df*=c
+    #df1 = df.iloc[:,1]
+    new_scores = df.T.to_dict('records')[0]
+    #new_scores = df.set_index('title').T.to_dict('records')[0]
     assert len(new_scores) == df.shape[0]
     return new_scores
 
-def glide(smis,receptor_file,iter):
+def glide(smis,glide_config,iter):
     smis_filename = smi2csv(smis,iter=iter)
     prepared_ligand_filename = ligperp(ligand_filename=smis_filename,iter=iter)
-    jobname = _glide_docking(receptor_file=receptor_file,ligand_file=prepared_ligand_filename,iter=iter)
+    jobname = _glide_docking(config_file=glide_config,ligand_file=prepared_ligand_filename,iter=iter)
     results = process_docking_result("{}.csv".format(jobname))
     return results
 
