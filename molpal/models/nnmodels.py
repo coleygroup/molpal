@@ -194,7 +194,7 @@ class NN:
 
     def predict(self, xs: Sequence[ndarray]) -> ndarray:
         X = np.stack(xs, axis=0)
-        Y_pred = self.model.predict(X)
+        Y_pred = self.model.predict(X,verbose=0)
 
         if self.uncertainty == 'mve':
             Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.std + self.mean
