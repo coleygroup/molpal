@@ -1,4 +1,4 @@
-name: molpal
+name: molpalmoo
 
 channels:
   - conda-forge
@@ -23,3 +23,5 @@ dependencies:
     - tensorflow
     - tensorflow-addons
     - tqdm
+    - pygmo
+    - imageio
