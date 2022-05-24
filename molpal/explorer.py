@@ -189,8 +189,8 @@ class Explorer:
         if checkpoint_file:
             self.load(checkpoint_file)
         # glide
+        self.is_glide = is_glide
         if is_glide:
-            self.is_glide = is_glide
             self.glide_config = kwargs["glide_config"]
         #self.glide = glide_docking.glide()
 

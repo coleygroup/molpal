@@ -10,12 +10,11 @@ ligperp_inp = '''INPUT_FILE_NAME   ???.csv
 OUT_SD   ???.sdf
 MAX_ATOMS   500
 FORCE_FIELD   16
-IONIZATION   0
-USE_DESALTER   no
-GENERATE_TAUTOMERS   no
+EPIK   yes
 DETERMINE_CHIRALITIES   no
 IGNORE_CHIRALITIES   no
-NUM_STEREOISOMERS   1'''
+NUM_STEREOISOMERS   32'''
+
 
 def smi2csv(smi,iter):
     df = pd.DataFrame({'smiles':smi,'title':smi})
