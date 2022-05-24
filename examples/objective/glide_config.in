@@ -1,0 +1,5 @@
+GRIDFILE   receptor
+LIGANDFILE   ligandflie # keep in this row
+CANONICALIZE   False
+PRECISION   SP
+WRITE_CSV True #must
