@@ -150,7 +150,7 @@ class SingleTaskModel(ABC):
     def apply(
         self, x_ids: Iterable[T], x_feats: Iterable[T_feat],
         batched_size: Optional[int] = None,
-        size: Optional[int] = None, mean_only: bool = True, disable: bool = True 
+        size: Optional[int] = None, mean_only: bool = True, disable: bool = False 
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Apply the model to the inputs
 
@@ -204,7 +204,7 @@ class SingleTaskModel(ABC):
         else:
             for batch_xs in tqdm(
                 xs, total=n_batches, desc='Inference', smoothing=0.,
-                unit='smi', unit_scale=batched_size
+                unit='smi', unit_scale=batched_size, disable=disable
             ):
                 means, variances = self.get_means_and_vars(batch_xs)
                 meanss.append(means)

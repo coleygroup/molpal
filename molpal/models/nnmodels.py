@@ -144,7 +144,8 @@ class NN:
         model = keras.Model(inputs, outputs)
 
         if uncertainty not in {'mve'}:
-            optimizer = keras.optimizers.Adam(learning_rate=0.01)
+            # optimizer = keras.optimizers.Adam(learning_rate=0.01)
+            optimizer = keras.optimizers.Adam(learning_rate=0.001)
             loss = keras.losses.mse
         elif uncertainty == 'mve':
             optimizer = keras.optimizers.Adam(learning_rate=0.05)
@@ -179,15 +180,15 @@ class NN:
         Y = self._normalize(ys)
 
         self.model.fit(
-            X, Y, batch_size=self.batch_size, validation_split=0.2,
-            epochs=50, validation_freq=2, verbose=0 #,
-            #callbacks=[
+            X, Y, batch_size=self.batch_size, validation_split=0.1,
+            epochs=100, validation_freq=2, verbose=0,
+            # callbacks=[
             #    keras.callbacks.EarlyStopping(
-            #        monitor='val_loss', patience=5,
-            #        restore_best_weights=True, verbose=0
+            #        monitor='val_loss', patience=10,
+            #        restore_best_weights=True, verbose=0, mode='min'
             #    ),
             #    tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
-            #]
+            # ]
         )
 
         return True

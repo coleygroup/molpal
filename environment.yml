@@ -1,4 +1,4 @@
-name: molpalmoo
+name: env_cuda11
 
 channels:
   - conda-forge
@@ -6,8 +6,8 @@ channels:
 
 dependencies:
   # uncomment the corresponding line for your specific CUDA version
-  # - nvidia::cudatoolkit # for cuda >= 11
-  - pytorch::cudatoolkit # for cuda < 11
+  - nvidia::cudatoolkit # for cuda >= 11
+  # - pytorch::cudatoolkit # for cuda < 11
   # - pytorch::cpuonly
   - python=3.8
   - pytorch::pytorch
@@ -25,3 +25,4 @@ dependencies:
     - tqdm
     - pygmo
     - imageio
+    - ipykernel

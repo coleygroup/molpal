@@ -21,7 +21,7 @@ from molpal.utils import batches
 
 @dataclass
 class Featurizer:
-    fingerprint: str = "pair"
+    fingerprint: str = "morgan"
     radius: int = 2
     length: int = 2048
 
