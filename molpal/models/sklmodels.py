@@ -7,6 +7,7 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple, TypeVar
 
 import joblib
 import numpy as np
+import ray
 from ray.util.joblib import register_ray
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
@@ -33,7 +34,7 @@ class RFModel(Model):
 
     Parameters
     ----------
-    test_batch_size : Optional[int] (Default = 65536)
+    test_batch_size : Optional[int], default=32768
         the size into which testing data should be batched
     """
 
@@ -42,11 +43,11 @@ class RFModel(Model):
         n_estimators: int = 100,
         max_depth: Optional[int] = 8,
         min_samples_leaf: int = 1,
-        test_batch_size: Optional[int] = 65536,
+        test_batch_size: Optional[int] = 32768,
         model_seed: Optional[int] = None,
         **kwargs,
     ):
-        test_batch_size = test_batch_size or 65536
+        test_batch_size = test_batch_size or 32768
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators,
@@ -94,13 +95,13 @@ class RFModel(Model):
 
     def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         X = np.vstack(xs)
-        preds = np.zeros((len(X), len(self.model.estimators_)))
 
-        with joblib.parallel_backend("ray"):
-            for j, submodel in enumerate(self.model.estimators_):
-                preds[:, j] = submodel.predict(xs)
+        X = ray.put(X)
+        trees = [ray.put(tree) for tree in self.model.estimators_]
+        refs = [RFModel.subtree_predict.remote(tree, X) for tree in trees]
+        predss = np.array(ray.get(refs))
 
-        return np.mean(preds, axis=1), np.var(preds, axis=1)
+        return np.mean(predss, 0), np.var(predss, 0)
 
     def save(self, path) -> str:
         path = Path(path)
@@ -113,6 +114,11 @@ class RFModel(Model):
 
     def load(self, path):
         self.model = pickle.load(open(path, "rb"))
+
+    @staticmethod
+    @ray.remote
+    def subtree_predict(tree, xs):
+        return tree.predict(xs)
 
 
 class GPModel(Model):

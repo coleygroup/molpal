@@ -4,6 +4,7 @@ training data."""
 
 from typing import Optional, Set
 
+import pytorch_lightning
 from molpal.models.base import Model
 
 

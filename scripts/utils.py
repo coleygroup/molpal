@@ -27,9 +27,13 @@ def extract_smis(library, smiles_col=0, title_line=True) -> List[str]:
 
     return smis
 
-def build_true_dict(true_csv, smiles_col: int = 0, score_col: int = 1,
-                    title_line: bool = True,
-                    maximize: bool = False) -> Dict[str, float]:
+def build_true_dict(
+    true_csv,
+    smiles_col: int = 0,
+    score_col: int = 1,
+    title_line: bool = True,
+    maximize: bool = False
+) -> Dict[str, float]:
     if Path(true_csv).suffix == '.gz':
         open_ = partial(gzip.open, mode='rt')
     else:

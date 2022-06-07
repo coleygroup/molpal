@@ -6,8 +6,9 @@ def gen_args(args: Optional[str] = None) -> Namespace:
     parser = ArgumentParser()
 
     add_general_args(parser)
-    add_encoder_args(parser)
+    add_featurizer_args(parser)
     add_pool_args(parser)
+    add_prune_args(parser)
     add_acquisition_args(parser)
     add_objective_args(parser)
     add_model_args(parser)
@@ -81,15 +82,15 @@ def add_general_args(parser: ArgumentParser) -> None:
     )
 
 
-#####################################
-#       ENCODER ARGUMENTS           #
-#####################################
-def add_encoder_args(parser: ArgumentParser) -> None:
+########################################
+#       FEATURIZER ARGUMENTS           #
+########################################
+def add_featurizer_args(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--fingerprint",
         default="pair",
         choices={"morgan", "rdkit", "pair", "maccs", "map4"},
-        help="the type of encoder to use",
+        help="the type of fingerprint to use",
     )
     parser.add_argument(
         "--radius", type=int, default=2, help="the radius or path length to use for fingerprints"
@@ -152,6 +153,14 @@ def add_pool_args(parser: ArgumentParser) -> None:
         nargs="*",
         help="the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings",
     )
+
+
+#################################
+#       PRUNING ARGUMENTS       #
+#################################
+def add_prune_args(parser):
+    parser.add_argument("--prune", action="store_true")
+    parser.add_argument("--prune-min-hit-prob", type=restricted_float)
 
 
 #####################################
@@ -381,6 +390,9 @@ def cleanup_args(args: Namespace):
     if args.model != "nn" and args.model != "mpn":
         args_to_remove |= {"conf_method"}
 
+    if not args.prune:
+        args_to_remove |= {"prune_min_hit_prob"}
+
     for arg in args_to_remove:
         delattr(args, arg)
 
@@ -407,7 +419,3 @@ def restricted_float(arg: str) -> float:
         raise ArgumentTypeError(f"{value} must be in [0,1]")
 
     return value
-
-
-def optional_int(arg: str):
-    pass

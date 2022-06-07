@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "main"
+      - "feature/library-pruning"
+  pull_request:
+    branches:
+      - "main"
+      - "feature/library-pruning"
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}, Python ${{ matrix.python-version }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.7, 3.8]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v1
+
+      - name: build info
+        shell: bash
+        run: |
+          uname -a
+          df -h
+          ulimit -a
+
+      - name: setup conda
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+          environment-file: ./.github/test-env.yaml
+          channels: conda-forge,defaults
+          activate-environment: test
+          auto-update-conda: false
+          auto-activate-base: false
+          show-channel-urls: true
+
+      - name: install package
+        shell: bash -l {0}
+        run: |
+          pip install . --no-deps
+          
+      - name: conda list
+        shell: bash -l {0}
+        run: conda list
+
+      - name: run tests
+        shell: bash -l {0}
+        run: |
+          pytest -v --color=yes

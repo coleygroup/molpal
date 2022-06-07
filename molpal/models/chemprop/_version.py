@@ -1,4 +1,4 @@
-__all__ = ['__version__']
+__all__ = ["__version__"]
 
 # major, minor, patch
 version_info = 1, 1, 0
@@ -7,4 +7,4 @@ version_info = 1, 1, 0
 suffix = None
 
 # version string
-__version__ = '.'.join(map(str, version_info)) + (f'.{suffix}' if suffix else '')
+__version__ = ".".join(map(str, version_info)) + (f".{suffix}" if suffix else "")

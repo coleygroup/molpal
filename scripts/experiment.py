@@ -1,16 +1,14 @@
 from collections import Counter
 import csv
 import heapq
-from itertools import islice
 from pathlib import Path
-import sys
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
+import warnings
+
 import numpy as np
 
-sys.path.append('../molpal')
-from molpal.acquirer import metrics
+Point = Tuple[str, Optional[float]]  # a Point is a SMILES string and associated score
 
-Point = Tuple[str, float]
 
 class Experiment:
     """An Experiment represents the output of a MolPAL run
@@ -18,53 +16,51 @@ class Experiment:
     It can be queried for the progress at a given iteration, the order in which
     points were acquired, and other conveniences
     """
-    def __init__(self, experiment: Union[Path, str],
-                 d_smi_idx: Optional[Dict] = None):
-        self.experiment = Path(experiment)
-        self.d_smi_idx = d_smi_idx
+
+    def __init__(self, path: Union[Path, str]):
+        self.path = Path(path)
+
+        chkpts_dir = self.path / "chkpts"
+        try:
+            self.chkpts = sorted(chkpts_dir.iterdir(), key=lambda p: int(p.stem.split("_")[1]))
+        except FileNotFoundError:
+            self.chkpts = None
+            warnings.warn("Experiment has no checkpoints!")
+
+        self.__size = None
+        self.__sizes = None
 
         try:
-            chkpts_dir = self.experiment / 'chkpts'
-            self.chkpts = sorted(
-                chkpts_dir.iterdir(), key=lambda p: int(p.stem.split('_')[-1])
-            )
-            config = Experiment.read_config(self.experiment / 'config.ini')
-            self.k = int(config['top-k'])
-            self.metric = config['metric']
-            self.beta = float(config.get('beta', 2.))
-            self.xi = float(config.get('xi', 0.001))
-
-            self.new_style = True
+            scores_csvs = [p for p in (self.path / "data").iterdir() if "final" not in p.stem]
+            self.scores_csvs = sorted(scores_csvs, key=lambda p: int(p.stem.split("_")[-1]))
         except FileNotFoundError:
-            self.new_style = False
-
-        data_dir = self.experiment / 'data'
-        final_csv = data_dir / 'all_explored_final.csv'
-        final_scores, final_failures = Experiment.read_scores(final_csv)
-        self.__size = len({**final_scores, **final_failures})
-
-        scores_csvs = [p for p in data_dir.iterdir() if 'final' not in p.stem]
-        self.scores_csvs = sorted(
-            scores_csvs, key=lambda p: int(p.stem.split('_')[-1])
-        )
+            self.scores_csvs = None
+            warnings.warn("Experiment has no score csvs!")
 
     def __len__(self) -> int:
-        """the total number of inputs sampled in this experiment"""
+        """the total number of inputs sampled in this experiment. Equal to -1 if the experiment is
+        incomplete"""
+        if self.__size is None:
+            try:
+                self.__size = (
+                    len((self.path / "data" / "all_explored_final.csv").read_text().splitlines())
+                    - 1
+                )
+            except FileNotFoundError:
+                warnings.warn("Experiment is incomplete!")
+                self.__size = -1
+
         return self.__size
 
-    def __getitem__(self, i: int) -> Dict:
-        """Get the score data for iteration i, where i=0 is the
-        initialization batch"""
-        scores, failures = Experiment.read_scores(self.scores_csvs[i])
+    def __getitem__(self, i: int) -> List[Point]:
+        """Get the score data for iteration i, where i=0 is the initialization batch"""
+        return Experiment.read_scores(self.scores_csvs[i])
 
-        return {**scores, **failures}
-    
-    def __iter__(self) -> Iterable[Dict]:
+    def __iter__(self) -> Iterator[List[Point]]:
         """iterate through all the score data at each iteration"""
         for scores_csv in self.scores_csvs:
-            scores, failures = Experiment.read_scores(scores_csv)
-            yield {**scores, **failures}
-    
+            yield Experiment.read_scores(scores_csv)
+
     @property
     def num_iters(self) -> int:
         """the total number of iterations in this experiment, including the
@@ -74,32 +70,43 @@ class Experiment:
     @property
     def init_size(self) -> int:
         """the size of this experiment's initialization batch"""
-        return len(self[0])
+        return self.__sizes[0]
 
-    def get(self, i: int, N: Optional[int] = None) -> Dict:
-        scores, failures = Experiment.read_scores(self.scores_csvs[i], N)
-        return {**scores, **failures}
+    @property
+    def num_acquired(self) -> List[int]:
+        """The total number of points acquired *by* iteration i, where i=0 is the
+        initialization batch"""
+        if self.__sizes is None:
+            self.__sizes = [len(p.read_text().splitlines()) - 1 for p in self.scores_csvs]
 
-    def new_points_by_epoch(self) -> List[Dict]:
-        """get the set of new points acquired at each iteration in the list of 
-        scores_csvs that are already sorted by iteration"""
-        new_points_by_epoch = []
-        all_points = {}
+        return self.__sizes
 
-        for scores in self:
-            new_points = {smi: score for smi, score in scores.items()
-                          if smi not in all_points}
-            new_points_by_epoch.append(new_points)
-            all_points.update(new_points)
-        
-        return new_points_by_epoch
+    def get(self, i: int, N: int) -> List[Point]:
+        """get the top-N molecules explored at iteration i"""
+        return sorted(
+            Experiment.read_scores(self.scores_csvs[i]),
+            key=lambda xy: xy[1] or -float("inf"),
+            reverse=True,
+        )[:N]
+
+    def new_pointss(self) -> List[List[Point]]:
+        """get the new points acquired at each iteration"""
+        new_pointss = [self[0]]
+        N = len(new_pointss[0])
+
+        for points in self[1:]:
+            new_points = [points[N:]]
+            new_pointss.append(new_points)
+            N = len(points)
+
+        return new_pointss
 
     def predictions(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
-        """get the predictions for exploration iteration i.
+        """get the predictions for iteration i.
 
-        The exploration iterations are 1-indexed to account for the 
-        iteration of the initialization batch. So self.predictions[1] corresponds to the first exploration iteteration
-        
+        The exploration iterations are 1-indexed to account for the initialization batch. I.e.,
+        self.predictions(1) corresponds to the first exploration iteration
+
         Returns
         -------
         means : np.ndarray
@@ -110,75 +117,22 @@ class Experiment:
         ValueError
             if i is less than 1
         """
+        if not hasattr(self, "chkpts"):
+            raise NotImplementedError("this experiment has no checkpoints!")
+
         if i not in range(1, self.num_iters):
-            raise ValueError(
-                f'arg: i must be in {{1..{self.num_iters}}}. got {i}'
-            )
-        preds_npz = np.load(self.chkpts[i] / 'preds.npz')
+            raise ValueError(f"arg: i must be in {{1..{self.num_iters-1}}}. got {i}")
 
-        return preds_npz['Y_pred'], preds_npz['Y_var']
+        npz = np.load(self.chkpts[i] / "preds.npz")
+        return npz["Y_pred"], npz["Y_var"]
 
-    def utilities(self) -> List[np.ndarray]:
-        if not self.new_style:
-            raise NotImplementedError(
-                'Utilities cannot be calculated for an old style MolPAL run'
-            )
-        Us = []
-
-        for i in range(1, self.num_iters):
-            Y_pred, Y_var = self.predictions(i)
-            ys = list(self[i-1].values())
-
-            Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
-            current_max = np.partition(Y, -self.k)[-self.k]
-
-            Us.append(metrics.calc(
-                self.metric, Y_pred, Y_var,
-                current_max, 0., self.beta, self.xi, False
-            ))
-
-        return Us
-
-    def points_in_order(self) -> List[Point]:
-        """Get all points acquired during this experiment's run in the order
-        in which they were acquired"""
-        if self.d_smi_idx is None:
-            raise NotImplementedError(
-                'Cannot get points in order without setting "self.d_smi_idx"'
-            )
-        if not self.new_style:
-            raise NotImplementedError(
-                'Cannot get points in order for an old style MolPAL run'
-            )
-        init_batch, *exp_batches = self.new_points_by_epoch()
-
-        all_points_in_order = []
-        all_points_in_order.extend(init_batch.items())
-
-        for new_points, U in zip(exp_batches, self.utilities()):
-            us = np.array([U[self.d_smi_idx[smi]] for smi in new_points])
-
-            new_points_in_order = [
-                smi_score for _, smi_score in sorted(
-                    zip(us, new_points.items()), reverse=True
-                )
-            ]
-            all_points_in_order.extend(new_points_in_order)
-        
-        return all_points_in_order
-    
-    def reward_curve(
-        self, true_top_k: List[Point], reward: str = 'scores'
-    ):
+    def curve(self, true_points: List[Point], reward: str = "scores"):
         """Calculate the reward curve of a molpal run
 
         Parameters
         ----------
-        experiment : Experiment
-            the data structure corresponding to the MolPAL experiment
-        true_top_k : List
-            the list of the true top-k molecules as tuples of their SMILES string
-            and associated score
+        true_points : List[Point]
+            the list of the true top-N points
         reward : str, default='scores'
             the type of reward to calculate
 
@@ -187,73 +141,130 @@ class Experiment:
         np.ndarray
             the reward as a function of the number of molecules sampled
         """
-        all_points_in_order = self.points_in_order()
-        k = len(true_top_k)
+        all_points_in_order = self[-1]
+        k = len(true_points)
 
-        if reward == 'scores':
-            _, true_scores = zip(*true_top_k)
-            missed_scores = Counter(true_scores)
+        if reward == "scores":
+            _, true_scores = zip(*true_points)
+            true_scores = np.array(true_scores)
+            hit_threshold = true_scores.min()
 
-            all_hits_in_order = np.zeros(len(all_points_in_order), dtype=bool)
-            for i, (_, score) in enumerate(all_points_in_order):
-                if score not in missed_scores:
-                    continue
-                all_hits_in_order[i] = True
-                missed_scores[score] -= 1
-                if missed_scores[score] == 0:
-                    del missed_scores[score]
-            reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+            _, ys = zip(*all_points_in_order)
+            ys = np.array(ys)
 
-        elif reward == 'smis':
-            true_top_k_smis = {smi for smi, _ in true_top_k}
-            all_hits_in_order = np.array([
-                smi in true_top_k_smis
-                for smi, _ in all_points_in_order
-            ], dtype=bool)
-            reward_curve = 100 * np.cumsum(all_hits_in_order) / k
+            threshold_points_max = (true_scores == hit_threshold).sum()
+            threshold_point_idxs = np.arange(len(ys))[ys == hit_threshold]
 
-        elif reward == 'top-k-ave':
-            reward_curve = np.zeros(len(all_points_in_order), dtype='f8')
+            all_hits_in_order = np.zeros(len(ys), dtype=bool)
+            all_hits_in_order[ys > hit_threshold] = True
+            all_hits_in_order[threshold_point_idxs[:threshold_points_max]] = True
+
+            Y = np.cumsum(all_hits_in_order) / len(true_scores)
+
+        elif reward == "smis":
+            true_top_k_smis = {smi for smi, _ in true_points}
+            all_hits_in_order = np.array(
+                [smi in true_top_k_smis for smi, _ in all_points_in_order], dtype=bool
+            )
+            Y = np.cumsum(all_hits_in_order) / k
+
+        elif reward == "top-k-ave":
+            Y = np.zeros(len(all_points_in_order))
             heap = []
 
-            for i, (_, score) in enumerate(all_points_in_order[:k]):
-                if score is not None:
-                    heapq.heappush(heap, score)
+            for i, (_, y) in enumerate(all_points_in_order[:k]):
+                if y is not None:
+                    heapq.heappush(heap, y)
                 top_k_avg = sum(heap) / k
-                reward_curve[i] = top_k_avg
-            reward_curve[:k] = top_k_avg
+                Y[i] = top_k_avg
+            Y[:k] = top_k_avg
 
-            for i, (_, score) in enumerate(all_points_in_order[k:]):
-                if score is not None:
-                    heapq.heappushpop(heap, score)
+            for i, (_, y) in enumerate(all_points_in_order[k:]):
+                if y is not None:
+                    heapq.heappushpop(heap, y)
 
                 top_k_avg = sum(heap) / k
-                reward_curve[i+k] = top_k_avg
+                Y[i + k] = top_k_avg
 
-        elif reward == 'total-ave':
-            _, all_scores_in_order = zip(*all_points_in_order)
-            Y = np.array(all_scores_in_order, dtype=float)
+        elif reward == "total-ave":
+            _, ys = zip(*all_points_in_order)
+            Y = np.array(ys)
             Y = np.nan_to_num(Y)
-            N = np.arange(0, len(Y)) + 1
-            reward_curve = np.cumsum(Y) / N
-            
+            N = np.arange(len(Y)) + 1
+            Y = np.cumsum(Y) / N
+
         else:
             raise ValueError
 
-        return reward_curve
+        return Y
+
+    def cluster_curve(self, true_clusters: Tuple[Set, Set, Set]):
+        s, m, l = true_clusters
+
+        all_points_in_order = self[-1]
+        N = np.zeros((len(all_points_in_order) + 1, len(true_clusters)))
+
+        for i, (smi, _) in enumerate(all_points_in_order):
+            N[i + 1] = N[i]
+
+            if smi in s:
+                j = 0
+            elif smi in m:
+                j = 1
+            elif smi in l:
+                j = 2
+            else:
+                continue
+
+            N[i + 1, j] = N[i, j] + 1
+
+        Y = N / [len(s), len(m), len(l)]
+        return Y
 
     def calculate_reward(
-        self, i: int, true: List[Point], is_sorted = True,
-        avg: bool = True, smis: bool = True, scores: bool = True
+        self,
+        i: int,
+        true_points: List[Point],
+        is_sorted: bool = False,
+        maximize: bool = True,
+        avg: bool = True,
+        smis: bool = True,
+        scores: bool = True,
     ) -> Tuple[float, float, float]:
-        N = len(true)
+        """calculate the reward for iteration i
+
+        Parameters
+        ----------
+        i : int
+            the iteration to calculate the reward for
+        true_points : List[Point]
+            the true top-N points
+        is_sorted : bool, default=True
+            whether the true points are sorted by objective value=
+        avg : bool, default=True
+            whether to calculate the average reward=
+        smis : bool, default=True
+            whether to calcualte the SMILES reward=
+        scores : bool, default=True
+            whether to calcualte the scores reward
+
+        Returns
+        -------
+        f_avg : float
+            the fraction of the true top-k average score
+        f_smis : float
+            the fraction of the true top-k SMILES identified
+        f_scores : float
+            the fraction of the true top-k score identified
+        """
+        N = len(true_points)
         if not is_sorted:
-            true = sorted(true, key=lambda kv: kv[1], reverse=True)
-        
-        found = list(self.get(i, N).items())
+            true_points = sorted(true_points, key=lambda kv: kv[1], reverse=maximize)
+
+        found = self.get(i, N)
 
         found_smis, found_scores = zip(*found)
-        true_smis, true_scores = zip(*true)
+        true_smis, true_scores = zip(*true_points)
 
         if avg:
             found_avg = np.mean(found_scores)
@@ -273,10 +284,7 @@ class Experiment:
         if scores:
             missed_scores = Counter(true_scores)
             missed_scores.subtract(found_scores)
-            n_missed_scores = sum(
-                count if count > 0 else 0
-                for count in missed_scores.values()
-            )
+            n_missed_scores = sum(max(count, 0) for count in missed_scores.values())
             f_scores = (N - n_missed_scores) / N
         else:
             f_scores = None
@@ -286,12 +294,10 @@ class Experiment:
     def calculate_cluster_fraction(
         self, i: int, true_clusters: Tuple[Set, Set, Set]
     ) -> Tuple[float, float, float]:
-        # import pdb; pdb.set_trace()
-
         large, mids, singletons = true_clusters
         N = len(large) + len(mids) + len(singletons)
-        
-        found = set(list(self.get(i, N).keys()))
+
+        found = {smi for smi, _ in self.get(i, N)}
 
         f_large = len(found & large) / len(large)
         f_mids = len(found & mids) / len(mids)
@@ -300,41 +306,30 @@ class Experiment:
         return f_large, f_mids, f_singletons
 
     @staticmethod
-    def read_scores(scores_csv: Union[Path, str],
-                    N: Optional[int] = None) -> Tuple[Dict, Dict]:
+    def read_scores(scores_csv: Union[Path, str]) -> List[Tuple]:
         """read the scores contained in the file located at scores_csv"""
-        scores = {}
-        failures = {}
-
         with open(scores_csv) as fid:
             reader = csv.reader(fid)
             next(reader)
 
-            if N is None:
-                for row in reader:
-                    try:
-                        scores[row[0]] = float(row[1])
-                    except:
-                        failures[row[0]] = None
-            else:
-                for row in islice(reader, N):
-                    try:
-                        scores[row[0]] = float(row[1])
-                    except:
-                        failures[row[0]] = None
+            smis_scores = [(row[0], float(row[1])) if row[1] else (row[0], None) for row in reader]
 
-        return scores, failures
-    
+        return smis_scores
+
     @staticmethod
     def read_config(config_file: str) -> Dict:
         """parse an autogenerated MolPAL config file to a dictionary"""
         with open(config_file) as fid:
-            return dict(line.split(' = ') for line in fid.read().splitlines())
-        
+            return dict([line.strip().split(" = ") for line in fid])
+
     @staticmethod
     def boltzmann(xs: Iterable[float]) -> float:
         X = np.array(xs)
         E = np.exp(-X)
         Z = E.sum()
+
         return (X * E / Z).sum()
-        
+
+
+class IncompleteExperimentError(Exception):
+    pass

@@ -8,10 +8,10 @@ from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple
 import warnings
 
 import numpy as np
-import pytorch_lightning as pl
+from pytorch_lightning import Trainer as Trainer_pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import ray
-from ray.util.sgd.v2 import Trainer
+from ray.train import Trainer as Trainer_ray
 import torch
 from tqdm import tqdm
 
@@ -169,9 +169,10 @@ class MPNN:
             self.train_config["train_data"] = train_data
             self.train_config["val_data"] = val_data
 
-            trainer = Trainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+            callbacks = [mpnn.ray.TqdmCallback(self.epochs)]
+            trainer = Trainer_ray("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
             trainer.start()
-            results = trainer.run(mpnn.sgd.train_func, self.train_config)
+            results = trainer.run(mpnn.ray.train_func, self.train_config, callbacks)
             trainer.shutdown()
 
             self.model = results[0]
@@ -185,20 +186,20 @@ class MPNN:
             dataset=val_data, batch_size=self.batch_size, num_workers=self.ncpu, pin_memory=False
         )
 
-        lit_model = mpnn.LitMPNN(self.train_config)
+        lit_model = mpnn.ptl.LitMPNN(self.train_config)
 
         callbacks = [
             EarlyStopping("val_loss", patience=10, mode="min"),
-            mpnn.EpochAndStepProgressBar(),
+            mpnn.ptl.EpochAndStepProgressBar(),
         ]
-        trainer = pl.Trainer(
+        trainer = Trainer_pl(
             logger=False,
             max_epochs=self.epochs,
             callbacks=callbacks,
             gpus=1 if self.use_gpu else 0,
             precision=self.precision,
             enable_model_summary=False,
-            # log_every_n_steps=len(train_dataloader)
+            enable_checkpointing=False,  # TODO: reimplement trainer checkpointing later
         )
         trainer.fit(lit_model, train_dataloader, val_dataloader)
 
@@ -394,7 +395,7 @@ class MPNDropoutModel(Model):
 
     def _get_predictions(self, xs: Sequence[str]) -> np.ndarray:
         predss = np.zeros((len(xs), self.dropout_size))
-        for j in tqdm(range(self.dropout_size), desc="dropout prediction"):
+        for j in tqdm(range(self.dropout_size), "Dropout", unit="pass"):
             predss[:, j] = self.model.predict(xs)[:, 0]  # assume single-task
         return predss
 

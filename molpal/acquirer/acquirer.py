@@ -142,6 +142,14 @@ class Acquirer:
             if bs < 0:
                 raise ValueError(f"batch_size(={bs} must be positive")
 
+    def batch_size(self, t: int) -> int:
+        try:
+            batch_size = self.batch_sizes[t]
+        except (IndexError, TypeError):
+            batch_size = self.batch_sizes[-1]
+
+        return batch_size
+
     def reset(self):
         """reset the random state of the metrics module"""
         metrics.set_seed(self.seed)
@@ -158,8 +166,6 @@ class Acquirer:
         ----------
         xs : Iterable[T]
             an iterable of the inputs to acquire
-        size : int
-            the size of the iterable
         cluster_ids : Optional[Iterable[int]] (Default = None)
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
@@ -241,7 +247,7 @@ class Acquirer:
         Returns
         -------
         List[T]
-            a list of selected inputs
+            a list of selected inputs in descending order of acquisition utility
         """
         if explored:
             ys = list(explored.values())
@@ -251,10 +257,7 @@ class Acquirer:
             explored = {}
             current_max = float("-inf")
 
-        try:
-            batch_size = self.batch_sizes[t]
-        except (IndexError, TypeError):
-            batch_size = self.batch_sizes[-1]
+        batch_size = self.batch_size(t)
 
         begin = default_timer()
 
@@ -296,35 +299,37 @@ class Acquirer:
                 else:
                     heapq.heappushpop(heap, (u, x))
         else:
-            # this is broken for e-greedy/pi/etc. approaches
-            # the random indices are not distributed evenly amongst clusters
+            raise NotImplementedError
+            # NOTE(degraff): this is broken for epsilon approaches
+            #   the random indices are not distributed evenly amongst clusters
+            # NOTE(degraff): this is also broken for pool exhaustion logic in the explorer
 
-            d_cid_heap = {
-                cid: ([], math.ceil(batch_size * cluster_size / U.size))
-                for cid, cluster_size in cluster_sizes.items()
-            }
+            # d_cid_heap = {
+            #     cid: ([], math.ceil(batch_size * cluster_size / U.size))
+            #     for cid, cluster_size in cluster_sizes.items()
+            # }
 
-            global_pred_max = float("-inf")
+            # global_pred_max = float("-inf")
 
-            for x, y_pred, u, cid in tqdm(
-                zip(xs, Y_mean, U, cluster_ids), total=U.size, desc="Acquiring"
-            ):
-                global_pred_max = max(y_pred, global_pred_max)
+            # for x, y_pred, u, cid in tqdm(
+            #     zip(xs, Y_mean, U, cluster_ids), total=U.size, desc="Acquiring"
+            # ):
+            #     global_pred_max = max(y_pred, global_pred_max)
 
-                if x in explored:
-                    continue
+            #     if x in explored:
+            #         continue
 
-                heap, heap_size = d_cid_heap[cid]
-                if len(heap) < heap_size:
-                    heapq.heappush(heap, (u, x))
-                else:
-                    heapq.heappushpop(heap, (u, x))
+            #     heap, heap_size = d_cid_heap[cid]
+            #     if len(heap) < heap_size:
+            #         heapq.heappush(heap, (u, x))
+            #     else:
+            #         heapq.heappushpop(heap, (u, x))
 
-            if self.temp_i and self.temp_f:
-                d_cid_heap = self.scale_heaps(d_cid_heap, global_pred_max, t)
+            # if self.temp_i and self.temp_f:
+            #     d_cid_heap = self.scale_heaps(d_cid_heap, global_pred_max, t)
 
-            heaps = [heap for heap, _ in d_cid_heap.values()]
-            heap = list(chain(*heaps))
+            # heaps = [heap for heap, _ in d_cid_heap.values()]
+            # heap = list(chain(*heaps))
 
         if self.verbose > 1:
             print(f"Selected {len(heap)} new samples")
@@ -333,7 +338,7 @@ class Acquirer:
             mins, secs = divmod(int(total), 60)
             print(f"      Batch acquisition took {mins}m {secs}s")
 
-        return [x for _, x in heap]
+        return [x for _, x in sorted(heap, reverse=True)]
 
     def scale_heaps(self, d_cid_heap: Dict[int, List], global_pred_max: float, it: int):
         """Scale each heap's size based on a decay factor

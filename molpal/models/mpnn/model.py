@@ -6,6 +6,7 @@ from torch import nn
 
 from molpal.models.chemprop.models.mpn import MPN
 from molpal.models.chemprop.nn_utils import get_activation_function, initialize_weights
+from molpal.models.chemprop.utils import UncertaintyType
 
 
 class EvaluationDropout(nn.Dropout):
@@ -19,11 +20,8 @@ class MoleculeModel(nn.Module):
 
     Attributes
     ----------
-    uncertainty_method : Optional[str]
-        the uncertainty method this model is using
-    uncertainty : bool
-        whether this model predicts its own uncertainty values
-        (e.g. Mean-Variance estimation)
+    uncertainty : Optional[str]
+        the uncertainty method this model is using, if any
     classification : bool
         whether this model is a classification model
     output_size : int
@@ -53,8 +51,14 @@ class MoleculeModel(nn.Module):
     ):
         super().__init__()
 
-        self.uncertainty = uncertainty
-        self.classification = dataset_type == "classification"
+        if uncertainty is not None:
+            self.uncertainty = {"dropout": UncertaintyType.DROPOUT, "mve": UncertaintyType.MVE}[
+                uncertainty.lower()
+            ]
+        else:
+            self.uncertainty = None
+
+        self.classification = dataset_type.lower() == "classification"
         if self.classification:
             self.sigmoid = nn.Sigmoid()
 
@@ -119,14 +123,14 @@ class MoleculeModel(nn.Module):
     ) -> None:
         first_linear_dim = hidden_size
 
-        if self.uncertainty == "dropout":
+        if self.uncertainty == UncertaintyType.DROPOUT:
             dropout = EvaluationDropout(dropout)
         else:
             dropout = nn.Dropout(dropout)
 
         activation = get_activation_function(activation)
 
-        if self.uncertainty == "mve":
+        if self.uncertainty == UncertaintyType.MVE:
             output_size *= 2
 
         if ffn_num_layers == 1:
@@ -150,13 +154,12 @@ class MoleculeModel(nn.Module):
         """Runs the MoleculeModel on the input."""
         z = self.ffn(self.encoder(*inputs))
 
-        if self.uncertainty == "mve":
+        if self.uncertainty == UncertaintyType.MVE:
             pred_vars = z[:, 1::2]
             capped_vars = nn.functional.softplus(pred_vars)
 
             z = torch.clone(z)
             z[:, 1::2] = capped_vars
-            # z = torch.stack((pred_means, capped_vars), dim=2).view(z.size())
 
         if self.classification and not self.training:
             z = self.sigmoid(z)

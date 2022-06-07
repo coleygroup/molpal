@@ -5,19 +5,17 @@ channels:
   - defaults
 
 dependencies:
-  # uncomment the corresponding line for your specific CUDA version
-  # - nvidia::cudatoolkit # for cuda >= 11
-  # - pytorch::cudatoolkit # for cuda < 11
-  # - pytorch::cpuonly
+  - cudatoolkit=11.3
   - python=3.8
-  - pytorch::pytorch
+  - pytorch::pytorch >=1.10
   - rdkit
   - pip
   - pip:
     - configargparse
     - h5py
     - numpy
-    - ray[default] >= 1.7
+    - ray >= 1.11
+    - ray[tune]
     - pytorch-lightning
     - scikit-learn
     - tensorflow

@@ -5,12 +5,15 @@ import gzip
 from itertools import islice, repeat
 import re
 from pathlib import Path
+import tempfile
 from typing import Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+import uuid
 
 import h5py
 import numpy as np
 import ray
 from rdkit import Chem, RDLogger
+from scipy.stats import norm
 from tqdm import tqdm
 
 from molpal.featurizer import Featurizer
@@ -27,28 +30,26 @@ CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
 class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
 
-    By default, a MoleculePool eagerly calculates the uncompressed feature
-    representations of its entire library and stores these in an hdf5 file.
-    If this is undesired, consider using a LazyMoleculePool, which calculates
-    these representations only when needed (and recomputes them as necessary.)
+    By default, a MoleculePool eagerly calculates the uncompressed feature representations of its 
+    entire library and stores these in an hdf5 file. If this is undesired, consider using a 
+    LazyMoleculePool, which calculates these representations only when needed (and recomputes them 
+    as necessary.)
 
-    A MoleculePool is most accurately described as a Sequence of Mols, and the
-    custom class is necessary for both utility and memory purposes. Its main
-    purpose is to hide the storage of large numbers of SMILES strings and
-    molecular fingerprints on disk.
+    A MoleculePool is most accurately described as a Sequence of Mols, and the custom class is 
+    necessary for both utility and memory purposes. Its main purpose is to hide the storage of 
+    large numbers of SMILES strings and molecular fingerprints on disk.
 
     Attributes
     ----------
     libraries : str
-        the filepaths of (compressed) CSVs containing the pool members. NOTE: each file must be
-        in the same format. That is, if the first file is a TSV of CXSMILES strings with no
-        title line, then the second file must also be a TSV of CXSMILES strings with no
-        title line, and so on for each successive file.
+        the filepaths of (compressed) CSVs containing the pool members. NOTE: each file must be in 
+        the same format. That is, if the first file is a TSV of CXSMILES strings with no title 
+        line, then the second file must also be a TSV of CXSMILES strings with no title line, and 
+        so on for each successive file.
     size : int
         the total number of molecules in the pool
     invalid_idxs : Set[int]
-        the set of invalid indices in the libarary files. Will be None until
-        the pool is validated
+        the set of invalid indices in the libarary files. Will be None until the pool is validated
     title_line : bool
         whether there is a title line in each library file
     delimiter : str
@@ -56,8 +57,7 @@ class MoleculePool(Sequence):
     smiles_col : int
         the column containing the SMILES strings in the library files
     fps : str
-        the filepath of an HDF5 file containing the precomputed fingerprint
-        for each pool member
+        the filepath of an HDF5 file containing the precomputed fingerprint for each pool member
     smis_ : Optional[List[str]]
         a list of SMILES strings in the pool. None if no caching
     cluster_ids_ : Optional[List[int]]
@@ -76,31 +76,28 @@ class MoleculePool(Sequence):
     delimiter : str, default=','
     smiles_col : int, default=0
     fps : Optional[str], default=None
-        the filepath of an hdf5 file containing the precomputed fingerprints.
-        If specified, a user assumes the following:
-        1. the ordering of the fingerprints matches the ordering in the
-            library file
-        2. the featurizer used to generate the fingerprints is the same
-            as the one passed to the model
+        the filepath of an hdf5 file containing the precomputed fingerprints. If specified, a user 
+        assumes the following:
+        1. the ordering of the fingerprints matches the ordering in the library file
+        2. the featurizer used to generate the fingerprints is the same as the one passed to the 
+            model
         If None, the MoleculePool will generate this file automatically
     featurizer : Featurizer, default=Featurizer()
         the featurizer to use when calculating fingerprints
     cache : bool, default=False
         whether to cache the SMILES strings in memory
     validated : bool, default=False
-        whether the pool has been validated already. If True, the user
-        accepts the risk of an invalid molecule raising an exception later
-        on. Mostly useful for multiple runs on a pool that has been
-        manually validated and pruned.
+        whether the pool has been validated already. If True, the user accepts the risk of an 
+        invalid molecule raising an exception later on. Mostly useful for multiple runs on a pool 
+        that has been manually validated and pruned.
     cluster : bool, default=False
         whether to cluster the library
     ncluster : int, default=100
         the number of clusters to form. Only used if cluster is True
     fps_path : Optional[str], default=None
-        the path under which the HDF5 file should be written. By default,
-        will write the fingerprints HDF5 file under the same directory as the
-        first library file
-    verbose : int , default=0
+        the path under which the HDF5 file should be written. By default, will write the 
+        fingerprints HDF5 file under the same directory as the first library file
+    verbose : int, default=0
     **kwargs
         additional and unused keyword arguments
     """
@@ -113,12 +110,12 @@ class MoleculePool(Sequence):
         smiles_col: int = 0,
         cxsmiles: bool = False,
         fps: Optional[str] = None,
+        fps_path: Optional[str] = None,
         featurizer: Featurizer = Featurizer(),
         cache: bool = False,
         invalid_idxs: Optional[Iterable[int]] = None,
         cluster: bool = False,
         ncluster: int = 100,
-        fps_path: Optional[str] = None,
         verbose: int = 0,
         **kwargs,
     ):
@@ -137,7 +134,9 @@ class MoleculePool(Sequence):
         self.verbose = verbose
 
         self.smis_ = None
-        self.fps_ = fps
+        self.fps_ = Path(fps) if fps else None
+        self.fps_path = fps_path
+        self.featurizer = featurizer
 
         self.invalid_idxs = set(invalid_idxs) if invalid_idxs is not None else None
         self.size = None
@@ -157,8 +156,8 @@ class MoleculePool(Sequence):
     def __iter__(self) -> Iterator[Mol]:
         """Return an iterator over the molecule pool.
 
-        NOTE: Not recommended for use in open constructs. I.e., don't
-        explicitly call this method unless you plan to exhaust the full iterator.
+        NOTE: Not recommended for use in open constructs. I.e., don't explicitly call this method 
+        unless you plan to exhaust the full iterator.
         """
         return zip(self.smis(), self.fps(), self.cluster_ids() or repeat(None))
 
@@ -210,18 +209,60 @@ class MoleculePool(Sequence):
             f"pool indices must be integers, slices, or tuples thereof. Received: {type(idx)}"
         )
 
+    def prune(
+        self, threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, p_min: float = 0.025
+    ) -> np.ndarray:
+        """prune the library to only the compounds with a hit probability greater than or equal to
+        the given p_min
+
+        Parameters
+        ----------
+        threshold : float
+            the threshold above which molecules are classified as hits
+        Y_mean : np.ndarray
+            the predicted mean for each molecule
+        Y_var : np.ndarray
+            the predicted variance for each molecule
+        p_min : float, default=0.025
+            the minimum probability that a compound is a hit for it to be retained
+
+        Returns
+        -------
+        idxs : np.ndarray
+            the indices of the retained molecules in the pool
+        """
+        idxs = self.prune_prob(threshold, Y_mean, Y_var, p_min)
+
+        self.smis_ = self.get_smis(idxs)
+
+        name = self.fps_.stem.split("_")[0]
+        self.fps_, self.invalid_idxs = fingerprints.feature_matrix_hdf5(
+            self.smis_,
+            len(idxs),
+            featurizer=self.featurizer,
+            name=f"{name}_pruned_{uuid.uuid4()}",
+            path=tempfile.gettempdir(),
+        )
+
+        with h5py.File(self.fps_, "r") as h5f:
+            fps = h5f["fps"]
+            self.size = len(fps)
+            self.chunk_size = fps.chunks[0]
+
+        return idxs
+
     def get_smi(self, idx: int) -> str:
         if idx < 0 or idx >= len(self):
-            raise IndexError(f"pool index(={idx}) out of range")
+            raise IndexError(f"pool index (={idx}) out of range [0, {len(self)})")
 
-        if self.smis_:
+        if self.smis_ is not None:
             return self.smis_[idx]
 
         return next(islice(self.smis(), idx, idx + 1))
 
     def get_fp(self, idx: int) -> np.ndarray:
         if idx < 0 or idx >= len(self):
-            raise IndexError(f"pool index(={idx}) out of range")
+            raise IndexError(f"pool index (={idx}) out of range [0, {len(self)})")
 
         with h5py.File(self.fps_, mode="r") as h5f:
             fps_dset = h5f["fps"]
@@ -230,7 +271,7 @@ class MoleculePool(Sequence):
 
     def get_cluster_id(self, idx: int) -> Optional[int]:
         if idx < 0 or idx >= len(self):
-            raise IndexError(f"pool index(={idx}) out of range")
+            raise IndexError(f"pool index (={idx}) out of range [0, {len(self)})")
 
         if self.cluster_ids_:
             return self.cluster_ids_[idx]
@@ -255,7 +296,7 @@ class MoleculePool(Sequence):
         if min(idxs) < 0 or max(idxs) >= len(self):
             raise IndexError(f"Pool index out of range: {idxs}")
 
-        if self.smis:
+        if self.smis_ is not None:
             idxs = sorted(idxs)
             smis = [self.smis_[i] for i in sorted(idxs)]
         else:
@@ -284,8 +325,8 @@ class MoleculePool(Sequence):
             return fps[idxs]
 
     def get_cluster_ids(self, idxs: Sequence[int]) -> Optional[List[int]]:
-        """Get the cluster_ids for the given indices, if the pool is
-        clustered. Otherwise, return None
+        """Get the cluster_ids for the given indices, if the pool is clustered. Otherwise, return 
+        None
 
         NOTE: Returns the list in sorted index order
 
@@ -369,11 +410,9 @@ class MoleculePool(Sequence):
                 yield fp
 
     def fps_batches(self) -> Iterator[np.ndarray]:
-        """Return a generator over batches of pool molecules' feature
-        representations
+        """Return a generator over batches of pool molecules' feature representations
 
-        Itt is preferable to use this method when operating on batches of
-        fingerprints
+        NOTE: It is preferable to use this method when operating on batches of fingerprints
 
         Yields
         ------
@@ -386,8 +425,8 @@ class MoleculePool(Sequence):
                 yield fps[i : i + self.chunk_size]
 
     def cluster_ids(self) -> Optional[Iterator[int]]:
-        """If the pool is clustered, return a generator over pool inputs'
-        cluster IDs. Otherwise, return None"""
+        """If the pool is clustered, return a generator over pool inputs' cluster IDs. Otherwise, 
+        return None"""
         if self.cluster_ids_:
 
             def return_gen():
@@ -447,8 +486,7 @@ class MoleculePool(Sequence):
             self.chunk_size = fps.chunks[0]
 
     def _validate_and_cache_smis(self, cache: bool = False) -> int:
-        """Validate all the SMILES strings in the pool and return the length
-        of the validated pool
+        """Validate all the SMILES strings in the pool and return the length of the validated pool
 
         Parameters
         ----------
@@ -483,22 +521,18 @@ class MoleculePool(Sequence):
             if self.verbose > 0:
                 print("Validating SMILES strings ...", end=" ", flush=True)
 
-            valid_smis = validate_smis(self.smis())
-            invalid_idxs = set()
+            validated_smis = validate_smis(self.smis())
             if cache:
-                self.smis_ = []
-                for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
-                    if smi is None:
-                        self.invalid_idxs.add(i)
-                    else:
-                        self.smis_.append(smi)
-            else:
-                for i, smi in tqdm(enumerate(valid_smis), desc="Validating"):
-                    if smi is None:
-                        invalid_idxs.add(i)
+                validated_smis = list(validated_smis)
+                self.smis_ = [smi for smi in validated_smis if smi is not None]
+                self.invalid_idxs = {i for i, smi in validated_smis if smi is None}
 
-            self.size = (i + 1) - len(invalid_idxs)
-            self.invalid_idxs = invalid_idxs
+                self.size = len(self.smis_)
+            else:
+                self.invalid_idxs = {
+                    i for i, smi in tqdm(enumerate(validated_smis), "Validating") if smi is None
+                }
+                self.size = sum(1 for _ in self.smis())
 
             if self.verbose > 0:
                 print("Done!", flush=True)
@@ -523,6 +557,72 @@ class MoleculePool(Sequence):
         self.cluster_ids_ = cluster.cluster_fps_h5(self.fps_, ncluster=ncluster)
         self.cluster_sizes = Counter(self.cluster_ids_)
 
+    @staticmethod
+    def prune_prob(
+        threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, p_min: float = 0.025
+    ) -> np.ndarray:
+        """Prune all predictions with a probabilty less than min_hit_prob of being above a given
+        threshold
+
+        Parameters
+        ----------
+        threshold : float,
+            the threshold above which a molecule is considered a predicted hit
+        Y_mean : np.ndarray
+            the predicted means
+        Y_var : np.ndarray
+            the predicted variances
+        min_hit_prob : float
+            the minimum probability necessary to avoid pruning
+
+        Returns
+        -------
+        np.ndarray
+            the indices of the predictions to retain
+        """
+        P = MoleculePool.prob_above(Y_mean, Y_var, threshold)
+        idxs = np.arange(len(Y_mean))[P >= p_min]
+
+        return idxs
+
+    @staticmethod
+    def expected_positives_pruned(
+        threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, idxs: np.ndarray
+    ) -> float:
+        """the number of expected positives that will be pruned
+
+        Parameters
+        ----------
+        threshold : float
+            the threshold above which to classify molecules as hits
+        Y_mean : np.ndarray
+            the predicted means
+        Y_var : np.ndarray
+            the predicted variances
+        idxs : np.ndarray
+            the molecules to retain after pruning
+
+        Returns
+        -------
+        float
+            the expected number of positives that will be pruned
+        """
+        if Y_mean.shape == Y_var.shape:
+            P = MoleculePool.prob_above(Y_mean, Y_var, threshold)
+        else:
+            P = Y_mean >= threshold
+
+        mask = np.ones(len(Y_mean), bool)
+        mask[idxs] = False
+
+        return P[mask].sum()
+
+    @staticmethod
+    def prob_above(Y_mean: np.ndarray, Y_var: np.ndarray, threshold: float) -> np.ndarray:
+        """the probability that each prediction (given mean and uncertainty) is above the input
+        threshold"""
+        return norm.cdf(Y_mean, threshold, np.sqrt(Y_var))
+
 
 @ray.remote
 def _validate_smis(smis):
@@ -531,7 +631,7 @@ def _validate_smis(smis):
 
 
 def validate_smis(smis) -> Iterator[Optional[str]]:
-    refs = [_validate_smis.remote(smis_batch) for smis_batch in batches(smis, 4096)]
+    refs = [_validate_smis.remote(smis_batch) for smis_batch in batches(smis, 8192)]
     for ref in refs:
         batch = ray.get(ref)
         for smi in batch:

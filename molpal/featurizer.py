@@ -1,5 +1,5 @@
-"""A featurizer transforms input representations into uncompressed feature 
-representations for use with clustering and model training/prediction."""
+"""A featurizer transforms input representations into uncompressed feature representations for use
+with clustering and model training/prediction."""
 from dataclasses import dataclass
 from itertools import chain
 import math
@@ -26,8 +26,13 @@ class Featurizer:
     radius: int = 2
     length: int = 2048
 
+    def __post_init__(self):
+        if self.fingerprint == "maccs":
+            self.radius = 0
+            self.length = 167
+
     def __len__(self):
-        return 167 if self.fingerprint == "maccs" else self.length
+        return self.length
 
     def __call__(self, smi: str) -> Optional[np.ndarray]:
         return featurize(smi, self.fingerprint, self.radius, self.length)
@@ -45,7 +50,7 @@ def featurize(smi, fingerprint, radius, length) -> Optional[np.ndarray]:
             mol, minLength=1, maxLength=1 + radius, nBits=length
         )
     elif fingerprint == "rdkit":
-        fp = rdmd.RDKFingerprint(mol, minPath=1, maxPath=1 + radius, fpSize=length)
+        fp = Chem.RDKFingerprint(mol, minPath=1, maxPath=1 + radius, fpSize=length)
     elif fingerprint == "maccs":
         fp = rdmd.GetMACCSKeysFingerprint(mol)
     elif fingerprint == "map4":
@@ -66,7 +71,7 @@ def featurize_batch(smis, fingerprint, radius, length) -> List[np.ndarray]:
 def feature_matrix(smis, featurizer, disable: bool = False) -> List[np.ndarray]:
     fingerprint = featurizer.fingerprint
     radius = featurizer.radius
-    length = featurizer.length
+    length = len(featurizer)
 
     chunksize = int(math.sqrt(ray.cluster_resources()["CPU"]) * 1024)
     refs = [
@@ -76,5 +81,5 @@ def feature_matrix(smis, featurizer, disable: bool = False) -> List[np.ndarray]:
     fps_chunks = [
         ray.get(r) for r in tqdm(refs, "Featurizing", leave=False, disable=disable, unit="smi")
     ]
-    fps = list(chain(*fps_chunks))
-    return fps
+
+    return list(chain(*fps_chunks))

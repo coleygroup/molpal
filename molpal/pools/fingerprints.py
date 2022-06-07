@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Iterable, Set, Tuple, TypeVar
 
 import h5py
+import numpy as np
 import ray
 from tqdm import tqdm
 
@@ -40,10 +41,9 @@ def feature_matrix_hdf5(
 
     Returns
     -------
-    fps_h5 : str
-        the filename of an hdf5 file containing the feature matrix of the
-        representations generated from the molecules in the input file.
-        The row ordering corresponds to the ordering of smis
+    fps_h5 : Path
+        the filepath of an hdf5 file containing the feature matrix of the representations generated
+        from the molecules in the input file. The row ordering corresponds to the ordering of smis
     invalid_idxs : Set[int]
         the set of indices in xs containing invalid inputs
     """
@@ -57,28 +57,28 @@ def feature_matrix_hdf5(
             "fps", (size, len(featurizer)), chunks=(CHUNKSIZE, len(featurizer)), dtype="int8"
         )
 
-        batch_size = CHUNKSIZE * 2 * ncpu
+        batch_size = CHUNKSIZE * 8 * ncpu
         n_batches = size // batch_size + 1
 
         invalid_idxs = set()
         i = 0
-        offset = 0
+        j = 0
 
         for smis_batch in tqdm(
             batches(smis, batch_size), "Precalculating fps", n_batches, unit="batch"
         ):
-            fps = feature_matrix(smis_batch, featurizer, disable=True)
-            for fp in tqdm(fps, "Writing", batch_size, False, unit="smi", smoothing=0.0):
-                if fp is None:
-                    invalid_idxs.add(i + offset)
-                    offset += 1
-                    continue
+            fps = feature_matrix(smis_batch, featurizer, disable=False)
 
-                fps_dset[i] = fp
-                i += 1
+            invalid_fp_idxs = {j + k for k, fp in enumerate(fps) if fp is None}
+            invalid_idxs.update(invalid_fp_idxs)
+            j += len(fps)
+
+            valid_fps = np.array([fp for fp in fps if fp is not None])
+            fps_dset[i : i + len(valid_fps)] = valid_fps
+            i += len(valid_fps)
 
         valid_size = size - len(invalid_idxs)
         if valid_size != size:
-            fps_dset.resize(valid_size, axis=0)
+            fps_dset.resize(valid_size, 0)
 
-    return fps_h5, invalid_idxs
+    return Path(fps_h5), invalid_idxs

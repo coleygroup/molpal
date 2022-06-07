@@ -1,11 +1,12 @@
-from typing import Iterator, Optional, Sequence
+from typing import Iterator, Sequence
+import warnings
 
 import numpy as np
 import ray
 
-from molpal.featurizer import Featurizer, feature_matrix
-from molpal.pools.base import MoleculePool
 from molpal.utils import batches
+from molpal.featurizer import feature_matrix
+from molpal.pools.base import MoleculePool
 
 
 class LazyMoleculePool(MoleculePool):
@@ -42,20 +43,28 @@ class LazyMoleculePool(MoleculePool):
         for smis in batches(self.smis(), self.chunk_size):
             yield np.array(feature_matrix(smis, self.featurizer, True))
 
-    def _encode_mols(self, featurizer: Featurizer, path: Optional[str] = None):
+    def prune(
+        self, threshold: float, Y_mean: np.ndarray, Y_var: np.ndarray, min_hit_prob: float = 0.025
+    ) -> np.ndarray:
+        idxs = self.prune_prob(threshold, Y_mean, Y_var, min_hit_prob)
+
+        self.smis_ = self.get_smis(idxs)
+        self.size = len(self.smis_)
+
+        return idxs
+
+    def _encode_mols(self, *args, **kwargs):
         """Do not precompute any feature representations"""
-        self.featurizer = featurizer
         self.chunk_size = int(ray.cluster_resources()["CPU"] * 4096)
         self.fps_ = None
 
     def _cluster_mols(self, *args, **kwargs) -> None:
         """A LazyMoleculePool can't cluster molecules
 
-        Doing so would require precalculating all uncompressed representations,
-        which is what a LazyMoleculePool is designed to avoid. If clustering
-        is desired, use the base (Eager)MoleculePool
+        Doing so would require precalculating all uncompressed representations, which is what a
+        LazyMoleculePool is designed to avoid. If clustering is desired, use the base
+        (Eager)MoleculePool
         """
-        print(
-            "WARNING: Clustering is not possible for a LazyMoleculePool.",
-            "No clustering will be performed.",
+        warnings.warn(
+            "Clustering is not possible for a LazyMoleculePool. No clustering will be performed!"
         )
