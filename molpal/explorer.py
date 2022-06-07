@@ -468,7 +468,8 @@ class Explorer:
         Returns
         -------
         float
-            the top-k average
+            the top-k average. NOTE: if there are not at least `k` valid scores, `None` scores will 
+            be included in the top-k as a score of 0 and deflate the top-`k` average.
         """
         k = k or self.k
         if isinstance(k, float):
@@ -476,9 +477,9 @@ class Explorer:
         k = min(k, len(self.scores))
 
         if k == len(self.scores):
-            return sum(score for _, score in self.scores.items()) / k
+            return sum(score or 0 for _, score in self.scores.items()) / k
 
-        return sum(score for _, score in self.top_explored(k)) / k
+        return sum(score or 0 for _, score in self.top_explored(k)) / k
 
     def top_explored(self, n: Union[int, float, None] = None) -> List[Tuple]:
         """Get the top-n explored molecules
