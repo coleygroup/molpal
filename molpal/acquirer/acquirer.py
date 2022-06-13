@@ -252,7 +252,7 @@ class Acquirer:
         if explored:
             ys = list(explored.values())
             Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
-            current_max = np.partition(Y, -k)[-k]
+            current_max = np.partition(Y, -k)[-k] if len(Y) >= k else Y.max()
         else:
             explored = {}
             current_max = float("-inf")
