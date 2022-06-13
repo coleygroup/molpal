@@ -75,8 +75,6 @@ class LitMPNN(pl.LightningModule):
         if self.uncertainty == "mve":
             Y_pred = Y_pred[:, 0::2]
 
-        Y = torch.tensor(Y, device=self.device)
-
         return self.metric(Y_pred, Y)
 
     def validation_epoch_end(self, outputs):
