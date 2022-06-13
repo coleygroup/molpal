@@ -111,16 +111,16 @@ class MPNN:
         self.precision = precision
 
         self.model = mpnn.MoleculeModel(
-            uncertainty=uncertainty,
-            dataset_type=dataset_type,
-            num_tasks=num_tasks,
-            atom_messages=atom_messages,
-            hidden_size=hidden_size,
-            bias=bias,
-            depth=depth,
-            dropout=dropout,
-            undirected=undirected,
+            uncertainty,
+            dataset_type,
+            num_tasks,
+            atom_messages,
+            bias,
+            depth,
+            dropout,
+            undirected,
             activation=activation,
+            hidden_size=hidden_size,
             ffn_hidden_size=ffn_hidden_size,
             ffn_num_layers=ffn_num_layers,
         )
@@ -137,11 +137,11 @@ class MPNN:
         ngpu = int(ray.cluster_resources().get("GPU", 0))
         if ngpu > 0:
             self.use_gpu = True
-            self._predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+            self._predict = mpnn.predict_.options(num_cpus=ncpu, num_gpus=1)
             self.num_workers = ngpu
         else:
             self.use_gpu = False
-            self._predict = ray.remote(num_cpus=ncpu)(mpnn.predict)
+            self._predict = mpnn.predict_.options(num_cpus=ncpu)
             self.num_workers = int(ray.cluster_resources()["CPU"] // self.ncpu)
 
         self.seed = model_seed
@@ -161,7 +161,7 @@ class MPNN:
             "metric": metric,
         }
 
-    def train(self, smis: Iterable[str], targets: Sequence[float]) -> bool:
+    def train(self, smis: Iterable[str], targets: np.ndarray) -> bool:
         """Train the model on the inputs SMILES with the given targets"""
         train_data, val_data = self.make_datasets(smis, targets)
 
@@ -180,10 +180,10 @@ class MPNN:
             return True
 
         train_dataloader = MoleculeDataLoader(
-            dataset=train_data, batch_size=self.batch_size, num_workers=self.ncpu, pin_memory=False
+            train_data, self.batch_size, self.ncpu, pin_memory=False
         )
         val_dataloader = MoleculeDataLoader(
-            dataset=val_data, batch_size=self.batch_size, num_workers=self.ncpu, pin_memory=False
+            val_data, self.batch_size, self.ncpu, pin_memory=False
         )
 
         lit_model = mpnn.ptl.LitMPNN(self.train_config)
@@ -235,10 +235,12 @@ class MPNN:
         Returns
         -------
         np.ndarray
-            the array of predictions with shape NxO, where N is the number of
-            inputs and O is the number of tasks."""
+            an array of shape `n x m`, where `n` is the number of SMILES strings and `m` is the
+            number of tasks
+        """
         model = ray.put(self.model)
         scaler = ray.put(self.scaler)
+
         refs = [
             self._predict.remote(
                 model,
@@ -252,8 +254,17 @@ class MPNN:
             )
             for smis in batches(smis, 20000)
         ]
-        preds_chunks = [ray.get(r) for r in tqdm(refs, "Prediction", unit="chunk", leave=False)]
-        return np.concatenate(preds_chunks)
+        Y_pred_batches = [ray.get(r) for r in tqdm(refs, "Prediction", unit="batch", leave=False)]
+        Y_pred = np.concatenate(Y_pred_batches)
+
+        if self.scaler is not None:
+            if self.uncertainty == "mve":
+                Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.scaler.stds + self.scaler.means
+                Y_pred[:, 1::2] *= self.scaler.stds**2
+            else:
+                Y_pred = Y_pred * self.scaler.stds + self.scaler.means
+
+        return Y_pred
 
     def save(self, path) -> str:
         path = Path(path)
@@ -271,6 +282,7 @@ class MPNN:
             }
         except AttributeError:
             state = {"model_path": model_path}
+
         json.dump(state, open(state_path, "w"), indent=4)
 
         return state_path
@@ -316,7 +328,7 @@ class MPNModel(Model):
         return "mpn"
 
     def train(
-        self, xs: Iterable[str], ys: Sequence[float], *, retrain: bool = False, **kwargs
+        self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs
     ) -> bool:
         if retrain:
             self.model = self.build_model()
@@ -378,7 +390,7 @@ class MPNDropoutModel(Model):
         return {"means", "vars", "stochastic"}
 
     def train(
-        self, xs: Iterable[str], ys: Sequence[float], *, retrain: bool = False, **kwargs
+        self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs
     ) -> bool:
         if retrain:
             self.model = self.build_model()
@@ -437,7 +449,7 @@ class MPNTwoOutputModel(Model):
         return {"means", "vars"}
 
     def train(
-        self, xs: Iterable[str], ys: Sequence[float], *, retrain: bool = False, **kwargs
+        self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs
     ) -> bool:
         if retrain:
             self.model = self.build_model()
