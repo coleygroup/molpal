@@ -209,16 +209,10 @@ class MPNN:
         self, xs: Iterable[str], ys: np.ndarray
     ) -> Tuple[MoleculeDataset, MoleculeDataset]:
         """Split xs and ys into train and validation datasets"""
-        if len(ys.shape) == 1:
-            data = MoleculeDataset(
-                [MoleculeDatapoint(smiles=[x], targets=[y]) for x, y in zip(xs, ys)]
-            )
-        else:
-            data = MoleculeDataset(
-                [MoleculeDatapoint(smiles=[x], targets=y) for x, y in zip(xs, ys)]
-            )
-        train_data, val_data, _ = split_data(data, sizes=(0.8, 0.2, 0.0), seed=self.seed)
-
+        data = MoleculeDataset(
+            [MoleculeDatapoint(smiles=[x], targets=y) for x, y in zip(xs, np.atleast_2d(ys))]
+        )
+        train_data, val_data, _ = split_data(data, "random", (0.8, 0.2, 0.0), seed=self.seed)
         self.scaler = train_data.normalize_targets()
         val_data.scale_targets(self.scaler)
 
