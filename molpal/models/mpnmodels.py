@@ -1,5 +1,7 @@
 """This module contains Model implementations that utilize the MPNN model as their underlying
 model"""
+from __future__ import annotations
+
 from functools import partial
 import json
 import logging
@@ -8,19 +10,19 @@ from typing import Iterable, List, NoReturn, Optional, Sequence, Tuple
 import warnings
 
 import numpy as np
-from pytorch_lightning import Trainer as Trainer_pl
+from pytorch_lightning import Trainer as PlTrainer
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import ray
-from ray.train import Trainer as Trainer_ray
+from ray.train import Trainer as RayTrainer
 import torch
 from tqdm import tqdm
 
+from molpal.utils import batches
+from molpal.models import mpnn
+from molpal.models.base import Model
 from molpal.models.chemprop.data.data import MoleculeDatapoint, MoleculeDataset, MoleculeDataLoader
 from molpal.models.chemprop.data.scaler import StandardScaler
 from molpal.models.chemprop.data.utils import split_data
-from molpal.models.base import Model
-from molpal.models import mpnn
-from molpal.utils import batches
 
 logging.getLogger("lightning").setLevel(logging.FATAL)
 warnings.filterwarnings(
@@ -29,27 +31,21 @@ warnings.filterwarnings(
 
 
 class MPNN:
-    """A message-passing neural network base class
-
-    This class serves as a wrapper for the Chemprop MoleculeModel, providing
-    convenience and modularity in addition to uncertainty quantification
-    methods as originally implemented in the Chemprop confidence branch
+    """A message-passing neural network wrapper class that uses Chemprop as the underlying model
 
     Attributes
     ----------
     ncpu : int
         the number of cores over which to parallelize input batch preparation
     ddp : bool
-        whether to train the model over a distributed setup. Only works with
-        CUDA >= 11.0
+        whether to train the model over a distributed setup. Only works with CUDA >= 11.0
     precision : int
-        the precision with which to train the model represented in the number
-        of bits
+        the bit precision with which to train the model
     model : MoleculeModel
         the underlying chemprop model on which to train and make predictions
     uncertainty : Optional[str], default=None
-        the uncertainty quantification method the model uses. None if it
-        does not use any uncertainty quantification
+        the uncertainty quantification method the model uses. None if it does not use any 
+        uncertainty quantification
     loss_func : Callable
         the loss function used in model training
     batch_size : int
@@ -63,19 +59,18 @@ class MPNN:
         the number of training tasks
     use_gpu : bool
         whether the GPU will be used.
-        NOTE: If a GPU is detected, it will be used. If this is undesired, set
-        the CUDA_VISIBLE_DEVICES environment variable to be empty
+        NOTE: If a GPU is detected, it will be used. If this is undesired, set the
+        CUDA_VISIBLE_DEVICES environment variable to be empty
     num_workers : int
-        the number of workers to distribute model training over. Equal to the
-        number of GPUs detected, or if none are available, the ratio of total
-        CPUs on detected on the ray cluster over the number of CPUs to dedicate
-        to each dataloader
+        the number of workers to distribute model training over. Equal to the number of GPUs
+        detected, or if none are available, the ratio of total CPUs on detected on the ray cluster
+        over the number of CPUs to dedicate to each dataloader
     train_config : Dict
-        a dictionary containing the configuration of training variables:
-        learning rates, maximum epochs, validation metric, etc.
+        a dictionary containing the configuration of training variables: learning rates, maximum 
+        epochs, validation metric, etc.
     scaler : StandardScaler
-        a scaler to normalize target data before training and validation and
-        to reverse transform prediction outputs
+        a scaler to normalize target data before training and validation and to reverse transform 
+        prediction outputs
     """
 
     def __init__(
@@ -170,7 +165,7 @@ class MPNN:
             self.train_config["val_data"] = val_data
 
             callbacks = [mpnn.ray.TqdmCallback(self.epochs)]
-            trainer = Trainer_ray("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
+            trainer = RayTrainer("torch", self.num_workers, self.use_gpu, {"CPU": self.ncpu})
             trainer.start()
             results = trainer.run(mpnn.ray.train_func, self.train_config, callbacks)
             trainer.shutdown()
@@ -192,7 +187,7 @@ class MPNN:
             EarlyStopping("val_loss", patience=10, mode="min"),
             mpnn.ptl.EpochAndStepProgressBar(),
         ]
-        trainer = Trainer_pl(
+        trainer = PlTrainer(
             logger=False,
             max_epochs=self.epochs,
             callbacks=callbacks,
@@ -207,17 +202,10 @@ class MPNN:
 
     def make_datasets(
         self, xs: Iterable[str], ys: np.ndarray
-    ) -> Tuple[MoleculeDataset, MoleculeDataset]:
+    ) -> tuple[MoleculeDataset, MoleculeDataset]:
         """Split xs and ys into train and validation datasets"""
-        if len(ys.shape) == 1:
-            data = MoleculeDataset(
-                [MoleculeDatapoint(smiles=[x], targets=[y]) for x, y in zip(xs, ys)]
-            )
-        else:
-            data = MoleculeDataset(
-                [MoleculeDatapoint(smiles=[x], targets=y) for x, y in zip(xs, ys)]
-            )
-        train_data, val_data, _ = split_data(data, sizes=(0.8, 0.2, 0.0), seed=self.seed)
+        data = MoleculeDataset([MoleculeDatapoint([x], y) for x, y in zip(xs, ys.reshape(-1, 1))])
+        train_data, val_data, _ = split_data(data, "random", (0.8, 0.2, 0.0), seed=self.seed)
 
         self.scaler = train_data.normalize_targets()
         val_data.scale_targets(self.scaler)
@@ -403,12 +391,14 @@ class MPNDropoutModel(Model):
 
     def get_means_and_vars(self, xs: Sequence[str]) -> Tuple[np.ndarray, np.ndarray]:
         predss = self._get_predictions(xs)
-        return np.mean(predss, axis=1), np.var(predss, axis=1)
+
+        return predss.mean(1), predss.var(1)
 
     def _get_predictions(self, xs: Sequence[str]) -> np.ndarray:
         predss = np.zeros((len(xs), self.dropout_size))
         for j in tqdm(range(self.dropout_size), "Dropout", unit="pass"):
             predss[:, j] = self.model.predict(xs)[:, 0]  # assume single-task
+
         return predss
 
     def save(self, path) -> str:
