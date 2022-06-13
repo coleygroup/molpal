@@ -80,7 +80,7 @@ def predict(
         if scaler:
             preds[:, 0::2] *= scaler.stds
             preds[:, 0::2] += scaler.means
-            preds[:, 1::2] *= scaler.stds ** 2
+            preds[:, 1::2] *= scaler.stds**2
 
         return preds
 

@@ -30,21 +30,21 @@ CXSMILES_PATTERN = re.compile(r"\s\|.*\|")
 class MoleculePool(Sequence):
     """A MoleculePool is a sequence of molecules in a virtual chemical library
 
-    By default, a MoleculePool eagerly calculates the uncompressed feature representations of its 
-    entire library and stores these in an hdf5 file. If this is undesired, consider using a 
-    LazyMoleculePool, which calculates these representations only when needed (and recomputes them 
+    By default, a MoleculePool eagerly calculates the uncompressed feature representations of its
+    entire library and stores these in an hdf5 file. If this is undesired, consider using a
+    LazyMoleculePool, which calculates these representations only when needed (and recomputes them
     as necessary.)
 
-    A MoleculePool is most accurately described as a Sequence of Mols, and the custom class is 
-    necessary for both utility and memory purposes. Its main purpose is to hide the storage of 
+    A MoleculePool is most accurately described as a Sequence of Mols, and the custom class is
+    necessary for both utility and memory purposes. Its main purpose is to hide the storage of
     large numbers of SMILES strings and molecular fingerprints on disk.
 
     Attributes
     ----------
     libraries : str
-        the filepaths of (compressed) CSVs containing the pool members. NOTE: each file must be in 
-        the same format. That is, if the first file is a TSV of CXSMILES strings with no title 
-        line, then the second file must also be a TSV of CXSMILES strings with no title line, and 
+        the filepaths of (compressed) CSVs containing the pool members. NOTE: each file must be in
+        the same format. That is, if the first file is a TSV of CXSMILES strings with no title
+        line, then the second file must also be a TSV of CXSMILES strings with no title line, and
         so on for each successive file.
     size : int
         the total number of molecules in the pool
@@ -76,10 +76,10 @@ class MoleculePool(Sequence):
     delimiter : str, default=','
     smiles_col : int, default=0
     fps : Optional[str], default=None
-        the filepath of an hdf5 file containing the precomputed fingerprints. If specified, a user 
+        the filepath of an hdf5 file containing the precomputed fingerprints. If specified, a user
         assumes the following:
         1. the ordering of the fingerprints matches the ordering in the library file
-        2. the featurizer used to generate the fingerprints is the same as the one passed to the 
+        2. the featurizer used to generate the fingerprints is the same as the one passed to the
             model
         If None, the MoleculePool will generate this file automatically
     featurizer : Featurizer, default=Featurizer()
@@ -87,15 +87,15 @@ class MoleculePool(Sequence):
     cache : bool, default=False
         whether to cache the SMILES strings in memory
     validated : bool, default=False
-        whether the pool has been validated already. If True, the user accepts the risk of an 
-        invalid molecule raising an exception later on. Mostly useful for multiple runs on a pool 
+        whether the pool has been validated already. If True, the user accepts the risk of an
+        invalid molecule raising an exception later on. Mostly useful for multiple runs on a pool
         that has been manually validated and pruned.
     cluster : bool, default=False
         whether to cluster the library
     ncluster : int, default=100
         the number of clusters to form. Only used if cluster is True
     fps_path : Optional[str], default=None
-        the path under which the HDF5 file should be written. By default, will write the 
+        the path under which the HDF5 file should be written. By default, will write the
         fingerprints HDF5 file under the same directory as the first library file
     verbose : int, default=0
     **kwargs
@@ -156,7 +156,7 @@ class MoleculePool(Sequence):
     def __iter__(self) -> Iterator[Mol]:
         """Return an iterator over the molecule pool.
 
-        NOTE: Not recommended for use in open constructs. I.e., don't explicitly call this method 
+        NOTE: Not recommended for use in open constructs. I.e., don't explicitly call this method
         unless you plan to exhaust the full iterator.
         """
         return zip(self.smis(), self.fps(), self.cluster_ids() or repeat(None))
@@ -325,7 +325,7 @@ class MoleculePool(Sequence):
             return fps[idxs]
 
     def get_cluster_ids(self, idxs: Sequence[int]) -> Optional[List[int]]:
-        """Get the cluster_ids for the given indices, if the pool is clustered. Otherwise, return 
+        """Get the cluster_ids for the given indices, if the pool is clustered. Otherwise, return
         None
 
         NOTE: Returns the list in sorted index order
@@ -425,7 +425,7 @@ class MoleculePool(Sequence):
                 yield fps[i : i + self.chunk_size]
 
     def cluster_ids(self) -> Optional[Iterator[int]]:
-        """If the pool is clustered, return a generator over pool inputs' cluster IDs. Otherwise, 
+        """If the pool is clustered, return a generator over pool inputs' cluster IDs. Otherwise,
         return None"""
         if self.cluster_ids_:
 

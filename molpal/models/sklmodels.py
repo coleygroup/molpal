@@ -183,7 +183,7 @@ class GPModel(Model):
         X = np.vstack(xs)
         Y_mean_pred, Y_sd_pred = self.model.predict(X, return_std=True)
 
-        return Y_mean_pred, Y_sd_pred ** 2
+        return Y_mean_pred, Y_sd_pred**2
 
     def save(self, path) -> str:
         path = Path(path)

@@ -47,6 +47,7 @@ def get_needs(metric: str) -> Set:
         "threshold": {"means"},
     }.get(metric, set())
 
+
 def valid_metrics() -> Set[str]:
     return {"random", "threshold", "greedy", "noisy", "ucb", "lcb", "ts", "thompson", "ei", "pi"}
 
@@ -259,7 +260,7 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.
         Z = I / np.sqrt(Y_var)
     P_imp = norm.cdf(Z)
 
-    # if expected variance is 0, probability of improvement is 0 or 1 depending on whether the 
+    # if expected variance is 0, probability of improvement is 0 or 1 depending on whether the
     # predicted improvement is <= 0 or >0
     mask = Y_var == 0
     P_imp[mask] = np.where(I > 0, 1, 0)[mask]
