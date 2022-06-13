@@ -178,7 +178,7 @@ class NN:
 
         if self.uncertainty == "mve":
             Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.std + self.mean
-            Y_pred[:, 1::2] = Y_pred[:, 1::2] * self.std ** 2
+            Y_pred[:, 1::2] = Y_pred[:, 1::2] * self.std**2
         else:
             Y_pred = Y_pred * self.std + self.mean
 

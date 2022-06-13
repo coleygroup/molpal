@@ -268,7 +268,7 @@ class Explorer:
                 ave = f"{self.avg()} (only {len(self.scores)} scores)"
             else:
                 ave = "N/A (no scores)"
-                
+
         return (
             f"ITER: {self.iter}/{self.max_iters} | "
             f"TOP-{self.k} AVE: {ave} | "
@@ -469,7 +469,7 @@ class Explorer:
         Returns
         -------
         float
-            the top-k average. NOTE: if there are not at least `k` valid scores, `None` scores will 
+            the top-k average. NOTE: if there are not at least `k` valid scores, `None` scores will
             be included in the top-k as a score of 0 and deflate the top-`k` average.
         """
         k = k or self.k
