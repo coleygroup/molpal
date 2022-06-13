@@ -1,6 +1,7 @@
 from typing import Iterable, Optional
 
 import numpy as np
+import ray
 import torch
 from tqdm import tqdm
 
@@ -29,12 +30,12 @@ def predict(
 
     Parameters
     ----------
-    model : mpnn.MoleculeModel
+    model : MoleculeModel
         the model to use
     smis : Iterable[str]
-        the SMILES strings to perform inference on
+        the SMILES strings of the molecules to predict properties for
     batch_size : int, default=50
-        the size of each minibatch (impacts performance)
+        the size of each minibatch
     ncpu : int, default=1
         the number of cores over which to parallelize input preparation
     uncertainty : Optional[str], default=None
@@ -50,9 +51,8 @@ def predict(
 
     Returns
     -------
-    predictions : np.ndarray
-        an NxM array where N is the number of inputs for which to produce
-        predictions and M is the number of prediction tasks
+    Y_pred : np.ndarray
+        an `n x m` array where `n` is the number of SMILES strings and `m` is the number of tasks
     """
     model.eval()
 
@@ -62,30 +62,32 @@ def predict(
     dataset = MoleculeDataset([MoleculeDatapoint([smi]) for smi in smis])
     data_loader = MoleculeDataLoader(dataset, batch_size, ncpu)
 
-    pred_batches = []
-
-    for batch in tqdm(data_loader, desc="Inference", unit="batch", leave=False, disable=disable):
+    Y_pred_batches = []
+    for batch in tqdm(data_loader, "Inference", unit="batch", leave=False, disable=disable):
         componentss, _ = batch
         componentss = [
-            [X.to(device) if isinstance(X, torch.Tensor) else X for X in components]
+            [X.to(device) if torch.is_tensor(X) else X for X in components]
             for components in componentss
         ]
-        pred_batch = model(componentss)
-        pred_batches.append(pred_batch)
+        Y_pred_batches.append(model(componentss))
 
-    preds = torch.cat(pred_batches)
-    preds = preds.cpu().numpy()
+    Y_pred = torch.cat(Y_pred_batches)
+    Y_pred = Y_pred.cpu().numpy()
 
-    if uncertainty == "mve":
-        if scaler:
-            preds[:, 0::2] *= scaler.stds
-            preds[:, 0::2] += scaler.means
-            preds[:, 1::2] *= scaler.stds**2
+    # if uncertainty == "mve":
+    #     if scaler:
+    #         Y_pred[:, 0::2] *= scaler.stds
+    #         Y_pred[:, 0::2] += scaler.means
+    #         Y_pred[:, 1::2] *= scaler.stds**2
 
-        return preds
+    #     return Y_pred
 
-    if scaler:
-        preds *= scaler.stds
-        preds += scaler.means
+    # if scaler:
+    #     Y_pred *= scaler.stds
+    #     Y_pred += scaler.means
 
-    return preds
+    return Y_pred
+
+@ray.remote
+def predict_(*args, **kwargs):
+    return predict(*args, **kwargs)
