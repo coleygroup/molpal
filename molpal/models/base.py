@@ -66,7 +66,7 @@ class Model(ABC):
     def train(
         self,
         xs: Iterable[T],
-        ys: Sequence[float],
+        ys: np.ndarray,
         *,
         featurizer: Callable[[T], T_feat],
         retrain: bool = False,
@@ -77,9 +77,8 @@ class Model(ABC):
         ----------
         xs : Iterable[T]
             an iterable of inputs in their identifier representation
-        ys : Sequence[float]
-            a parallel sequence of scalars that correspond to the regression
-            target for each x
+        ys : np.ndarray
+            a parallel ndarray of target regression values
         featurize : Callable[[T], T_feat]
             a function that transforms an input from its identifier to its
             feature representation

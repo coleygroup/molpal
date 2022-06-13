@@ -2,7 +2,7 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-from typing import Collection, Dict, Optional
+from typing import Dict, Iterable, Optional
 
 from configargparse import ArgumentParser
 from tqdm import tqdm
@@ -43,7 +43,7 @@ class LookupObjective(Objective):
             if title_line:
                 next(fid)
 
-            for row in tqdm(reader, desc="Building oracle", leave=False):
+            for row in tqdm(reader, "Building oracle", leave=False):
                 key = row[smiles_col]
                 val = row[score_col]
                 try:
@@ -53,7 +53,7 @@ class LookupObjective(Objective):
 
         super().__init__(minimize=minimize)
 
-    def forward(self, smis: Collection[str], *args, **kwargs) -> Dict[str, Optional[float]]:
+    def forward(self, smis: Iterable[str], *args, **kwargs) -> Dict[str, Optional[float]]:
         return {smi: self.c * self.data[smi] if smi in self.data else None for smi in smis}
 
 
