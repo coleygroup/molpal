@@ -1,16 +1,107 @@
-
 import numpy as np 
 from pathlib import Path
 import csv 
 from molpal.models.nnmodels import (
         NNModel, NNDropoutModel, NNEnsembleModel, NNTwoOutputModel
     )
+from molpal import args, Explorer, featurizer, pools, acquirer, models
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pygmo as pg
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
+import heapq
 
+class LibraryDataset:
+    def __init__(self, path, smiles_col, data_col) -> None:
+        self.path = path
+        self.smiles_col = smiles_col
+        self.data_col = data_col 
+        self.data = self.extract_data()
+        self.smis = list(self.data.keys())
+
+    def extract_data(self):
+        reader = csv.reader(open(Path(self.path)))
+        data = {}
+        for row in reader: 
+            try: 
+                key = row[self.smiles_col]
+                data[key]=float(row[self.data_col])
+            except:
+                pass
+        return data
+
+class Runner:
+    def __init__(self, 
+            fingerprint='Morgan',
+            radius = 2,
+            length = 2048,
+            n_per_acq = 200, 
+            num_objs = 2,
+            num_models = 2,
+        ) -> None:
+        self.iteration = 0
+        self.num_objs = num_objs
+        self.length = length
+        self.num_models = num_models
+        
+        self.featurizer = featurizer.Featurizer(
+                fingerprint=fingerprint,
+                radius=radius, 
+                length=length
+            )
+        self.acquirer = acquirer.Acquirer(
+                size=len(self.pool),
+                init_size=n_per_acq,
+                batch_sizes=[n_per_acq],
+            )
+        self.models = [self.init_model() for _ in range(num_models)]
+        self.libraries = []
+        self.scores = {}
+        self.smis = []
+    def init_libraries(self,data_list):
+        self.libraries = [LibraryDataset(info[0], info[1], info[2]) \
+            for info in data_list]
+        self.all_smis = self.collect_smis()
+        return self.libraries
+    def collect_smis(self):
+        all_smis = self.libraries[0].smis
+        for i in range(1,len(self.libraries)):
+            for smi in self.libraries[i].smis:
+                if smi not in all_smis: 
+                    all_smis.append(smi)
+        return all_smis
+    def init_model(self):
+        model = NNEnsembleModel(
+                    input_size=self.length, 
+                    ensemble_size=3,
+                    activation='relu'
+                ) 
+        return model 
+    def run_iteration(self):
+        if self.iteration == 0: 
+            U = acquirer.metrics.random(np.empty(self.acquirer.size))
+            heap = []
+            for x, u in zip(self.smis, U):
+                if len(heap) < self.acquirer.init_size:
+                    heapq.heappush(heap, (u, x))
+                else:
+                    heapq.heappushpop(heap, (u, x))
+            new_smis = [x for _, x in heap]
+            self.scores = {}
+            self.new_scores = {}
+        for new in self.smis:
+            self.new_scores[new] = [library.data[new] for library in self.libraries]
+            else:
+                self.new_scores = acquire_hvi(Y0_pred, Y1_pred, storage, iterlabel, scores, n_per_acq, data)
+
+        clean_update_scores(self.scores, self.new_scores)
+
+        self.iteration += 1
+
+
+
+        
 
 def clean_update_scores(scores, new_scores):
     for x, y in new_scores.items():

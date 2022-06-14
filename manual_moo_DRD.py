@@ -65,14 +65,14 @@ for j in range(n_repeats):
     xs = storage['pool'].smis()
     storage['scores'] = {}
     storage['model0'] = NNModel(input_size=kwargs['length'], num_tasks=1, \
-                    test_batch_size=100,  # so one batch wouldn't have like 10 molecules 
+                    test_batch_size=3000,  # so one batch wouldn't have like 10 molecules 
                     layer_sizes=None, 
                     dropout=None,
                     activation='relu',
                     uncertainty=None,
                     model_seed=None) 
     storage['model1'] = NNModel(input_size=kwargs['length'], num_tasks=1, \
-                    test_batch_size=100,  
+                    test_batch_size=3000,  
                     layer_sizes=None, 
                     dropout=None,
                     activation='relu',
