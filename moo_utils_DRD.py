@@ -5,6 +5,8 @@ from molpal.models.nnmodels import (
         NNModel, NNDropoutModel, NNEnsembleModel, NNTwoOutputModel
     )
 from molpal import args, Explorer, featurizer, pools, acquirer, models
+from molpal.pools.base import MoleculePool
+from molpal.objectives.lookup import LookupObjective
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pygmo as pg
@@ -39,11 +41,15 @@ class Runner:
             n_per_acq = 200, 
             num_objs = 2,
             num_models = 2,
+            acq_func = 'nds',
         ) -> None:
+
         self.iteration = 0
         self.num_objs = num_objs
         self.length = length
         self.num_models = num_models
+        self.scores = {}
+        self.acq_func = acq_func
         
         self.featurizer = featurizer.Featurizer(
                 fingerprint=fingerprint,
@@ -55,22 +61,26 @@ class Runner:
                 init_size=n_per_acq,
                 batch_sizes=[n_per_acq],
             )
+        self.pool = MoleculePool(
+                libraries=['data/drd2_data.csv','data/drd3_data.csv'],
+                featurizer=self.featurizer,
+            )        
+        self.objective_configs, self.minimize = self.init_objective_config(running_DRD2=True)
+        self.objectives = [
+                    LookupObjective(
+                        self.objective_configs[i], 
+                        self.minimize[i]
+                        ) 
+                for i in range(self.num_objs)
+                ]
         self.models = [self.init_model() for _ in range(num_models)]
-        self.libraries = []
-        self.scores = {}
-        self.smis = []
-    def init_libraries(self,data_list):
-        self.libraries = [LibraryDataset(info[0], info[1], info[2]) \
-            for info in data_list]
-        self.all_smis = self.collect_smis()
-        return self.libraries
-    def collect_smis(self):
-        all_smis = self.libraries[0].smis
-        for i in range(1,len(self.libraries)):
-            for smi in self.libraries[i].smis:
-                if smi not in all_smis: 
-                    all_smis.append(smi)
-        return all_smis
+        self.smis = self.pool.smis()
+    def init_objective_config(self, running_DRD2: bool = True):
+        if running_DRD2: 
+            configs = ['--path data/drd2_data.csv --smiles-col 0 --score-col 1',
+                        '--path data/drd3_data.csv --smiles-col 0 --score-col 1']
+            minimize = [True, False]
+        return configs, minimize
     def init_model(self):
         model = NNEnsembleModel(
                     input_size=self.length, 
@@ -80,24 +90,46 @@ class Runner:
         return model 
     def run_iteration(self):
         if self.iteration == 0: 
-            U = acquirer.metrics.random(np.empty(self.acquirer.size))
-            heap = []
-            for x, u in zip(self.smis, U):
-                if len(heap) < self.acquirer.init_size:
-                    heapq.heappush(heap, (u, x))
-                else:
-                    heapq.heappushpop(heap, (u, x))
-            new_smis = [x for _, x in heap]
-            self.scores = {}
+            new_smis = self.acquirer.acquire_initial(xs=self.smis)
             self.new_scores = {}
-        for new in self.smis:
-            self.new_scores[new] = [library.data[new] for library in self.libraries]
-            else:
-                self.new_scores = acquire_hvi(Y0_pred, Y1_pred, storage, iterlabel, scores, n_per_acq, data)
+            for new in new_smis: # use self.objectives here instead 
+                self.new_scores[new] = [library.data[new] for library in self.libraries]
+            
+        else:
+            # TODO: incorporate molpal acquirer.acquire_batch instead 
+            if self.acq_func == 'nds':
+                self.new_scores = self.acquire_nds()
+            elif self.acq_func == 'ei':
+                self.new_scores = self.acquire_ei()
 
         clean_update_scores(self.scores, self.new_scores)
 
         self.iteration += 1
+        
+        # retrain your model with new points 
+        # make predictions 
+
+    def acquire_nds(self):
+        all_preds = tuple([self.models[i].predict(self.smis) for i in range(self.num_objs)])
+        ndf, _, _, _ = pg.fast_non_dominated_sorting(np.vstack(all_preds).T)
+        ndf = np.concatenate(ndf, axis=0)
+        new_points = []
+
+        i = 0
+        while len(new_points) < self.n_per_acq:
+            new_smile = self.smis[ndf[i]]
+            if new_smile in self.scores: 
+                i = i + 1
+            else:
+                new_points.append(ndf[i]) 
+                i = i + 1
+
+        new_smiles = [self.smis[i] for i in new_points]
+        new_scores = 
+        return new_scores
+
+    def acquire_ei(self): 
+        return new_scores
 
 
 
