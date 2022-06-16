@@ -7,65 +7,58 @@ from molpal.models.nnmodels import (
 from molpal import args, Explorer, featurizer, pools, acquirer, models
 from molpal.pools.base import MoleculePool
 from molpal.objectives.lookup import LookupObjective
+from molpal.featurizer import feature_matrix
+from molpal.acquirer.metrics import ei, pi
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pygmo as pg
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 import heapq
-
-class LibraryDataset:
-    def __init__(self, path, smiles_col, data_col) -> None:
-        self.path = path
-        self.smiles_col = smiles_col
-        self.data_col = data_col 
-        self.data = self.extract_data()
-        self.smis = list(self.data.keys())
-
-    def extract_data(self):
-        reader = csv.reader(open(Path(self.path)))
-        data = {}
-        for row in reader: 
-            try: 
-                key = row[self.smiles_col]
-                data[key]=float(row[self.data_col])
-            except:
-                pass
-        return data
+import tqdm
 
 class Runner:
     def __init__(self, 
-            fingerprint='Morgan',
+            fingerprint='morgan',
             radius = 2,
             length = 2048,
             n_per_acq = 200, 
             num_objs = 2,
             num_models = 2,
             acq_func = 'nds',
+            n_iter = 5,
+            running_DRD2 = True,
         ) -> None:
 
         self.iteration = 0
         self.num_objs = num_objs
         self.length = length
         self.num_models = num_models
-        self.scores = {}
         self.acq_func = acq_func
-        
+        self.n_per_acq = n_per_acq
+        self.scores = {}
+        self.new_scores = {}
+        self.n_iter = n_iter
+        self.running_DRD2 = running_DRD2
+
         self.featurizer = featurizer.Featurizer(
                 fingerprint=fingerprint,
                 radius=radius, 
                 length=length
             )
+        if self.running_DRD2:
+            self.pool = MoleculePool(
+                    libraries=['data/drd2_data.csv','data/drd3_data.csv'],
+                    featurizer=self.featurizer,
+                    fps='data/drd2_data.h5', 
+                    fps_path='data/drd2_data.h5',
+                )         
         self.acquirer = acquirer.Acquirer(
                 size=len(self.pool),
                 init_size=n_per_acq,
                 batch_sizes=[n_per_acq],
-            )
-        self.pool = MoleculePool(
-                libraries=['data/drd2_data.csv','data/drd3_data.csv'],
-                featurizer=self.featurizer,
-            )        
-        self.objective_configs, self.minimize = self.init_objective_config(running_DRD2=True)
+            )       
+        self.objective_configs, self.minimize = self.init_objective_config()
         self.objectives = [
                     LookupObjective(
                         self.objective_configs[i], 
@@ -74,11 +67,19 @@ class Runner:
                 for i in range(self.num_objs)
                 ]
         self.models = [self.init_model() for _ in range(num_models)]
-        self.smis = self.pool.smis()
-    def init_objective_config(self, running_DRD2: bool = True):
-        if running_DRD2: 
-            configs = ['--path data/drd2_data.csv --smiles-col 0 --score-col 1',
-                        '--path data/drd3_data.csv --smiles-col 0 --score-col 1']
+        self.fps = feature_matrix(smis=self.pool.smis(), featurizer=self.featurizer)
+    def run(self):
+        score_record = []
+        mse_record = []
+        while self.iteration < self.n_iter: 
+            scores, mses = self.run_iteration()
+            score_record.append(scores)
+            mse_record.append(mses)
+        return score_record, mse_record
+    def init_objective_config(self):
+        if self.running_DRD2: 
+            configs = ['examples/objective/DRD2_docking.ini',
+                        'examples/objective/DRD3_docking.ini']
             minimize = [True, False]
         return configs, minimize
     def init_model(self):
@@ -90,10 +91,9 @@ class Runner:
         return model 
     def run_iteration(self):
         if self.iteration == 0: 
-            new_smis = self.acquirer.acquire_initial(xs=self.smis)
-            self.new_scores = {}
+            new_smis = self.acquirer.acquire_initial(xs=self.pool.smis())
             for new in new_smis: # use self.objectives here instead 
-                self.new_scores[new] = [library.data[new] for library in self.libraries]
+                self.new_scores[new] = [self.objectives[j].data[new] for j in range(self.num_objs)]
             
         else:
             # TODO: incorporate molpal acquirer.acquire_batch instead 
@@ -101,36 +101,80 @@ class Runner:
                 self.new_scores = self.acquire_nds()
             elif self.acq_func == 'ei':
                 self.new_scores = self.acquire_ei()
+            elif self.acq_func == 'pi':
+                self.new_scores = self.acquire_pi()
 
-        clean_update_scores(self.scores, self.new_scores)
+        self.clean_update_scores()
 
         self.iteration += 1
         
-        # retrain your model with new points 
-        # make predictions 
+        # retrain models with new points
+        ys = np.array(list(self.scores.values()))
 
+        for i, model in enumerate(self.models):
+            model.train( list(self.scores.keys()), ys[:,i],
+                        featurizer=self.featurizer, retrain = False)
+        
+        # make predictions TODO; batching for inference + TQDM bar 
+        self.pred_means = [self.models[i].get_means(self.fps) for i in range(self.num_models)]
+        try:
+            self.pred_vars = [self.models[i].get_means_and_vars(self.fps)[1] for i in range(self.num_models)]
+        except: pass
+
+        model_mses = [mean_squared_error(self.objectives[i](self.pool.smis()).values(), self.pred_means[i]) for i in range(self.num_models)]
+
+        return self.scores, model_mses
     def acquire_nds(self):
-        all_preds = tuple([self.models[i].predict(self.smis) for i in range(self.num_objs)])
-        ndf, _, _, _ = pg.fast_non_dominated_sorting(np.vstack(all_preds).T)
+        ndf, _, _, _ = pg.fast_non_dominated_sorting(np.vstack(tuple(np.array(self.pred_means))).T)
         ndf = np.concatenate(ndf, axis=0)
         new_points = []
 
         i = 0
+        new_scores = {}
         while len(new_points) < self.n_per_acq:
-            new_smile = self.smis[ndf[i]]
+            new_smile = self.pool.get_smi(ndf[i])
             if new_smile in self.scores: 
                 i = i + 1
             else:
                 new_points.append(ndf[i]) 
+                new_scores[new_smile] = [self.objectives[j].data[new_smile] for j in range(self.num_objs)]
                 i = i + 1
-
-        new_smiles = [self.smis[i] for i in new_points]
-        new_scores = 
         return new_scores
-
     def acquire_ei(self): 
+        new_scores = {}
+        ei_scores = ei(Y_means=self.pred_means, Y_vars=self.pred_vars, current_max=self.current_max,xi=0)
+        heap = []
+        for smi,ei_score in zip(self.pool.smis(),ei_scores):
+            if smi not in self.scores: 
+                if len(heap) < self.n_per_acq:
+                    heapq.heappush(heap, (ei_score, smi))
+                else:
+                    heapq.heappushpop(heap, (ei_score, smi))
+        for smi, _ in heap: 
+            new_scores[smi] = [self.objectives[i].data[smi] for i in range(self.num_objs)]
         return new_scores
-
+    def acquire_pi(self):
+        new_scores = {}
+        pi_scores = pi(Y_means=self.pred_means, Y_vars=self.pred_vars, current_max=self.current_max,xi=0)
+        heap = []
+        for smi,score in zip(self.pool.smis(),pi_scores):
+            if smi not in self.scores: 
+                if len(heap) < self.n_per_acq:
+                    heapq.heappush(heap, (ei_score, smi))
+                else:
+                    heapq.heappushpop(heap, (ei_score, smi))
+        for smi, _ in heap: 
+            new_scores[smi] = [self.objectives[i].data[smi] for i in range(self.num_objs)]
+        return new_scores
+    def clean_update_scores(self):
+        for x, y in self.new_scores.items():
+            if y is None: 
+                print(x)
+                print('Above Molecule Failed')
+            else:
+                self.scores[x] = y
+        self.new_scores = {}
+        self.current_max = np.max(np.array(list(self.scores.values())),axis=0)
 
 
         
