@@ -31,13 +31,10 @@ def main():
     print(flush=True)
     
     try:
-        if 'redis_password' in os.environ:
-            ray.init(
-                address=os.environ["ip_head"],
-                _redis_password=os.environ['redis_password']
-            )
+        if "ip_head" in os.environ:
+            ray.init(os.environ["ip_head"])
         else:
-            ray.init(address='auto')
+            ray.init('auto')
     except ConnectionError:
         ray.init()
     except PermissionError:
