@@ -1,17 +1,6 @@
 from configargparse import ArgumentTypeError, ArgumentParser, Namespace
-from typing import Optional, Union
+from typing import Union
 
-
-def gen_args(args: Optional[str] = None) -> Namespace:
-    parser = ArgumentParser()
-
-    add_args(parser)
-
-    args = parser.parse_args(args)
-
-    clean_and_fix_args(args)
-
-    return args
 
 def add_args(parser: ArgumentParser):
     add_general_args(parser)
@@ -22,6 +11,7 @@ def add_args(parser: ArgumentParser):
     add_objective_args(parser)
     add_model_args(parser)
     add_stopping_args(parser)
+
 
 #################################
 #       GENERAL ARGUMENTS       #
@@ -51,13 +41,11 @@ def add_general_args(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--write-intermediate",
         action="store_true",
-        default=False,
         help="whether to write a summary file with all of the explored inputs and their associated scores after each round of exploration",
     )
     parser.add_argument(
         "--write-final",
         action="store_true",
-        default=False,
         help="whether to write a summary file with all of the explored inputs and their associated scores",
     )
 
@@ -106,7 +94,9 @@ def add_featurizer_args(parser: ArgumentParser):
 ##############################
 def add_pool_args(parser: ArgumentParser):
     parser = parser.add_argument_group("POOL")
-    parser.add_argument("--pool", default="eager", help="the type of MoleculePool to use")
+    parser.add_argument(
+        "--pool", default="eager", choices=("eager", "lazy"), help="the type of MoleculePool to use"
+    )
     parser.add_argument(
         "-l",
         "--libraries",
@@ -118,7 +108,6 @@ def add_pool_args(parser: ArgumentParser):
     parser.add_argument(
         "--no-title-line",
         action="store_true",
-        default=False,
         help="whether there is no title line in the library files",
     )
     parser.add_argument(
@@ -132,7 +121,6 @@ def add_pool_args(parser: ArgumentParser):
     )
     parser.add_argument(
         "--cxsmiles",
-        default=False,
         action="store_true",
         help="whether the files use CXSMILES strings",
     )
@@ -142,7 +130,7 @@ def add_pool_args(parser: ArgumentParser):
         help="an HDF5 file containing the precalculated feature representation of each molecule in the pool",
     )
     parser.add_argument(
-        "--cluster", action="store_true", default=False, help="whether to cluster the MoleculePool"
+        "--cluster", action="store_true", help="whether to cluster the MoleculePool"
     )
     parser.add_argument(
         "--cache",
@@ -155,7 +143,7 @@ def add_pool_args(parser: ArgumentParser):
         "--invalid-lines",
         type=int,
         nargs="*",
-        help="the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings",
+        help="the indices in the overall library (potentially consisting of multiple library files) containing invalid SMILES strings. Adding this flag with 0 arguments corresponds to a library with _0_ invalid SMILES strings.",
     )
 
 
@@ -238,7 +226,6 @@ def add_objective_args(parser: ArgumentParser):
     parser.add_argument(
         "--minimize",
         action="store_true",
-        default=False,
         help="whether to minimize the objective function",
     )
     parser.add_argument(
@@ -258,7 +245,7 @@ def add_model_args(parser: ArgumentParser):
     model_parser.add_argument(
         "--test-batch-size",
         type=int,
-        help="the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.",
+        help="the size of batch of predictions during model inference. NOTE: This is *not* the batch sized during model training (if training is done using minibatches). This parameter only controls speed during the model inference and is only useful to modify if performance is critical.",
     )
     model_parser.add_argument(
         "--retrain-from-scratch",
@@ -272,11 +259,10 @@ def add_model_args(parser: ArgumentParser):
         help="the random seed to use for model initialization. Not specifying will result in random model initializations each time the model is trained.",
     )
 
-    rf_parser = model_parser.add_argument_group("RANDOM FOREST")
-    rf_parser.add_argument(
+    model_parser.add_argument(
         "--n-estimators", type=int, default=100, help="the number of trees in the forest"
     )
-    rf_parser.add_argument(
+    model_parser.add_argument(
         "--max-depth",
         nargs="?",
         type=int,
@@ -284,38 +270,35 @@ def add_model_args(parser: ArgumentParser):
         default=8,
         help="the maximum depth of the tree. Not specifying this argument at all will default to 8. Adding the flag without specifying number a number will default to an unlimited depth",
     )
-    rf_parser.add_argument(
+    model_parser.add_argument(
         "--min-samples-leaf",
         type=int,
         default=1,
         help="the minimum number of samples required to be at a leaf node",
     )
 
-    gp_parser = model_parser.add_argument_group("GAUSSIAN PROCESS")
-    gp_parser.add_argument(
+    model_parser.add_argument(
         "--gp-kernel",
         choices={"dotproduct"},
         default="dotproduct",
         help="Kernel to use for Gaussian Process model",
     )
 
-    mpnn_parser = model_parser.add_argument_group("MPNN")
-    mpnn_parser.add_argument(
+    model_parser.add_argument(
         "--init-lr", type=float, default=1e-4, help="the initial learning rate for the MPNN model"
     )
-    mpnn_parser.add_argument(
+    model_parser.add_argument(
         "--max-lr", type=float, default=1e-3, help="the maximum learning rate for the MPNN model"
     )
-    mpnn_parser.add_argument(
+    model_parser.add_argument(
         "--final-lr", type=float, default=1e-4, help="the final learning rate for the MPNN model"
     )
-    mpnn_parser.add_argument(
+    model_parser.add_argument(
         "--ddp",
         action="store_true",
-        default=False,
         help="Whether to perform distributed MPN training over a multi-GPU setup via PyTorch DDP. Currently only works with CUDA >= 11.0",
     )
-    mpnn_parser.add_argument(
+    model_parser.add_argument(
         "--precision",
         type=int,
         default=32,
@@ -323,8 +306,7 @@ def add_model_args(parser: ArgumentParser):
         help="the precision to use when training PyTorch models in number of bits. Native precision is 32, but 16-bit precision can lead to lower memory footprint during training and faster training times on Volta GPUs. DO NOT use 16-bit precision on non-Volta GPUs. Currently only supported for single-GPU training (i.e., ddp=False)",
     )
 
-    mpnn_nn_parser = model_parser.add_argument_group("MPNN + NN")
-    mpnn_nn_parser.add_argument(
+    model_parser.add_argument(
         "--conf-method",
         default="none",
         choices={"ensemble", "twooutput", "mve", "dropout", "none"},
@@ -395,7 +377,7 @@ def clean_and_fix_args(args: Namespace):
     if args.model != "nn":
         args_to_remove |= set()
     if args.model != "mpn":
-        args_to_remove |= {"init_lr", "max_lr", "final_lr"}
+        args_to_remove |= {"init_lr", "max_lr", "final_lr", "ddp", "precision"}
     if args.model != "nn" and args.model != "mpn":
         args_to_remove |= {"conf_method"}
 
