@@ -6,7 +6,8 @@ from timeit import default_timer as time
 
 import ray
 
-from molpal import args, Explorer
+from molpal import Explorer
+from molpal.cli import args
 
 def sigterm_handler(signum, frame):
     sys.exit(0)
