@@ -25,7 +25,7 @@ class Runner:
             n_per_acq = 200, 
             num_objs = 2,
             num_models = 2,
-            acq_func = 'nds',
+            acq_func = 'ei',
             n_iter = 5,
             running_DRD2 = True,
         ) -> None:
@@ -48,7 +48,7 @@ class Runner:
             )
         if self.running_DRD2:
             self.pool = MoleculePool(
-                    libraries=['data/drd2_data.csv','data/drd3_data.csv'],
+                    libraries=['data/drd2_data.csv'],
                     featurizer=self.featurizer,
                     fps='data/drd2_data.h5', 
                     fps_path='data/drd2_data.h5',
@@ -67,7 +67,8 @@ class Runner:
                 for i in range(self.num_objs)
                 ]
         self.models = [self.init_model() for _ in range(num_models)]
-        self.fps = feature_matrix(smis=self.pool.smis(), featurizer=self.featurizer)
+        self.smis = list(self.objectives[0].data.keys())     
+        self.fps = np.array(feature_matrix(smis=self.smis, featurizer=self.featurizer))
     def run(self):
         score_record = []
         mse_record = []
@@ -90,8 +91,9 @@ class Runner:
                 ) 
         return model 
     def run_iteration(self):
+        print('Iteration ' + str(self.iteration))
         if self.iteration == 0: 
-            new_smis = self.acquirer.acquire_initial(xs=self.pool.smis())
+            new_smis = self.acquirer.acquire_initial(xs=self.smis)
             for new in new_smis: # use self.objectives here instead 
                 self.new_scores[new] = [self.objectives[j].data[new] for j in range(self.num_objs)]
             
@@ -109,29 +111,32 @@ class Runner:
         self.iteration += 1
         
         # retrain models with new points
+        print('Retraining ...')
         ys = np.array(list(self.scores.values()))
 
         for i, model in enumerate(self.models):
             model.train( list(self.scores.keys()), ys[:,i],
                         featurizer=self.featurizer, retrain = False)
         
-        # make predictions TODO; batching for inference + TQDM bar 
-        self.pred_means = [self.models[i].get_means(self.fps) for i in range(self.num_models)]
+        # make predictions TODO; batching for inference + TQDM bar, reqrite so vars and preds are tried first 
+        print('Inferring ...')
+        self.pred_means = np.array([self.models[i].get_means(self.fps) for i in range(self.num_models)]).T
         try:
-            self.pred_vars = [self.models[i].get_means_and_vars(self.fps)[1] for i in range(self.num_models)]
+            self.pred_vars = np.array([self.models[i].get_means_and_vars(self.fps)[1] for i in range(self.num_models)]).T
         except: pass
 
-        model_mses = [mean_squared_error(self.objectives[i](self.pool.smis()).values(), self.pred_means[i]) for i in range(self.num_models)]
+        model_mses = [mean_squared_error(np.array(list(self.objectives[i].data.values())), self.pred_means[:,i]) for i in range(self.num_models)]
 
         return self.scores, model_mses
     def acquire_nds(self):
+        print('Acquiring using NDS: ...')
         ndf, _, _, _ = pg.fast_non_dominated_sorting(np.vstack(tuple(np.array(self.pred_means))).T)
         ndf = np.concatenate(ndf, axis=0)
         new_points = []
 
         i = 0
         new_scores = {}
-        while len(new_points) < self.n_per_acq:
+        while len(new_points) < self.n_per_acq: #rewrite as heap with tqdm 
             new_smile = self.pool.get_smi(ndf[i])
             if new_smile in self.scores: 
                 i = i + 1
@@ -141,10 +146,12 @@ class Runner:
                 i = i + 1
         return new_scores
     def acquire_ei(self): 
-        new_scores = {}
-        ei_scores = ei(Y_means=self.pred_means, Y_vars=self.pred_vars, current_max=self.current_max,xi=0)
+        print('Acquiring using EI: ...')
+        new_scores = {} # need to define ei for multiple objectives 
+        ei_scores = [ei(Y_means=mean, Y_vars=var, current_max=self.current_max,xi=0) 
+                            for mean,var in zip(self.pred_means, self.pred_vars) ]
         heap = []
-        for smi,ei_score in zip(self.pool.smis(),ei_scores):
+        for smi,ei_score in zip(self.smis,ei_scores):
             if smi not in self.scores: 
                 if len(heap) < self.n_per_acq:
                     heapq.heappush(heap, (ei_score, smi))
@@ -154,6 +161,7 @@ class Runner:
             new_scores[smi] = [self.objectives[i].data[smi] for i in range(self.num_objs)]
         return new_scores
     def acquire_pi(self):
+        print('Acquiring using PI: ...')
         new_scores = {}
         pi_scores = pi(Y_means=self.pred_means, Y_vars=self.pred_vars, current_max=self.current_max,xi=0)
         heap = []
