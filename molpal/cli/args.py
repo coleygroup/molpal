@@ -5,6 +5,15 @@ from typing import Optional, Union
 def gen_args(args: Optional[str] = None) -> Namespace:
     parser = ArgumentParser()
 
+    add_args(parser)
+
+    args = parser.parse_args(args)
+
+    clean_and_fix_args(args)
+
+    return args
+
+def add_args(parser: ArgumentParser):
     add_general_args(parser)
     add_featurizer_args(parser)
     add_pool_args(parser)
@@ -13,13 +22,6 @@ def gen_args(args: Optional[str] = None) -> Namespace:
     add_objective_args(parser)
     add_model_args(parser)
     add_stopping_args(parser)
-
-    args = parser.parse_args(args)
-
-    cleanup_args(args)
-
-    return args
-
 
 #################################
 #       GENERAL ARGUMENTS       #
@@ -85,7 +87,8 @@ def add_general_args(parser: ArgumentParser) -> None:
 ########################################
 #       FEATURIZER ARGUMENTS           #
 ########################################
-def add_featurizer_args(parser: ArgumentParser) -> None:
+def add_featurizer_args(parser: ArgumentParser):
+    parser = parser.add_argument_group("FEATURIZER")
     parser.add_argument(
         "--fingerprint",
         default="pair",
@@ -101,7 +104,8 @@ def add_featurizer_args(parser: ArgumentParser) -> None:
 ##############################
 #       POOL ARGUMENTS       #
 ##############################
-def add_pool_args(parser: ArgumentParser) -> None:
+def add_pool_args(parser: ArgumentParser):
+    parser = parser.add_argument_group("POOL")
     parser.add_argument("--pool", default="eager", help="the type of MoleculePool to use")
     parser.add_argument(
         "-l",
@@ -159,6 +163,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
 #       PRUNING ARGUMENTS       #
 #################################
 def add_prune_args(parser):
+    parser = parser.add_argument_group("PRUNING")
     parser.add_argument("--prune", action="store_true")
     parser.add_argument("--prune-min-hit-prob", type=restricted_float)
 
@@ -166,7 +171,8 @@ def add_prune_args(parser):
 #####################################
 #       ACQUISITION ARGUMENTS       #
 #####################################
-def add_acquisition_args(parser: ArgumentParser) -> None:
+def add_acquisition_args(parser: ArgumentParser):
+    parser = parser.add_argument_group("ACQUISITION")
     parser.add_argument(
         "--metric",
         "--alpha",
@@ -220,7 +226,8 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
 ###################################
 #       OBJECTIVE ARGUMENTS       #
 ###################################
-def add_objective_args(parser: ArgumentParser) -> None:
+def add_objective_args(parser: ArgumentParser):
+    parser = parser.add_argument_group("OBJECTIVE")
     parser.add_argument(
         "-o",
         "--objective",
@@ -243,32 +250,33 @@ def add_objective_args(parser: ArgumentParser) -> None:
 ###############################
 #       MODEL ARGUMENTS       #
 ###############################
-def add_model_args(parser: ArgumentParser) -> None:
-    parser.add_argument(
+def add_model_args(parser: ArgumentParser):
+    model_parser = parser.add_argument_group("MODEL")
+    model_parser.add_argument(
         "--model", choices=("rf", "gp", "nn", "mpn"), default="rf", help="the model type to use"
     )
-    parser.add_argument(
+    model_parser.add_argument(
         "--test-batch-size",
         type=int,
         help="the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.",
     )
-    parser.add_argument(
+    model_parser.add_argument(
         "--retrain-from-scratch",
         action="store_true",
         default=False,
         help="whether the model should be retrained from scratch at each iteration as opposed to retraining online.",
     )
-    parser.add_argument(
+    model_parser.add_argument(
         "--model-seed",
         type=int,
         help="the random seed to use for model initialization. Not specifying will result in random model initializations each time the model is trained.",
     )
 
-    # RF args
-    parser.add_argument(
+    rf_parser = model_parser.add_argument_group("RANDOM FOREST")
+    rf_parser.add_argument(
         "--n-estimators", type=int, default=100, help="the number of trees in the forest"
     )
-    parser.add_argument(
+    rf_parser.add_argument(
         "--max-depth",
         nargs="?",
         type=int,
@@ -276,46 +284,38 @@ def add_model_args(parser: ArgumentParser) -> None:
         default=8,
         help="the maximum depth of the tree. Not specifying this argument at all will default to 8. Adding the flag without specifying number a number will default to an unlimited depth",
     )
-    parser.add_argument(
+    rf_parser.add_argument(
         "--min-samples-leaf",
         type=int,
         default=1,
         help="the minimum number of samples required to be at a leaf node",
     )
-    # GP args
-    parser.add_argument(
+
+    gp_parser = model_parser.add_argument_group("GAUSSIAN PROCESS")
+    gp_parser.add_argument(
         "--gp-kernel",
         choices={"dotproduct"},
         default="dotproduct",
         help="Kernel to use for Gaussian Process model",
     )
 
-    # MPNN args
-    parser.add_argument(
+    mpnn_parser = model_parser.add_argument_group("MPNN")
+    mpnn_parser.add_argument(
         "--init-lr", type=float, default=1e-4, help="the initial learning rate for the MPNN model"
     )
-    parser.add_argument(
+    mpnn_parser.add_argument(
         "--max-lr", type=float, default=1e-3, help="the maximum learning rate for the MPNN model"
     )
-    parser.add_argument(
+    mpnn_parser.add_argument(
         "--final-lr", type=float, default=1e-4, help="the final learning rate for the MPNN model"
     )
-
-    # NN/MPNN args
-    parser.add_argument(
-        "--conf-method",
-        default="none",
-        choices={"ensemble", "twooutput", "mve", "dropout", "none"},
-        help="Confidence estimation method for NN/MPNN models",
-    )
-
-    parser.add_argument(
+    mpnn_parser.add_argument(
         "--ddp",
         action="store_true",
         default=False,
         help="Whether to perform distributed MPN training over a multi-GPU setup via PyTorch DDP. Currently only works with CUDA >= 11.0",
     )
-    parser.add_argument(
+    mpnn_parser.add_argument(
         "--precision",
         type=int,
         default=32,
@@ -323,11 +323,20 @@ def add_model_args(parser: ArgumentParser) -> None:
         help="the precision to use when training PyTorch models in number of bits. Native precision is 32, but 16-bit precision can lead to lower memory footprint during training and faster training times on Volta GPUs. DO NOT use 16-bit precision on non-Volta GPUs. Currently only supported for single-GPU training (i.e., ddp=False)",
     )
 
+    mpnn_nn_parser = model_parser.add_argument_group("MPNN + NN")
+    mpnn_nn_parser.add_argument(
+        "--conf-method",
+        default="none",
+        choices={"ensemble", "twooutput", "mve", "dropout", "none"},
+        help="Confidence estimation method for NN/MPNN models",
+    )
+
 
 ##################################
 #       STOPPING ARGUMENTS       #
 ##################################
-def add_stopping_args(parser: ArgumentParser) -> None:
+def add_stopping_args(parser: ArgumentParser):
+    parser = parser.add_argument_group("STOPPING")
     parser.add_argument(
         "-k",
         "--top-k",
@@ -360,7 +369,7 @@ def add_stopping_args(parser: ArgumentParser) -> None:
     )
 
 
-def cleanup_args(args: Namespace):
+def clean_and_fix_args(args: Namespace):
     """Remove unnecessary attributes and change some arguments"""
     if isinstance(args.scores_csvs, list) and len(args.scores_csvs) == 1:
         args.scores_csvs = args.scores_csvs[0]
