@@ -61,7 +61,6 @@ class DockingObjective(Objective):
             args.reduction,
             args.receptor_reduction,
             args.k,
-            verbose,
         )
 
         atexit.register(self.cleanup)
