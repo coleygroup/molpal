@@ -19,7 +19,7 @@ When pruning was performed, the following parameters were used:
 See the following sections for specific details on each experiment
 
 #### DOCKSTRING
-download the full dataset TSV file from [here](https://figshare.com/s/95f2fed733dec170b998?file=30562257). You can either use as-is, using `\t` as your delimiter for a `LookupObjective` or convert it to a CSV and remove the inchikey column. Using this file with a `LookupObjective` entails creating an objective config file the `--score-col` value set corresponding to the column of your selected target. This same file was used as the `--library`. Each experiment was repeated 5 times
+download the full dataset TSV file from [here](https://figshare.com/s/95f2fed733dec170b998?file=30562257). You can either use as-is, using `\t` as your delimiter for a `LookupObjective` or convert it to a CSV and remove the inchikey column. Using this file with a `LookupObjective` entails creating an objective config file with the `--score-col` value set corresponding to the column of your selected target. Yes, this means that to run MolPAL across all 58 DOCKSTRING targets, you will need to write 58 separate objective config files. This same file was used as the `--library`. Each experiment was repeated 5 times
 
 The output directories should be organized in the following hierarchy:
 ```

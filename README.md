@@ -4,7 +4,7 @@
 ![overview of molpal structure and implementation](molpal_overview.png)
 
 ## Overview
-This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://pubs.rsc.org/en/content/articlelanding/2021/sc/d0sc06805e). The original code used in that paper lives at the [`publication`](https://github.com/coleygroup/molpal/releases/tag/publication) tag. This repository also contains the updated code used in the paper "Self-focusing virtual screening with active design space pruning," the code for which lives at the [`dsp-pub`](https://github.com/coleygroup/molpal/releases/tag/dsp-pub) tag
+This repository contains the source of MolPAL, a software for the accelerated discovery of compounds in high-throughput virtual screening environments, as originally detailed in the paper [Accelerating high-throughput virtual screening through molecular pool-based active learning](https://pubs.rsc.org/en/content/articlelanding/2021/sc/d0sc06805e). The original code used in that paper lives at the [`publication`](https://github.com/coleygroup/molpal/releases/tag/publication) tag. This repository also contains the updated code used in the paper "Self-focusing virtual screening with active design space pruning," the code for which lives at the [`dsp-pub`](https://github.com/coleygroup/molpal/releases/tag/dsp-pub) tag. _To reproduce results from either publication, please see the [Reproducing Experimental Results](#reproducing-experimental-results) section_
 
 ## Table of Contents
 - [Overview](#overview)
@@ -18,9 +18,9 @@ This repository contains the source of MolPAL, a software for the accelerated di
   * [Examples](#examples)
   * [Required Settings](#required-settings)
   * [Optional Settings](#optional-settings)
+- [Reproducing Experimental Results](#reproducing-experimental-results)
 - [Object Model](#object-model)
 - [Future Directions](#future-directions)
-- [Reproducing Experimental Results](#reproducing-experimental-results)
 - [Citation](#citation)
 
 ## Requirements
@@ -130,6 +130,26 @@ MolPAL also has a number of different model architectures, encodings, acquisitio
   * `--conf-method`: the confidence estimation method to use for the NN or MPN models. Choices include `ensemble`, `dropout`, `mve`, and `none`. (Default = 'none'). NOTE: the MPN model does not support ensembling
 - `--metric`: the acquisition metric to use. Choices include `random`, `greedy`, `ucb`, `pi`, `ei`, `thompson`, and `threshold` (Default = `greedy`.) Some metrics include additional settings (e.g. the β value for `ucb`.) 
 
+## Reproducing Experimental Results
+### Generating data
+The data used in the original MolPAL publication were generated using the configuration files located in [`examples/config`](./examples/config/) folder. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626). For more details on analyzing the data and generating the figures see the [notebooks folder](./notebooks/).
+
+### Timing
+the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI GPUs
+
+| action | resources | approximate time |
+| --- | --- | --- |
+| calculating 2M fingerprints | 8 CPU <sup>1</sup> | 4m |
+| calculating 100M fingerprints | 12 CPU | 4h |
+| MPN training on 2k molecules | 8 CPU / 1 GPU | 2s / epoch |
+| MPN prediction on 2M molecules | 8 CPU / 1 GPU | 15m | 
+| MPN training on 100k molecules | 12 CPU / 1 GPU <sup>2</sup> | 30s / epoch |
+| MPN prediction on 100M molecules | 4 x (12 CPU / 1 GPU) <sup>2</sup> | 2h |
+
+<sup>1</sup>fingerprint code currently only support single process writing to limit total memory footprint. We have found it is I/O limited beyond 8 CPUs
+
+<sup>2</sup>used Intel Xeon 6130 CPUs and Nvidia V100 GPUs
+
 ## Object Model
 MolPAL is a software for batched, Bayesian optimization in a virtual screening environment. At the core of this software is the `molpal` library, which implements several classes that handle specific elements of the optimization routine.
 
@@ -147,26 +167,6 @@ __Objective__: An [`Objective`](molpal/objectives/base.py) handles calculation o
 
 ## Future Directions
 Though MolPAL was originally intended for use with protein-ligand docking screens, it was designed with modularity in mind and is easily extendable to other settings as well. In principle, all that is required to adapt MolPAL to a new problem is to write a custom `Objective` subclass that implements the `calc` method. This method takes a sequence SMILES strings as an input and returns a mapping from SMILES string -> objective function value to be utilized by the Explorer. _To this end, we are currently exploring the extension of MolPAL to subsequent stages of virtual discovery (MD, DFT, etc.)_ If you make use of the MolPAL library by implementing a new `Objective` subclass, we would be happy to include your work in the main branch.
-
-## Reproducing Experimental Results
-### Generating data
-The data used in the original publication were generated using the configuration files located in [`examples/config`](./examples/config/) folder. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626). For more details on analyzing the data and generating the figures see the [notebooks folder](./notebooks/).
-
-### Timing
-the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI GPUs
-
-| action | resources | approximate time |
-| --- | --- | --- |
-| calculating 2M fingerprints | 8 CPU <sup>1</sup> | 4m |
-| calculating 100M fingerprints | 12 CPU | 4h |
-| MPN training on 2k molecules | 8 CPU / 1 GPU | 2s / epoch |
-| MPN prediction on 2M molecules | 8 CPU / 1 GPU | 15m | 
-| MPN training on 100k molecules | 12 CPU / 1 GPU <sup>2</sup> | 30s / epoch |
-| MPN prediction on 100M molecules | 4 x (12 CPU / 1 GPU) <sup>2</sup> | 2h |
-
-<sup>1</sup>fingerprint code currently only support single process writing to limit total memory footprint. We have found it is I/O limited beyond 8 CPUs
-
-<sup>2</sup>used Intel Xeon 6130 CPUs and Nvidia V100 GPUs
 
 ## Citation
 
