@@ -132,7 +132,7 @@ MolPAL also has a number of different model architectures, encodings, acquisitio
 
 ## Reproducing Experimental Results
 ### Generating data
-The data used in the original MolPAL publication were generated using the configuration files located in [`examples/config`](./examples/config/) folder. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626). For more details on analyzing the data and generating the figures see the [notebooks folder](./notebooks/).
+The data used in the original publication were generated using the configuration files located in [`examples/config`](./examples/config/) folder. The AmpC data was too large to include in this repo, but it may be downloaded from [here](https://figshare.com/articles/AmpC_screen_table_csv_gz/7359626). **For more details on analyzing the data and generating the figures see the [notebooks folder](./notebooks/).**
 
 ### Timing
 the following timings used Intel Xeon 6230 CPUs and Nvidia GeForce RTX 2080 TI GPUs
