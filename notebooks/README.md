@@ -101,7 +101,7 @@ Next, run the [`collate.py`](../scripts/collate.py) script, supplying the proper
 See the corresponding notebooks for the figures you'd like to make.
 
 ## Original MolPAL figures
-Note that the code to generate figures from the original MolPAL publication has been refactored and largely removed from the repo, but the general scaffold to recreate most of these figures with the new code can be found in [`hts-figures.ipynb`](./hts-figures.ipynb). To recreate the UMAP figure, see [`umap_fig.py`](../scripts/umap_fig.py). To recreate the score histograms, see [`dockstring-figures.ipynb`](./dockstring-figures.ipynb).
+Note that the code to generate figures from the original MolPAL publication has been refactored and largely removed from the repo, but the general scaffold to recreate most of these figures with the new code can be found in [`hts-figures.ipynb`](./hts-figures.ipynb). _Note_: this notebook can be used to recreate figures for non-HTS datasets too! To recreate the UMAP figure, see [`umap_fig.py`](../scripts/umap_fig.py). To recreate the score histograms, see [`dockstring-figures.ipynb`](./dockstring-figures.ipynb).
 
 The general directory structure for the raw data was organized like so:
 ```
