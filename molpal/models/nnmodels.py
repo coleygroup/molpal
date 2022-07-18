@@ -21,6 +21,8 @@ from tensorflow import keras
 from molpal.featurizer import Featurizer, feature_matrix
 from molpal.models.base import SingleTaskModel as Model
 
+import ray 
+
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 Dataset = tf.data.Dataset
@@ -50,6 +52,7 @@ def mve_loss(y_true, y_pred):
         + tf.math.square(mu-y_true)/(2*var)
     )
 
+@ray.remote
 class NN:
     """A feed-forward neural network model
 
@@ -176,7 +179,7 @@ class NN:
         """
         self.model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        X = np.array(feature_matrix(xs, featurizer))
+        X = np.array(feature_matrix(xs, featurizer, disable=True))
         Y = self._normalize(ys)
 
         self.model.fit(
@@ -340,7 +343,7 @@ class NNEnsembleModel(Model):
                  model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 4096
         self.build_model = partial(
-            NN, input_size=input_size, num_tasks=1,
+            NN.remote, input_size=input_size, num_tasks=1,
             batch_size=test_batch_size, dropout=dropout,
             model_seed=model_seed
         )
@@ -367,13 +370,14 @@ class NNEnsembleModel(Model):
                 self.build_model() for _ in range(self.ensemble_size)
             ]
 
-        return all([model.train(xs, ys, featurizer) for model in self.models])
+        return all([model.train.remote(xs, ys, featurizer) for model in self.models])
 
     def get_means(self, xs: Sequence) -> np.ndarray:
         preds = np.zeros((len(xs), len(self.models)))
         for j, model in tqdm(enumerate(self.models), leave=False,
                              desc='ensemble prediction', unit='model'):
-            preds[:, j] = model.predict(xs)[:, 0]
+            # preds[:, j] = model.predict.remote(xs)[:, 0]
+            preds[:, j] = ray.get(model.predict.remote(xs))[:, 0]
 
         return np.mean(preds, axis=1)
 
@@ -381,7 +385,7 @@ class NNEnsembleModel(Model):
         preds = np.zeros((len(xs), len(self.models)))
         for j, model in tqdm(enumerate(self.models), leave=False,
                              desc='ensemble prediction', unit='model'):
-            preds[:, j] = model.predict(xs)[:, 0]
+            preds[:, j] = ray.get(model.predict.remote(xs))[:, 0]
 
         return np.mean(preds, axis=1), np.var(preds, axis=1)
 
