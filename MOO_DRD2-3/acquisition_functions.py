@@ -38,8 +38,11 @@ def HVPI(fmean: np.array, fstd: np.array, pareto: Pareto):
     fstd = fstd.reshape((N, 1, n_obj))
 
     # calculate cdf
-    Phi_l = scipy.stats.norm.cdf((l - fmean) / fstd)
-    Phi_u = scipy.stats.norm.cdf((u - fmean) / fstd)
+    #Phi_l = scipy.stats.norm.cdf((l - fmean) / fstd)
+    #Phi_u = scipy.stats.norm.cdf((u - fmean) / fstd)
+
+    Phi_l = scipy.special.ndtr((l - fmean) / fstd)
+    Phi_u = scipy.special.ndtr((u - fmean) / fstd)
 
     #  calculate PoI
     poi = np.sum(np.prod(Phi_u - Phi_l, axis=2), axis=1)  # shape: (N, 1)
@@ -99,10 +102,15 @@ def EHVI(fmean: np.array, fstd: np.array, pareto: Pareto):
     # calculate pdf, cdf
     phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, u) - fmean) / fstd)
     phi_max_al = scipy.stats.norm.pdf((np.maximum(a, l) - fmean) / fstd)
-    Phi_l = scipy.stats.norm.cdf((l - fmean) / fstd)
-    Phi_u = scipy.stats.norm.cdf((u - fmean) / fstd)
-    Phi_a = scipy.stats.norm.cdf((a - fmean) / fstd)
-    Phi_b = scipy.stats.norm.cdf((b - fmean) / fstd)
+    # Phi_l = scipy.stats.norm.cdf((l - fmean) / fstd)
+    # Phi_u = scipy.stats.norm.cdf((u - fmean) / fstd)
+    # Phi_a = scipy.stats.norm.cdf((a - fmean) / fstd)
+    # Phi_b = scipy.stats.norm.cdf((b - fmean) / fstd)
+
+    Phi_l = scipy.special.ndtr((l - fmean) / fstd)
+    Phi_u = scipy.special.ndtr((u - fmean) / fstd)
+    Phi_a = scipy.special.ndtr((a - fmean) / fstd)
+    Phi_b = scipy.special.ndtr((b - fmean) / fstd)
 
     ## calculate G
     is_type_A = np.logical_and(a < u, l < b)
