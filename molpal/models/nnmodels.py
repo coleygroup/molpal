@@ -185,13 +185,13 @@ class NN:
         self.model.fit(
             X, Y, batch_size=self.batch_size, validation_split=0.1,
             epochs=100, validation_freq=2, verbose=0,
-            # callbacks=[
-            #    keras.callbacks.EarlyStopping(
-            #        monitor='val_loss', patience=10,
-            #        restore_best_weights=True, verbose=0, mode='min'
-            #    ),
-            #    tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
-            # ]
+            callbacks=[
+               keras.callbacks.EarlyStopping(
+                    monitor='val_loss', patience=10,
+                    restore_best_weights=True, verbose=0, mode='min'
+                ),
+                # tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
+            ]
         )
 
         return True
