@@ -8,7 +8,6 @@ from molpal import args, Explorer, featurizer, pools, acquirer, models
 from molpal.pools.base import MoleculePool
 from molpal.objectives.lookup import LookupObjective
 from molpal.featurizer import feature_matrix
-from molpal.acquirer.metrics import ei, pi
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pygmo as pg
@@ -20,17 +19,27 @@ from pareto import Pareto
 from acquisition_functions import EHVI, HVPI
 from tqdm import tqdm
 
+def merge_dicts(dict_1, dict_2):
+    # TODO: account for any number of dicts 
+    merged_dict = dict_1
+    for entry in dict_1:  
+        # if entry in dict_2: # assumes both dicts have same keys
+        merged_dict[entry] = [dict_1[entry], dict_2[entry]]
+
+    return merged_dict
+
 class Runner:
     def __init__(self, 
             fingerprint='morgan',
             radius = 2,
             length = 2048,
-            n_per_acq = 200, 
+            n_per_acq = 500, 
             num_objs = 2,
             num_models = 2,
             acq_func = 'ei',
             n_iter = 5,
             running_DRD2 = True,
+            c = None
         ) -> None:
 
         self.iteration = 0
@@ -43,6 +52,7 @@ class Runner:
         self.new_scores = {}
         self.n_iter = n_iter
         self.running_DRD2 = running_DRD2
+        self.c = c or [1,1] # default to maximize all 
 
         self.featurizer = featurizer.Featurizer(
                 fingerprint=fingerprint,
@@ -61,7 +71,8 @@ class Runner:
                 init_size=n_per_acq,
                 batch_sizes=[n_per_acq],
             )       
-        self.objective_configs, self.minimize = self.init_objective_config()
+        self.objective_configs = self.init_objective_config()
+        self.minimize = (np.array(self.c)==0)
         self.objectives = [
                     LookupObjective(
                         self.objective_configs[i], 
@@ -71,9 +82,12 @@ class Runner:
                 ]
         self.pareto = Pareto(num_objectives=self.num_objs)
         self.models = [self.init_model() for _ in range(num_models)]
-        self.smis = list(self.objectives[0].data.keys())     
+        self.smis = list(self.objectives[0].data.keys())            
+        self.objective_values = self.get_objective_values()
         self.fps = np.array(feature_matrix(smis=self.smis, featurizer=self.featurizer))
-        self.unacquired_scores = {smi:[self.objectives[i].data[smi] for i in range(self.num_objs)] for smi in self.smis}
+        # self.unacquired_scores = {smi:[self.objectives[i].data[smi] for i in range(self.num_objs)] for smi in self.smis}
+        self.unacquired_scores = {smi:[self.objectives[i]([smi])[smi] for i in range(self.num_objs)] for smi in self.smis}
+
        
     def run(self):
         score_record = []
@@ -81,16 +95,15 @@ class Runner:
         front_record = []
         while self.iteration < self.n_iter: 
             scores, mses = self.run_iteration()
-            score_record.append(scores)
-            mse_record.append(mses)
-            front_record.append(self.pareto.front)
+            score_record.append(scores.copy())
+            mse_record.append(mses.copy())
+            front_record.append(self.pareto.front.copy())
         return score_record, mse_record, front_record
     def init_objective_config(self):
         if self.running_DRD2: 
             configs = ['examples/objective/DRD2_docking.ini',
                         'examples/objective/DRD3_docking.ini']
-            minimize = [True, False]
-        return configs, minimize
+        return configs
     def init_model(self):
         model = NNEnsembleModel(
                     input_size=self.length, 
@@ -99,12 +112,16 @@ class Runner:
                     test_batch_size=1000
                 ) 
         return model 
+    def get_objective_values(self):
+        obj_list = [list(self.objectives[i](self.smis).values()) for i in range(self.num_objs)]
+        return np.array(obj_list).T
     def run_iteration(self):
         print('Iteration ' + str(self.iteration))
         if self.iteration == 0: 
             new_smis = self.acquirer.acquire_initial(xs=self.smis)
-            for new in new_smis: # use self.objectives here instead 
-                self.new_scores[new] = [self.objectives[j].data[new] for j in range(self.num_objs)]
+            self.new_scores = merge_dicts(self.objectives[0](new_smis),self.objectives[1](new_smis))
+            # for new in new_smis: # use self.objectives here instead 
+            #    self.new_scores[new] = [[new] for j in range(self.num_objs)]
         
         else:
             # TODO: incorporate molpal acquirer.acquire_batch instead 
@@ -121,19 +138,22 @@ class Runner:
         # print('Retraining ...')
         ys = np.array(list(self.scores.values()))
 
-        for i, model in tqdm(enumerate(self.models), leave=True, desc='Retraining...'):
+        for i, model in tqdm(enumerate(self.models), desc='Retraining',total=len(self.models)):
             model.train( list(self.scores.keys()), ys[:,i],
                         featurizer=self.featurizer, retrain = False)
         
         # make predictions TODO; batching for inference + TQDM bar, reqrite so vars and preds are tried first 
         # print('Inferring ...')
+        
         self.pred_means = np.array([self.models[i].get_means(self.fps) for i in tqdm(range(self.num_models),desc='Inferring Means')]).T
+        self.pred_means_dict = {self.smis[i]:self.pred_means[i] for i in range(len(self.smis))}
+
+
         if 'vars' in self.models[i].provides:
             self.pred_vars = np.array([self.models[i].get_means_and_vars(self.fps)[1] for i in tqdm(range(self.num_models),desc='Inferring Variances')]).T
         #except: pass
 
-        # TODO: edit model_mses to only calculate for the test set not all molecules 
-        model_mses = [mean_squared_error(np.array(list(self.objectives[i].data.values())), self.pred_means[:,i]) for i in range(self.num_models)]
+        model_mses = self.mse_unacquired()
         return self.scores, model_mses
     def acquire_nds(self):
         print('Acquiring using NDS: ...')
@@ -149,15 +169,17 @@ class Runner:
                 i = i + 1
             else:
                 new_points.append(ndf[i]) 
-                new_scores[new_smile] = [self.objectives[j].data[new_smile] for j in range(self.num_objs)]
+                new_scores[new_smile] = [self.objectives[j]([new_smile])[new_smile] for j in range(self.num_objs)]
                 i = i + 1
         return new_scores
     def acquire_uncertain(self): 
         new_scores = {} 
-        if self.acq_func == 'ei' or 'EI' or 'EHVI' or 'ehvi':
+        if self.acq_func == ('ei' or 'EI' or 'EHVI' or 'ehvi'):
             acq_scores = EHVI(self.pred_means, np.sqrt(self.pred_vars), self.pareto)
-        elif self.acq_func == 'pi' or 'PI' or 'HVPI' or 'hvpi':
+        elif self.acq_func == ('pi' or 'PI' or 'HVPI' or 'hvpi'):
             acq_scores = HVPI(self.pred_means, np.sqrt(self.pred_vars), self.pareto)
+        elif self.acq_func == 'random':
+            acq_scores = np.random.uniform(low=0.0, high=1.0, size=len(self.pred_means))
         else:
             raise Exception(self.acq_func + ' is not a valid acquisition function')
             
@@ -168,8 +190,10 @@ class Runner:
                     heapq.heappush(heap, (acq_score, smi))
                 else:
                     heapq.heappushpop(heap, (acq_score, smi))
-        for _, smi in heap: 
-            new_scores[smi] = [self.objectives[i].data[smi] for i in range(self.num_objs)]
+        new_smis = [smi for score,smi in heap]
+        new_scores = merge_dicts(self.objectives[0](new_smis), self.objectives[1](new_smis))
+        # for _, smi in heap: 
+        #    new_scores[smi] = [self.objectives[i].data[smi] for i in range(self.num_objs)]
         return new_scores
     def clean_update_scores_pareto(self):
         for x, y in self.new_scores.items():
@@ -182,6 +206,14 @@ class Runner:
         self.pareto.update_front(np.array(list(self.new_scores.values())))
         self.current_max = np.max(np.array(list(self.scores.values())),axis=0)
         self.new_scores = {}
+    def mse_unacquired(self):
+        unacq_smis = self.unacquired_scores.keys()
+        unacq_objs = np.array([list(self.objectives[i](unacq_smis).values()) for i in range(self.num_objs)])
+        relevant_means = np.array([self.pred_means_dict[smi] for smi in unacq_smis])
+        mse = [mean_squared_error(unacq_objs[i], relevant_means[:,i]) for i in range(self.num_objs)]
+        return mse 
+
+
 
 
 # def read_data(path, smiles_col, data_cols):
