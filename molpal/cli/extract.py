@@ -69,8 +69,12 @@ def main(args):
     data = []
     for node_id in tqdm(d_nodeID_names, "Searching", unit="tarfile"):
         with tarfile.open(args.parent_dir / f"{node_id}.tar.gz") as tar:
-            names = d_nodeID_names[node_id]
-            targets = [member for member in tar.getnames() if any(name in member for name in names)]
+            lig_names_on_node = d_nodeID_names[node_id]
+            targets = [
+                filename
+                for filename in tqdm(tar.getnames(), "IDing targets", unit="file", leave=False)
+                if any(lig_name in filename for lig_name in lig_names_on_node)
+            ]
             extracted_members = [
                 tar.extract(target, path)
                 for target in tqdm(targets, "Extracting", unit="file", leave=False)
