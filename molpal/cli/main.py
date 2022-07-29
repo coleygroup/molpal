@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from configargparse import ArgumentParser
 
 from molpal.cli import run, extract
 
