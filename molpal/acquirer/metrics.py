@@ -1,4 +1,4 @@
-"""This module contains functions for calculating the acquisition score of an input based on 
+"""This module contains functions for calculating the acquisition score of an input based on
 various metrics"""
 from typing import Callable, Optional, Set
 

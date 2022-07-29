@@ -44,7 +44,7 @@ class MPNN:
     model : MoleculeModel
         the underlying chemprop model on which to train and make predictions
     uncertainty : Optional[str], default=None
-        the uncertainty quantification method the model uses. None if it does not use any 
+        the uncertainty quantification method the model uses. None if it does not use any
         uncertainty quantification
     loss_func : Callable
         the loss function used in model training
@@ -66,10 +66,10 @@ class MPNN:
         detected, or if none are available, the ratio of total CPUs on detected on the ray cluster
         over the number of CPUs to dedicate to each dataloader
     train_config : Dict
-        a dictionary containing the configuration of training variables: learning rates, maximum 
+        a dictionary containing the configuration of training variables: learning rates, maximum
         epochs, validation metric, etc.
     scaler : StandardScaler
-        a scaler to normalize target data before training and validation and to reverse transform 
+        a scaler to normalize target data before training and validation and to reverse transform
         prediction outputs
     """
 
@@ -177,9 +177,7 @@ class MPNN:
         train_dataloader = MoleculeDataLoader(
             train_data, self.batch_size, self.ncpu, pin_memory=False
         )
-        val_dataloader = MoleculeDataLoader(
-            val_data, self.batch_size, self.ncpu, pin_memory=False
-        )
+        val_dataloader = MoleculeDataLoader(val_data, self.batch_size, self.ncpu, pin_memory=False)
 
         lit_model = mpnn.ptl.LitMPNN(self.train_config)
 
@@ -315,9 +313,7 @@ class MPNModel(Model):
     def type_(self):
         return "mpn"
 
-    def train(
-        self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs
-    ) -> bool:
+    def train(self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs) -> bool:
         if retrain:
             self.model = self.build_model()
 
@@ -377,9 +373,7 @@ class MPNDropoutModel(Model):
     def provides(self):
         return {"means", "vars", "stochastic"}
 
-    def train(
-        self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs
-    ) -> bool:
+    def train(self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs) -> bool:
         if retrain:
             self.model = self.build_model()
 
@@ -438,9 +432,7 @@ class MPNTwoOutputModel(Model):
     def provides(self):
         return {"means", "vars"}
 
-    def train(
-        self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs
-    ) -> bool:
+    def train(self, xs: Iterable[str], ys: np.ndarray, *, retrain: bool = False, **kwargs) -> bool:
         if retrain:
             self.model = self.build_model()
 

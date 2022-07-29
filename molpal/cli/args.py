@@ -120,9 +120,7 @@ def add_pool_args(parser: ArgumentParser):
         help="the column containing the SMILES string in the library files",
     )
     parser.add_argument(
-        "--cxsmiles",
-        action="store_true",
-        help="whether the files use CXSMILES strings",
+        "--cxsmiles", action="store_true", help="whether the files use CXSMILES strings"
     )
     parser.add_argument(
         "--fps",
@@ -224,9 +222,7 @@ def add_objective_args(parser: ArgumentParser):
         help="the objective function to use",
     )
     parser.add_argument(
-        "--minimize",
-        action="store_true",
-        help="whether to minimize the objective function",
+        "--minimize", action="store_true", help="whether to minimize the objective function"
     )
     parser.add_argument(
         "--objective-config",

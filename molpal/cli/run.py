@@ -35,7 +35,7 @@ def main(args):
     clean_and_fix_args(args)
     params = vars(args)
 
-    print(f"MolPAL will be run with the following arguments:")
+    print("MolPAL will be run with the following arguments:")
     for k, v in sorted(params.items()):
         print(f"  {k}: {v}")
     print(flush=True)
