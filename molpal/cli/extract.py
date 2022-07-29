@@ -47,7 +47,7 @@ def add_args(parser):
     parser.add_argument(
         "-n",
         "--name",
-        default="files",
+        default="poses",
         help="the name of the directory under which all output will be placed",
     )
 
