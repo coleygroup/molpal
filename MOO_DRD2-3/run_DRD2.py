@@ -41,7 +41,6 @@ runner = Runner(
     c=[1,0]
     )
 score_record, mse_record, front_record = runner.run()
-print(front_record)
 
 # quick analysis 
 reference_min = [np.min(np.array(list(runner.objectives[j](runner.smis).values()))) for j in range(runner.num_objs)]

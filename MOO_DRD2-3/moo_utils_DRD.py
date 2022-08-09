@@ -1,3 +1,4 @@
+from ctypes import Union
 import numpy as np 
 from pathlib import Path
 import csv 
@@ -18,6 +19,7 @@ import tqdm
 from pareto import Pareto 
 from acquisition_functions import EHVI, HVPI
 from tqdm import tqdm
+from typing import Union
 
 def merge_dicts(dict_1, dict_2):
     # TODO: account for any number of dicts 
@@ -39,7 +41,8 @@ class Runner:
             acq_func = 'ei',
             n_iter = 5,
             running_DRD2 = True,
-            c = None
+            c = None, 
+            model:Union['NN','Perfect'] = 'NN'
         ) -> None:
 
         self.iteration = 0
@@ -52,7 +55,8 @@ class Runner:
         self.new_scores = {}
         self.n_iter = n_iter
         self.running_DRD2 = running_DRD2
-        self.c = c or [1,1] # default to maximize all 
+        self.c = c or [1,1] # default to maximize all \
+        self.model_type = model
 
         self.featurizer = featurizer.Featurizer(
                 fingerprint=fingerprint,
@@ -105,12 +109,15 @@ class Runner:
                         'examples/objective/DRD3_docking.ini']
         return configs
     def init_model(self):
-        model = NNEnsembleModel(
-                    input_size=self.length, 
-                    ensemble_size=3,
-                    activation='relu',
-                    test_batch_size=1000
-                ) 
+        if self.model_type == 'NN':
+            model = NNEnsembleModel(
+                        input_size=self.length, 
+                        ensemble_size=3,
+                        activation='relu',
+                        test_batch_size=1000
+                    ) 
+        elif self.model_type == 'perfect':
+            model = None
         return model 
     def get_objective_values(self):
         obj_list = [list(self.objectives[i](self.smis).values()) for i in range(self.num_objs)]
@@ -174,6 +181,7 @@ class Runner:
         return new_scores
     def acquire_uncertain(self): 
         new_scores = {} 
+        # TODO: calculate EHVI in batches 
         if self.acq_func == ('ei' or 'EI' or 'EHVI' or 'ehvi'):
             acq_scores = EHVI(self.pred_means, np.sqrt(self.pred_vars), self.pareto)
         elif self.acq_func == ('pi' or 'PI' or 'HVPI' or 'hvpi'):
