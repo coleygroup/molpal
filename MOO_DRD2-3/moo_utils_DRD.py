@@ -17,7 +17,7 @@ from sklearn.metrics import r2_score, mean_squared_error
 import heapq
 import tqdm
 from pareto import Pareto 
-from acquisition_functions import EHVI, HVPI
+from acquisition_functions import EHVI, HVPI, batched_acquisition
 from tqdm import tqdm
 from typing import Union, Literal
 
@@ -128,7 +128,7 @@ class Runner:
                         'examples/objective/DRD3_docking.ini']
         return configs
     def init_model(self,i):
-        if self.model_type == 'NN':
+        if self.model_type in {'NN','nn'}:
             model = NNEnsembleModel(
                         input_size=self.length, 
                         ensemble_size=3,
@@ -207,10 +207,12 @@ class Runner:
     def acquire_uncertain(self): 
         new_scores = {} 
         # TODO: calculate EHVI in batches 
-        if self.acq_func == ('ei' or 'EI' or 'EHVI' or 'ehvi'):
-            acq_scores = EHVI(self.pred_means, np.sqrt(self.pred_vars), self.pareto)
-        elif self.acq_func == ('pi' or 'PI' or 'HVPI' or 'hvpi'):
-            acq_scores = HVPI(self.pred_means, np.sqrt(self.pred_vars), self.pareto)
+        if self.acq_func in {'ei','EI','EHVI','ehvi','pi','PI','HVPI','hvpi'}:
+            acq_scores = batched_acquisition(
+                pred_means=self.pred_means, 
+                pred_vars=self.pred_vars, 
+                pareto_front=self.pareto, 
+                acquisition=self.acq_func)
         elif self.acq_func == 'random':
             acq_scores = np.random.uniform(low=0.0, high=1.0, size=len(self.pred_means))
         else:

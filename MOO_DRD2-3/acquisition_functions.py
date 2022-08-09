@@ -1,10 +1,25 @@
 import numpy as np
 import scipy.stats
 from pareto import Pareto
+from typing import Literal
+from itertools import islice
+import ray
+
 
 # physbo/search/score (https://github.com/issp-center-dev/PHYSBO)
 
+def batched_acquisition(pred_means, pred_vars, pareto_front, batch_size=1000, acquisition='ei'):
+    pred_means_batches = np.array_split(pred_means,int(len(pred_means)/batch_size)+1)
+    pred_vars_batches = np.array_split(pred_vars,int(len(pred_vars)/batch_size)+1)
 
+    if acquisition == ('ei' or 'EI' or 'EHVI' or 'ehvi'):
+        acq_scores = ray.get([EHVI.remote(means, np.sqrt(vars), pareto_front) for means, vars in zip(pred_means_batches,pred_vars_batches)])
+    elif acquisition == ('pi' or 'PI' or 'HVPI' or 'hvpi'):
+        acq_scores = ray.get([HVPI.remote(means, np.sqrt(vars), pareto_front) for means, vars in zip(pred_means_batches,pred_vars_batches)])
+    
+    return np.concatenate(acq_scores)
+
+@ray.remote
 def HVPI(fmean: np.array, fstd: np.array, pareto: Pareto):
     """
     Calculate Hypervolume-based Probability of Improvement (HVPI).
@@ -56,7 +71,7 @@ def HVPI(fmean: np.array, fstd: np.array, pareto: Pareto):
     score = hv * poi
     return score
 
-
+@ray.remote
 def EHVI(fmean: np.array, fstd: np.array, pareto: Pareto):
     """
     Calculate Expected Hyper-Volume Improvement (EHVI).

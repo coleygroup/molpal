@@ -39,7 +39,7 @@ runner = Runner(
     acq_func='ei',
     n_iter=5,
     c=[1,0],
-    model='perfect'
+    model='nn'
     )
 score_record, mse_record, front_record = runner.run()
 
