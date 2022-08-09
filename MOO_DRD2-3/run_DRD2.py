@@ -38,7 +38,8 @@ ray.init(num_cpus=10,num_gpus=1)
 runner = Runner(
     acq_func='ei',
     n_iter=5,
-    c=[1,0]
+    c=[1,0],
+    model='perfect'
     )
 score_record, mse_record, front_record = runner.run()
 

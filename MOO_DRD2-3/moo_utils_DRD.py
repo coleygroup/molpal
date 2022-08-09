@@ -19,7 +19,7 @@ import tqdm
 from pareto import Pareto 
 from acquisition_functions import EHVI, HVPI
 from tqdm import tqdm
-from typing import Union
+from typing import Union, Literal
 
 def merge_dicts(dict_1, dict_2):
     # TODO: account for any number of dicts 
@@ -29,6 +29,25 @@ def merge_dicts(dict_1, dict_2):
         merged_dict[entry] = [dict_1[entry], dict_2[entry]]
 
     return merged_dict
+
+class perfect_model:
+
+    def __init__(self, objective: LookupObjective) -> None:
+        self.objective = objective
+        return      
+
+    def get_means(self,smis):
+        return list(self.objective(smis).values())
+
+    def get_means_and_vars(self,smis):
+        return self.get_means(smis), 0.01*np.ones(len(smis))
+
+    @property
+    def provides(self):
+        return {'means', 'vars'}
+
+    def train(self,**kwargs):
+        return 
 
 class Runner:
     def __init__(self, 
@@ -42,7 +61,7 @@ class Runner:
             n_iter = 5,
             running_DRD2 = True,
             c = None, 
-            model:Union['NN','Perfect'] = 'NN'
+            model:Literal['NN','Perfect'] = 'NN'
         ) -> None:
 
         self.iteration = 0
@@ -85,7 +104,7 @@ class Runner:
                 for i in range(self.num_objs)
                 ]
         self.pareto = Pareto(num_objectives=self.num_objs)
-        self.models = [self.init_model() for _ in range(num_models)]
+        self.models = [self.init_model(i) for i in range(num_models)]
         self.smis = list(self.objectives[0].data.keys())            
         self.objective_values = self.get_objective_values()
         self.fps = np.array(feature_matrix(smis=self.smis, featurizer=self.featurizer))
@@ -108,7 +127,7 @@ class Runner:
             configs = ['examples/objective/DRD2_docking.ini',
                         'examples/objective/DRD3_docking.ini']
         return configs
-    def init_model(self):
+    def init_model(self,i):
         if self.model_type == 'NN':
             model = NNEnsembleModel(
                         input_size=self.length, 
@@ -117,7 +136,7 @@ class Runner:
                         test_batch_size=1000
                     ) 
         elif self.model_type == 'perfect':
-            model = None
+            model = perfect_model(self.objectives[i])
         return model 
     def get_objective_values(self):
         obj_list = [list(self.objectives[i](self.smis).values()) for i in range(self.num_objs)]
@@ -144,21 +163,27 @@ class Runner:
         # retrain models with new points
         # print('Retraining ...')
         ys = np.array(list(self.scores.values()))
-
+        
         for i, model in tqdm(enumerate(self.models), desc='Retraining',total=len(self.models)):
-            model.train( list(self.scores.keys()), ys[:,i],
-                        featurizer=self.featurizer, retrain = False)
+            model.train( xs=list(self.scores.keys()), ys=ys[:,i],
+                        featurizer=self.featurizer, retrain=False)
         
         # make predictions TODO; batching for inference + TQDM bar, reqrite so vars and preds are tried first 
         # print('Inferring ...')
         
-        self.pred_means = np.array([self.models[i].get_means(self.fps) for i in tqdm(range(self.num_models),desc='Inferring Means')]).T
+        if self.model_type != 'perfect':
+            self.pred_means = np.array([self.models[i].get_means(self.fps) for i in tqdm(range(self.num_models),desc='Inferring Means')]).T
+        else: 
+            self.pred_means = np.array([self.models[i].get_means(self.smis) for i in tqdm(range(self.num_models),desc='Inferring Means')]).T
         self.pred_means_dict = {self.smis[i]:self.pred_means[i] for i in range(len(self.smis))}
 
 
         if 'vars' in self.models[i].provides:
-            self.pred_vars = np.array([self.models[i].get_means_and_vars(self.fps)[1] for i in tqdm(range(self.num_models),desc='Inferring Variances')]).T
-        #except: pass
+            if self.model_type != 'perfect':
+                self.pred_vars = np.array([self.models[i].get_means_and_vars(self.fps)[1] for i in tqdm(range(self.num_models),desc='Inferring Variances')]).T
+            else:
+                self.pred_vars = np.array([self.models[i].get_means_and_vars(self.smis)[1] for i in tqdm(range(self.num_models),desc='Inferring Variances')]).T
+        
 
         model_mses = self.mse_unacquired()
         return self.scores, model_mses
