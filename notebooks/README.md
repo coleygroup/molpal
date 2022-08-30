@@ -19,7 +19,7 @@ When pruning was performed, the following parameters were used:
 See the following sections for specific details on each experiment
 
 #### DOCKSTRING
-download the full dataset TSV file from [here](https://figshare.com/s/95f2fed733dec170b998?file=30562257). You can either use as-is, using `\t` as your delimiter for a `LookupObjective` or convert it to a CSV and remove the inchikey column. Using this file with a `LookupObjective` entails creating an objective config file the `--score-col` value set corresponding to the column of your selected target. This same file was used as the `--library`. Each experiment was repeated 5 times
+download the full dataset TSV file from [here](https://figshare.com/s/95f2fed733dec170b998?file=30562257). You can either use as-is, using `\t` as your delimiter for a `LookupObjective` or convert it to a CSV and remove the inchikey column. Using this file with a `LookupObjective` entails creating an objective config file with the `--score-col` value set corresponding to the column of your selected target. Yes, this means that to run MolPAL across all 58 DOCKSTRING targets, you will need to write 58 separate objective config files. This same file was used as the `--library`. Each experiment was repeated 5 times
 
 The output directories should be organized in the following hierarchy:
 ```
@@ -101,7 +101,7 @@ Next, run the [`collate.py`](../scripts/collate.py) script, supplying the proper
 See the corresponding notebooks for the figures you'd like to make.
 
 ## Original MolPAL figures
-Note that the code to generate figures from the original MolPAL publication has been refactored and largely removed from the repo, but the general scaffold to recreate most of these figures with the new code can be found in [`hts-figures.ipynb`](./hts-figures.ipynb). To recreate the UMAP figure, see [`umap_fig.py`](../scripts/umap_fig.py). To recreate the score histograms, see [`dockstring-figures.ipynb`](./dockstring-figures.ipynb).
+Note that the code to generate figures from the original MolPAL publication has been refactored and largely removed from the repo, but the general scaffold to recreate most of these figures with the new code can be found in [`hts-figures.ipynb`](./hts-figures.ipynb). _Note_: this notebook can be used to recreate figures for non-HTS datasets too! To recreate the UMAP figure, see [`umap_fig.py`](../scripts/umap_fig.py). To recreate the score histograms, see [`dockstring-figures.ipynb`](./dockstring-figures.ipynb).
 
 The general directory structure for the raw data was organized like so:
 ```
