@@ -8,7 +8,6 @@ dependencies:
   - cudatoolkit=11.3
   - python=3.8
   - pytorch::pytorch >=1.10
-  - rdkit
   - pip
   - pip:
     - configargparse
@@ -16,6 +15,7 @@ dependencies:
     - numpy
     - ray >= 1.11
     - ray[tune]
+    - rdkit
     - pytorch-lightning
     - scikit-learn
     - tensorflow
