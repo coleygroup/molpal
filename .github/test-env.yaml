@@ -8,13 +8,13 @@ dependencies:
   - pytorch::pytorch >=1.10
   - pytorch::cpuonly
   - pip
-  - rdkit
   - pip:
     - configargparse
     - h5py
     - numpy
     - ray >= 1.11
     - ray[tune]
+    - rdkit
     - pytest
     - pytorch-lightning
     - scikit-learn
