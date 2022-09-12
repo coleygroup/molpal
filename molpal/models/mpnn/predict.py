@@ -88,6 +88,7 @@ def predict(
 
     return Y_pred
 
+
 @ray.remote
 def predict_(*args, **kwargs):
     return predict(*args, **kwargs)
