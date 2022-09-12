@@ -35,9 +35,8 @@ echo "IP Head: $ip_head"
 
 srun -N 1 -n 1 -w $node_0 ray start --head \
     --node-ip-address=$ip --port=$port --redis-password=$redis_password \
-    --num-cpus $SLURM_CPUS_ON_NODE --num-gpus $NUM_GPUS \
-    --temp-dir /tmp/degraff --block > /dev/null 2>& 1 &
-sleep 30
+    --num-cpus $SLURM_CPUS_ON_NODE --num-gpus $NUM_GPUS --block > /dev/null 2>& 1 &
+sleep 10
 
 worker_num=$(( $SLURM_JOB_NUM_NODES - 1 ))
 for ((  i=1; i<=$worker_num; i++ )); do
@@ -45,10 +44,9 @@ for ((  i=1; i<=$worker_num; i++ )); do
     echo "STARTING WORKER $i at $node_i"
     srun -N 1 -n 1 -w $node_i ray start --address $ip_head \
         --redis-password=$redis_password \
-        --num-cpus $SLURM_CPUS_ON_NODE --num-gpus $NUM_GPUS \
-        --temp-dir /tmp/degraff --block > /dev/null 2>& 1 &
-    sleep 5
+        --num-cpus $SLURM_CPUS_ON_NODE --num-gpus $NUM_GPUS --block > /dev/null 2>& 1 &
+    sleep 1
 done
 ###############################################################################
 
-python run.py --config $config --ncpu $SLURM_CPUS_PER_TASK
+molpal run --config $config --ncpu $SLURM_CPUS_PER_TASK
