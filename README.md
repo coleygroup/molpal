@@ -85,11 +85,11 @@ The resulting fingerprint file will be located in your current working directory
 ### Configuration files
 The general command to run MolPAL is as follows:
 
-`python molpal.py -o {LOOKUP,DOCKING} --objective-config <path/to/objective_config> --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
+`molpal run -o {LOOKUP,DOCKING} --objective-config <path/to/objective_config> --libary <path/to/library.csv[.gz]> [additional library arguments] [additional model/encoding/acquistion/stopping/logging arguments]`
 
 Alternatively, you may use a configuration file to run MolPAL, like so:
 
-`python molpal.py --config <path/to/config_file>`
+`molpal run --config <path/to/config_file>`
 
 Two sample configuration files are provided: [minimal_config.ini](examples/config/minimal_config.ini), a configuration file specifying only the necessary arguments to run MolPAL, and [sample_config.ini](examples/config/sample_config.ini), a configuration file containing a few common options to specify (but not _all_ possible options.)
 
@@ -102,11 +102,11 @@ Configuration files accept the following syntaxes:
 ### Examples
 A sample command to run one of the experiments used to generate data in the initial publication is as follows:
 
-`python run.py --config examples/config/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf`
+`molpal run --config examples/config/Enamine50k_retrain.ini --name molpal_50k --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf`
 
 or the full command:
 
-`python run.py --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config examples/objective/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-iters 5`
+`molpal run --name molpal_50k --write-intermediate --write-final --retrain-from-scratch --library libraries/Enamine50k.csv.gz --validated --metric greedy --init-size 0.01 --batch-sizes 0.01 --model rf --fingerprint pair --length 2048 --radius 2 --objective lookup --objective-config examples/objective/Enamine50k_lookup.ini --top-k 0.01 --window-size 10 --delta 0.01 --max-iters 5`
 
 ### Required Settings
 The primary purpose of MolPAL is to accelerate virtual screens in a prospective manner. Currently (December 2020), MolPAL supports computational docking screens using the [`pyscreener`](https://github.com/coleygroup/pyscreener) library
@@ -185,5 +185,20 @@ If you used MolPAL in your work, we would appreciate you citing us!
 ```
 
 If you additonally used the design space pruning feature, we would also appreciate you citing that work:
-
+```bibtex
+@article{graff_self-focusing_2022,
+	title = {Self-{Focusing} {Virtual} {Screening} with {Active} {Design} {Space} {Pruning}},
+	volume = {62},
+	issn = {1549-9596},
+	url = {https://doi.org/10.1021/acs.jcim.2c00554},
+	doi = {10.1021/acs.jcim.2c00554},
+	number = {16},
+	urldate = {2022-09-12},
+	journal = {Journal of Chemical Information and Modeling},
+	author = {Graff, David E. and Aldeghi, Matteo and Morrone, Joseph A. and Jordan, Kirk E. and Pyzer-Knapp, Edward O. and Coley, Connor W.},
+	month = aug,
+	year = {2022},
+	pages = {3854--3862},
+}
+```
 **COMING SOON**
