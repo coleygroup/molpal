@@ -139,6 +139,7 @@ dmypy.json
 cython_debug/
 
 *.ipynb
+! tutorial.ipynb
 *.csv
 *.pt
 *.ckpt
