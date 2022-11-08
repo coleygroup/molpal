@@ -42,6 +42,7 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
         raise NotImplementedError(
             f'Unrecognized NN confidence method: "{conf_method}"')
 
+
 def mve_loss(y_true, y_pred):
     mu = y_pred[:, 0]
     var = tf.math.softplus(y_pred[:, 1])
@@ -52,7 +53,7 @@ def mve_loss(y_true, y_pred):
         + tf.math.square(mu-y_true)/(2*var)
     )
 
-@ray.remote
+
 class NN:
     """A feed-forward neural network model
 

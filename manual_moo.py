@@ -32,10 +32,11 @@ n_iter = 5
 n_repeats = 1
 data = read_data('data/selectivity_data.csv', 0, [1,2])
 
-# shutdown any previous ray cluster 
-if ray.is_initialized(): ray.shutdown()
+# shutdown any previous ray cluster
+if ray.is_initialized():
+    ray.shutdown()
 
-# set up ray cluster 
+# set up ray cluster
 ray.init(num_cpus=5, num_gpus=1)
 print(ray.cluster_resources())
 
@@ -50,35 +51,44 @@ kwargs = params
 kwargs.pop('init_size')
 kwargs.pop('batch_sizes')
 
-hv_nds_store = np.zeros((n_repeats,n_iter))
-hv_hvi_store = np.zeros((n_repeats,n_iter))
+hv_nds_store = np.zeros((n_repeats, n_iter))
+hv_hvi_store = np.zeros((n_repeats, n_iter))
 
 
 for j in range(n_repeats):
     print('Starting Exploration ' + str(j) + '...')
     storage = {}
     storage['featurizer'] = featurizer.Featurizer(fingerprint=kwargs['fingerprint'],
-                radius=kwargs['radius'], length=kwargs['length']
-            )
-    storage['pool'] = pools.pool(featurizer=storage['featurizer'],\
-        **kwargs)
-    storage['Acquirer'] = acquirer.Acquirer(size=len(storage['pool']),init_size=n_per_acq,batch_sizes=[n_per_acq],**kwargs)
+                                                  radius=kwargs['radius'], 
+                                                  length=kwargs['length']
+                                                  )
+    storage['pool'] = pools.pool(featurizer=storage['featurizer'],
+                                **kwargs,
+                                )
+    storage['Acquirer'] = acquirer.Acquirer(size=len(storage['pool']),
+                                            init_size=n_per_acq,
+                                            batch_sizes=[n_per_acq],
+                                            **kwargs
+                                            )
     xs = storage['pool'].smis()
     storage['scores'] = {}
-    storage['model0'] = NNModel(input_size=kwargs['length'], num_tasks=1, \
-                    test_batch_size=100,  # so one batch wouldn't have like 10 molecules 
-                    layer_sizes=None, 
-                    dropout=None,
-                    activation='relu',
-                    uncertainty=None,
-                    model_seed=None) 
-    storage['model1'] = NNModel(input_size=kwargs['length'], num_tasks=1, \
-                    test_batch_size=100,  
-                    layer_sizes=None, 
-                    dropout=None,
-                    activation='relu',
-                    uncertainty=None,
-                    model_seed=None) 
+    storage['model0'] = NNModel(input_size=kwargs['length'], num_tasks=1,
+                                test_batch_size=100,
+                                layer_sizes=None,
+                                dropout=None,
+                                activation='relu',
+                                uncertainty=None,
+                                model_seed=None,
+                                )
+    storage['model1'] = NNModel(input_size=kwargs['length'],
+                                num_tasks=1,
+                                test_batch_size=100,
+                                layer_sizes=None,
+                                dropout=None,
+                                activation='relu',
+                                uncertainty=None,
+                                model_seed=None
+                                ) 
 
     # first iteration
 
@@ -107,7 +117,7 @@ for j in range(n_repeats):
     retrain_models(storage, scores, kwargs)
 
     Y0_pred, Y1_pred = predict(storage)
-    plot_parity(storage['iter1'], storage['pool'], data, Y0_pred, 0)
+    # plot_parity(storage['iter1']['smis'], storage['pool'], data, Y0_pred, 0)
     # images = [plot_acquired(data, scores)]
     # plot_parity(storage['iter1'], storage['pool'], data, Y0_pred, 0), plot_parity(storage['iter1'], storage['pool'], data, Y1_pred, 1)
     acquired_scores = {}
