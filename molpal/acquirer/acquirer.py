@@ -9,7 +9,7 @@ from typing import (Callable, Dict, Iterable, List, Mapping,
 
 import numpy as np
 from tqdm import tqdm
-
+from molpal.acquirer.pareto import Pareto
 from molpal.acquirer import metrics
 
 T = TypeVar('T')
@@ -39,6 +39,11 @@ class Acquirer:
         the threshold value to use in the random_threshold metric
     verbose : int
         the level of output the acquirer should print
+    dim : int 
+        the number of objectives optimized 
+    pareto_front : Optional[Pareto] 
+        an object that stores and updates the Pareto front 
+        only defined if self.dim > 1
     
     Parameters
     ----------
@@ -59,6 +64,7 @@ class Acquirer:
     seed : Optional[int] (Default = None)
         the random seed to use for initial batch acquisition
     verbose : int (Default = 0)
+    dim : int (Default = 1)
     **kwargs
         additional and unused keyword arguments
     """
@@ -78,6 +84,8 @@ class Acquirer:
 
         self.metric = metric
         self.dim = dim
+        self.pareto_front = Pareto(num_objectives=self.dim)
+
         self.nadir = np.array(nadir, dtype=float)
 
         self.stochastic_preds = stochastic_preds
@@ -85,7 +93,7 @@ class Acquirer:
         if not 0. <= epsilon <= 1.:
             raise ValueError(f'Epsilon(={epsilon}) must be in [0, 1]')
         self.epsilon = epsilon
-        
+
         self.beta = beta
         self.xi = xi
         self.threshold = threshold
@@ -255,6 +263,7 @@ class Acquirer:
                 current_max = np.partition(Y, -k)[-k]
             else:
                 P_f = Acquirer.pareto_frontier(Y)
+                self.pareto_front.update_front(Y)
         else:
             explored = {}
 

@@ -4,14 +4,19 @@ from typing import Callable, Optional, Set
 
 import numpy as np
 import pygmo as pg
+import scipy.stats
 from scipy.stats import norm
+from molpal.acquirer.pareto import Pareto
 
 # this module maintains an independent random number generator
 RG = np.random.default_rng()
+
+
 def set_seed(seed: Optional[int] = None) -> None:
     """Set the seed of this module's random number generator"""
     global RG
     RG = np.random.default_rng(seed)
+
 
 def get_metric(metric: str) -> Callable[..., float]:
     """Get the corresponding metric function"""
@@ -31,6 +36,7 @@ def get_metric(metric: str) -> Callable[..., float]:
     except KeyError:
         raise ValueError(f'Unrecognized metric: "{metric}"')
 
+
 def get_needs(metric: str) -> Set[str]:
     """Get the values needed to compute this metric"""
     return {
@@ -45,20 +51,37 @@ def get_needs(metric: str) -> Set[str]:
         'threshold': {'means'}
     }.get(metric, set())
 
+
+def get_multiobjective(metric: str) -> bool:
+    """Get whether metric is compatible with Pareto optimization"""
+    return {
+        'random': True,
+        'greedy': False,
+        'noisy': False,
+        'ucb': False,
+        'ei': True,
+        'pi': True,
+        'thompson': False,
+        'ts': False,
+        'threshold': False
+    }.get(metric, set())
+
+
 def calc(
     metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
-    P_f: np.ndarray, current_max: float, threshold: float,
-    beta: int, xi: float, stochastic: bool, nadir: np.ndarray
+    pareto_front: Pareto, current_max: float, threshold: float,
+    beta: int, xi: float, stochastic: bool, nadir: np.ndarray,
 ) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
+    PF_points, _ = pareto_front.export_front()
     if metric == 'random':
         return random(Y_means)
     if metric == 'threshold':
         return random_threshold(Y_means, threshold)
     if metric == 'greedy':
-        return greedy(Y_means, P_f, nadir)
+        return greedy(Y_means, PF_points, nadir)
     if metric == 'noisy':
-        return noisy(Y_means, P_f, nadir)
+        return noisy(Y_means, PF_points, nadir)
     if metric == 'ucb':
         return ucb(Y_means, Y_vars, beta)
     if metric == 'lcb':
@@ -66,11 +89,12 @@ def calc(
     if metric in ('ts', 'thompson'):
         return thompson(Y_means, Y_vars, stochastic)
     if metric == 'ei':
-        return ei(Y_means, Y_vars, current_max, xi)
+        return ei(Y_means, Y_vars, current_max, xi, pareto=pareto_front)
     if metric == 'pi':
-        return pi(Y_means, Y_vars, current_max, xi)
+        return pi(Y_means, Y_vars, current_max, xi, pareto=pareto_front)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
+
 
 def random(Y_means: np.ndarray) -> np.ndarray:
     """Random acquistion score
@@ -88,6 +112,7 @@ def random(Y_means: np.ndarray) -> np.ndarray:
         the random acquisition scores
     """
     return RG.random(len(Y_means))
+
 
 def random_threshold(Y_means: np.ndarray, threshold: float) -> float:
     """Random acquisition score [0, 1) if at or above threshold. Otherwise,
@@ -108,8 +133,9 @@ def random_threshold(Y_means: np.ndarray, threshold: float) -> float:
     """
     return np.where(Y_means >= threshold, RG.random(Y_means.shape), -1.)
 
+
 def greedy(
-    Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray
+    Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray
 ) -> np.ndarray:
     """Calculate the greedy acquisition utility of each point
     
@@ -121,8 +147,8 @@ def greedy(
     Y_means : np.ndarray
         an NxT array where N is the number of inputs and T is dimension of the
         objective
-    P_f : np.ndarray
-        the current pareto frontier
+    PF_points : np.ndarray
+        points representing the current pareto frontier
     nadir : np.ndarray
         the nadir or reference point of the objective. I.e., the point in 
         objective space which will be less than all other points in each
@@ -135,18 +161,19 @@ def greedy(
         for each point
     """
     if Y_means.shape[1] > 1:
-        return hvi(Y_means, P_f, nadir)
+        return hvi(Y_means, PF_points, nadir)
 
     return Y_means[:, 0]
 
-def hvi(Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray) -> np.ndarray:
+
+def hvi(Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray) -> np.ndarray:
     """Calculate the hypervolume improvement or S-metric for the predictions
 
     Parameters
     ----------
     Y_means : np.ndarray
-    P_f : np.ndarray
-        the current pareto frontier
+    PF_points : np.ndarray
+        points representing the current pareto frontier
     nadir : np.ndarray
         the nadir or reference point of the objective. I.e., the point in 
         objective space which will be less than all other points in each
@@ -162,7 +189,7 @@ def hvi(Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray) -> np.ndarray:
 
     hv_old = pg.hypervolume(Y_means).compute(nadir)
     S = np.empty(len(Y_means))
-    
+
     for i, Y_means in enumerate(Y_means):
         hv_new = pg.hypervolume(
             np.vstack((P_f, Y_means))
@@ -170,6 +197,128 @@ def hvi(Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray) -> np.ndarray:
         S[i] = hv_new - hv_old
 
     return S
+
+
+def hvpi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarray:
+    """
+    Calculate Hypervolume-based Probability of Improvement (HVPI).
+    Reference: (Couckuyt et al., 2014) Fast calculation of multiobjective
+        probability of improvement and expected improvement criteria for
+        Pareto optimization
+    """
+    Y_std = np.sqrt(Y_vars)
+    N = Y_means.shape[0]
+    n_obj = pareto_front.num_objectives
+
+    if pareto_front.reference_min is None:
+        pareto_front.set_reference_min()
+    reference_min = pareto_front.reference_min
+
+    # Pareto front with reference points
+    # shape: (front_size, n_obj)
+    front = np.r_[
+        np.array(reference_min).reshape((1, n_obj)),
+        pareto_front.front,
+        np.full((1, n_obj), np.inf),
+    ]
+
+    ax = np.arange(n_obj)
+    n_cell = pareto_front.cells.lb.shape[0]
+
+    # convert to minimization problem
+    lower_bound = front[pareto_front.cells.ub, ax].reshape((1, n_cell, n_obj)) * -1
+    upper_bound = front[pareto_front.cells.lb, ax].reshape((1, n_cell, n_obj)) * -1
+
+    # convert to minimization problem
+    Y_means = Y_means.reshape((N, 1, n_obj)) * -1
+    Y_std = Y_std.reshape((N, 1, n_obj))
+
+    # calculate cdf
+    Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
+    Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
+
+    #  calculate PoI
+    poi = np.sum(np.prod(Phi_u - Phi_l, axis=2), axis=1)  # shape: (N, 1)
+
+    # calculate hypervolume contribution of fmean point
+    hv_valid = np.all(Y_means < upper_bound, axis=2)  # shape: (N, n_cell)
+    hv = np.prod(upper_bound - np.maximum(lower_bound, Y_means), axis=2)  # (N, n_cell)
+    hv = np.sum(hv * hv_valid, axis=1)  # shape: (N, 1)
+
+    # HVPoI
+    score = hv * poi
+    return score
+
+
+def ehvi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarray:
+    """
+    Calculate Expected Hyper-Volume Improvement (EHVI).
+    Reference: (Couckuyt et al., 2014) Fast calculation of multiobjective
+        probability of improvement and expected improvement criteria for
+        Pareto optimization
+    """
+    Y_std = np.sqrt(Y_vars)
+    N = Y_means.shape[0]
+    n_obj = pareto_front.num_objectives
+
+    if pareto_front.reference_min is None:
+        pareto_front.set_reference_min()
+    if pareto_front.reference_max is None:
+        pareto_front.set_reference_max()
+    reference_min = pareto_front.reference_min
+    reference_max = pareto_front.reference_max
+
+    # Pareto front with reference points
+    # shape: (front_size, n_obj)
+    front = np.r_[
+        np.array(reference_min).reshape((1, n_obj)),
+        pareto_front.front,
+        np.array(reference_max).reshape((1, n_obj)),
+    ]
+
+    ax = np.arange(n_obj)
+
+    # convert to minimization problem
+    lower_bound = front[pareto_front.cells.ub, ax] * -1
+    upper_bound = front[pareto_front.cells.lb, ax] * -1
+
+    n_cell = pareto_front.cells.lb.shape[0]
+
+    # shape: (n_cell, 1, n_cell, n_obj)
+    lower_bound = np.tile(lower_bound, (n_cell, 1, 1, 1))
+    upper_bound = np.tile(upper_bound, (n_cell, 1, 1, 1))
+    a = lower_bound.transpose((2, 1, 0, 3))
+    b = upper_bound.transpose((2, 1, 0, 3))
+
+    # convert to minimization problem
+    Y_means = Y_means.reshape((1, N, 1, n_obj)) * -1
+    Y_std = Y_std.reshape((1, N, 1, n_obj))
+
+    # calculate pdf, cdf
+    phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound) - Y_means) / Y_std)
+    phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound) - Y_means) / Y_std)
+
+    Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
+    Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
+    Phi_a = scipy.special.ndtr((a - Y_means) / Y_std)
+    Phi_b = scipy.special.ndtr((b - Y_means) / Y_std)
+
+    # calculate G
+    is_type_A = np.logical_and(a < upper_bound, lower_bound < b)
+    is_type_B = upper_bound <= a
+
+    # note: Phi[max_or_min(x,y)] = max_or_min(Phi[x], Phi[y])
+    EI_A = (
+        (b - a) * (np.maximum(Phi_a, Phi_l) - Phi_l)
+        + (b - Y_means) * (np.minimum(Phi_b, Phi_u) - np.maximum(Phi_a, Phi_l))
+        + Y_std * (phi_min_bu - phi_max_al)
+    )
+    EI_B = (b - a) * (Phi_u - Phi_l)
+
+    G = EI_A * is_type_A + EI_B * is_type_B
+    score = np.sum(np.sum(np.prod(G, axis=3), axis=0), axis=1)  # shape: (N, 1)
+    return score
+
 
 def noisy(
     Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray
@@ -183,6 +332,7 @@ def noisy(
     sds = Y_means.std(axis=0)
     noise = RG.normal(scale=sds, size=Y_means.shape)
     return greedy(Y_means + noise, P_f, nadir)
+
 
 def ucb(Y_means: np.ndarray, Y_vars: np.ndarray, beta: int = 2) -> float:
     """Upper confidence bound acquisition score
@@ -202,6 +352,7 @@ def ucb(Y_means: np.ndarray, Y_vars: np.ndarray, beta: int = 2) -> float:
     """
     return Y_means + beta*np.sqrt(Y_vars)
 
+
 def lcb(Y_means: np.ndarray, Y_vars: np.ndarray, beta: int = 2) -> float:
     """Lower confidence bound acquisition score
 
@@ -217,6 +368,7 @@ def lcb(Y_means: np.ndarray, Y_vars: np.ndarray, beta: int = 2) -> float:
         the lower confidence bound acquisition scores
     """
     return Y_means - beta*np.sqrt(Y_vars)
+
 
 def thompson(Y_means: np.ndarray, Y_vars: np.ndarray,
              stochastic: bool = False) -> float:
@@ -241,8 +393,9 @@ def thompson(Y_means: np.ndarray, Y_vars: np.ndarray,
 
     return RG.normal(Y_means, Y_sd)
 
+
 def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
-       current_max: float, xi: float = 0.01) -> float:
+       current_max: float, xi: float = 0.01, pareto_front: Pareto = None) -> np.ndarray:
     """Exected improvement acquisition score
 
     Parameters
@@ -253,27 +406,34 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
         the current maximum observed score
     xi : float (Default = 0.01)
         the amount by which to shift the improvement score
+    pareto : Pareto (Default = None)
+        the Pareto front object corresponding to acquired points 
 
     Returns
     -------
     E_imp : np.ndarray
         the expected improvement acquisition scores
     """
-    I = Y_means - current_max + xi
-    Y_sd = np.sqrt(Y_vars)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        Z = I / Y_sd
-    E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
+    if Y_means.shape[1] == 1:
+        I = Y_means - current_max + xi
+        Y_sd = np.sqrt(Y_vars)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            Z = I / Y_sd
+        E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
-    # if the expected variance is 0, the expected improvement
-    # is the predicted improvement
-    mask = (Y_vars == 0)
-    E_imp[mask] = I[mask]
+        # if the expected variance is 0, the expected improvement
+        # is the predicted improvement
+        mask = (Y_vars == 0)
+        E_imp[mask] = I[mask]
 
-    return E_imp
+        return E_imp
+
+    elif Y_means.shape[1] > 1:
+        return ehvi(Y_means, Y_vars, pareto_front)
+
 
 def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
-       current_max: float, xi: float = 0.01) -> np.ndarray:
+       current_max: float, xi: float = 0.01, pareto_front: Pareto = None) -> np.ndarray:
     """Probability of improvement acquisition score
 
     Parameters
@@ -288,14 +448,17 @@ def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
     P_imp : np.ndarray
         the probability of improvement acquisition scores
     """
-    I = Y_means - current_max + xi
-    with np.errstate(divide='ignore'):
-        Z = I / np.sqrt(Y_vars)
-    P_imp = norm.cdf(Z)
+    if Y_means.shape[1] == 1:
+        I = Y_means - current_max + xi
+        with np.errstate(divide='ignore'):
+            Z = I / np.sqrt(Y_vars)
+        P_imp = norm.cdf(Z)
 
-    # if expected variance is 0, probability of improvement is 0 or 1 
-    # depending on whether the predicted improvement is negative or positive
-    mask = (Y_vars == 0)
-    P_imp[mask] = np.where(I > 0, 1, 0)[mask]
+        # if expected variance is 0, probability of improvement is 0 or 1 
+        # depending on whether the predicted improvement is negative or positive
+        mask = (Y_vars == 0)
+        P_imp[mask] = np.where(I > 0, 1, 0)[mask]
 
-    return P_imp
+        return P_imp
+    elif Y_means.shape[0] > 1: 
+        return hvpi(Y_means, Y_vars, pareto_front)
