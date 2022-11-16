@@ -8,12 +8,12 @@ from operator import itemgetter
 from pathlib import Path
 import pickle
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
-
 import numpy as np
-
-from molpal import acquirer, featurizer, models, objectives, pools
+from molpal import acquirer, featurizer, models, pools
+from molpal.objectives.base import MultiObjective
 
 T = TypeVar('T')
+
 
 class Explorer:
     """An Explorer explores a pool of inputs using Bayesian optimization
@@ -108,7 +108,7 @@ class Explorer:
         from the bool.)
     verbose : int, default=0
     **kwargs
-        keyword arguments to initialize an Encoder, MoleculePool, Acquirer, 
+        keyword arguments to initialize an Encoder, MoleculePool, Acquirer,
         Model, and Objective classes
 
     Raises
@@ -119,7 +119,7 @@ class Explorer:
     """
     def __init__(self, path: Union[str, Path] = "molpal",
                  k: Union[int, float] = 0.01, window_size: int = 3,
-                 delta: float = 0.01, max_iters: int = 10, 
+                 delta: float = 0.01, max_iters: int = 10,
                  budget: Union[int, float] = 1.,
                  write_final: bool = True, write_intermediate: bool = False,
                  chkpt_freq: int = 0, checkpoint_file: Optional[str] = None,
@@ -127,7 +127,7 @@ class Explorer:
                  previous_scores: Optional[str] = None,
                  **kwargs):
         args = locals()
-        
+
         self.path = path
         kwargs['path'] = self.path
         self.verbose = kwargs.get('verbose', 0)
@@ -137,17 +137,23 @@ class Explorer:
             radius=kwargs['radius'], length=kwargs['length']
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
-        self.acquirer = acquirer.Acquirer(size=len(self.pool), **kwargs)
 
-        if self.acquirer.metric == 'thompson':
-            kwargs['dropout_size'] = 1
         self.model = models.MultiTaskModel(
-            input_size=len(self.featurizer), **kwargs
+            models=kwargs.pop('model'),
+            input_size=len(self.featurizer),
+            **kwargs
         )
         self.retrain_from_scratch = retrain_from_scratch
 
-        self.objective = objectives.objective(**kwargs)
+        self.objective = MultiObjective(kwargs.pop('objective'),
+                                        kwargs.pop('objective_config'))
 
+        self.acquirer = acquirer.Acquirer(size=len(self.pool), 
+                                          dim=self.objective.dim,
+                                          **kwargs)
+
+        if self.acquirer.metric == 'thompson':
+            kwargs['dropout_size'] = 1
         self._validate_acquirer()
 
         # stopping attributes
@@ -191,7 +197,7 @@ class Explorer:
         """The total expended budget expressed in terms of the number of 
         objective evaluations"""
         return self.num_explored
-    
+
     @property
     def num_explored(self) -> int:
         """The total number of inputs this Explorer has explored adjusted
@@ -202,7 +208,7 @@ class Explorer:
     def path(self) -> Path:
         """The directory containing all automated output of this Explorer"""
         return self.__path
-    
+
     @path.setter
     def path(self, path: Union[str, Path]):
         self.__path = Path(path)
@@ -213,13 +219,13 @@ class Explorer:
         """the number of top-scoring inputs from which to calculate an
         average"""
         k = self.__k
-            
+
         return min(k, len(self.pool))
 
     @k.setter
     def k(self, k: Union[int, float]):
         """Set k either as an integer or as a fraction of the pool.
-        
+
         NOTE: Specifying either a fraction greater than 1 or or a number 
         larger than the pool size will default to using the full pool.
         """
@@ -235,11 +241,11 @@ class Explorer:
         """the maximum budget expressed in terms of the number of allowed 
         objective function evaluations"""
         return self.__budget
-    
+
     @budget.setter
     def budget(self, budget: Union[int, float]):
         """Set budget either as an integer or as a fraction of the pool.
-        
+
         NOTE: Specifying either a fraction greater than 1 or or a number 
         larger than the pool size will default to using the full pool.
         """
@@ -327,19 +333,19 @@ class Explorer:
             self.explore_batch()
 
         print('Finished exploring!')
-        print(f'FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | '
-              f'FINAL BUDGET: {len(self)}/{self.budget}.')
-        print(f'Final averages')
-        print(f'--------------')
-        for k in [0.0001, 0.0005, 0.001, 0.005]:
-            print(f'TOP-{k:0.2%}: {self.avg(k):0.3f}')
-        
+        # print(f'FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | '
+        #       f'FINAL BUDGET: {len(self)}/{self.budget}.')
+        # print(f'Final averages')
+        # print(f'--------------')
+        # for k in [0.0001, 0.0005, 0.001, 0.005]:
+        #    print(f'TOP-{k:0.2%}: {self.avg(k):0.3f}')
+
         if self.write_final:
             self.write_scores(final=True)
 
     def explore_initial(self) -> float:
         """Perform an initial round of exploration
-        
+
         Must be called before explore_batch()
 
         Returns
@@ -357,8 +363,8 @@ class Explorer:
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
-        if len(self.scores) >= self.k:
-            self.recent_avgs.append(self.avg())
+        # if len(self.scores) >= self.k: (remove top k stuff for MOO)
+        #     self.recent_avgs.append(self.avg())
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
@@ -369,8 +375,9 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        valid_scores = [y for y in new_scores.values() if y is not None]
-        return sum(valid_scores) / len(valid_scores)
+        # valid_scores = [y for y in new_scores.values()
+        #                 if y is not None or None not in y]
+        # return sum(valid_scores) / len(valid_scores)
 
     def explore_batch(self) -> float:
         """Perform a round of exploration
@@ -408,8 +415,8 @@ class Explorer:
         self._clean_and_update_scores(new_scores)
 
         # self.top_k_avg = self.avg()
-        if len(self.scores) >= self.k:
-            self.recent_avgs.append(self.avg())
+        # if len(self.scores) >= self.k:
+        #     self.recent_avgs.append(self.avg())
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
@@ -420,8 +427,8 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        valid_scores = [y for y in new_scores.values() if y is not None]
-        return sum(valid_scores)/len(valid_scores)
+        # valid_scores = [y for y in new_scores.values() if y is not None]
+        # return sum(valid_scores)/len(valid_scores)
 
     def avg(self, k: Union[int, float, None] = None) -> float:
         """Calculate the average of the top k molecules
@@ -703,7 +710,7 @@ class Explorer:
             a dictionary storing the inputs for which scoring failed
         """
         for x, y in new_scores.items():
-            if y is None:
+            if y is None or None in y:
                 self.failures[x] = y
             else:
                 self.scores[x] = y
@@ -756,17 +763,17 @@ class Explorer:
         if not self.updated_model and self.Y_pred.size > 0:
             if self.verbose > 1:
                 print('Model has not been updated since the last time ',
-                     'predictions were set. Skipping update!')
+                      'predictions were set. Skipping update!')
             return
 
         self.Y_pred, self.Y_var = self.model.apply(
-            x_ids=self.pool.smis(), x_feats=self.pool.fps(), 
-            batched_size=None, size=len(self.pool), 
+            x_ids=self.pool.smis(), x_feats=self.pool.fps(),
+            batched_size=None, size=len(self.pool),
             mean_only='vars' not in self.acquirer.needs
         )
 
         self.updated_model = False
-        
+
     def _validate_acquirer(self):
         """Ensure that the model provides values the Acquirer needs"""
         if self.acquirer.needs > self.model.provides:

@@ -89,9 +89,9 @@ def calc(
     if metric in ('ts', 'thompson'):
         return thompson(Y_means, Y_vars, stochastic)
     if metric == 'ei':
-        return ei(Y_means, Y_vars, current_max, xi, pareto=pareto_front)
+        return ei(Y_means, Y_vars, current_max, xi, pareto_front=pareto_front)
     if metric == 'pi':
-        return pi(Y_means, Y_vars, current_max, xi, pareto=pareto_front)
+        return pi(Y_means, Y_vars, current_max, xi, pareto_front=pareto_front)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
 
@@ -105,7 +105,7 @@ def random(Y_means: np.ndarray) -> np.ndarray:
         an array of length equal to the number of random scores to generate.
         It is only used to determine the dimension of the output array, so the
         values contained in it are meaningless.
-    
+
     Returns
     -------
     np.ndarray
@@ -117,15 +117,15 @@ def random(Y_means: np.ndarray) -> np.ndarray:
 def random_threshold(Y_means: np.ndarray, threshold: float) -> float:
     """Random acquisition score [0, 1) if at or above threshold. Otherwise,
     return -1.
-    
+
     Parameters
     ----------
     Y_means : np.ndarray
     threshold : float
-        the threshold value below which to assign acquisition scores as -1 and 
-        above or equal to which to assign random acquisition scores in the 
+        the threshold value below which to assign acquisition scores as -1 and
+        above or equal to which to assign random acquisition scores in the
         range (0, 1]
-    
+
     Returns
     -------
     np.ndarray
@@ -138,8 +138,8 @@ def greedy(
     Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray
 ) -> np.ndarray:
     """Calculate the greedy acquisition utility of each point
-    
-    If the dimension of the objective is greather than 1, use the hypervolume 
+
+    If the dimension of the objective is greather than 1, use the hypervolume
     improvement, or S-metric
 
     Parameters
@@ -150,7 +150,7 @@ def greedy(
     PF_points : np.ndarray
         points representing the current pareto frontier
     nadir : np.ndarray
-        the nadir or reference point of the objective. I.e., the point in 
+        the nadir or reference point of the objective. I.e., the point in
         objective space which will be less than all other points in each
         dimension
 
@@ -166,7 +166,9 @@ def greedy(
     return Y_means[:, 0]
 
 
-def hvi(Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray) -> np.ndarray:
+def hvi(Y_means: np.ndarray,
+        PF_points: np.ndarray,
+        nadir: np.ndarray) -> np.ndarray:
     """Calculate the hypervolume improvement or S-metric for the predictions
 
     Parameters
@@ -175,7 +177,7 @@ def hvi(Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray) -> np.nda
     PF_points : np.ndarray
         points representing the current pareto frontier
     nadir : np.ndarray
-        the nadir or reference point of the objective. I.e., the point in 
+        the nadir or reference point of the objective. I.e., the point in
         objective space which will be less than all other points in each
         dimension
 
@@ -185,7 +187,7 @@ def hvi(Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray) -> np.nda
         the hypervolume improvement or S-metric for each point
     """
     Y_means = -Y_means
-    P_f = -P_f
+    P_f = -PF_points
 
     hv_old = pg.hypervolume(Y_means).compute(nadir)
     S = np.empty(len(Y_means))
@@ -199,12 +201,24 @@ def hvi(Y_means: np.ndarray, PF_points: np.ndarray, nadir: np.ndarray) -> np.nda
     return S
 
 
-def hvpi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarray:
+def hvpi(Y_means: np.array,
+         Y_vars: np.array,
+         pareto_front: Pareto) -> np.ndarray:
     """
     Calculate Hypervolume-based Probability of Improvement (HVPI).
     Reference: (Couckuyt et al., 2014) Fast calculation of multiobjective
         probability of improvement and expected improvement criteria for
         Pareto optimization
+
+    Parameters
+    ----------
+    Y_means : np.ndarray of size n_points x n_objs with prediction means
+    Y_vars : np.ndarray of size n_points x n_objs with prediction variances
+    pareto_front: a Pareto object storing information about the Pareto front
+
+    Returns
+    -------
+    score : np.ndarray of size n_points with HVPI scores
     """
     Y_std = np.sqrt(Y_vars)
     N = Y_means.shape[0]
@@ -226,8 +240,10 @@ def hvpi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarra
     n_cell = pareto_front.cells.lb.shape[0]
 
     # convert to minimization problem
-    lower_bound = front[pareto_front.cells.ub, ax].reshape((1, n_cell, n_obj)) * -1
-    upper_bound = front[pareto_front.cells.lb, ax].reshape((1, n_cell, n_obj)) * -1
+    lower_bound = front[pareto_front.cells.ub, ax].reshape(
+        (1, n_cell, n_obj)) * -1
+    upper_bound = front[pareto_front.cells.lb, ax].reshape(
+        (1, n_cell, n_obj)) * -1
 
     # convert to minimization problem
     Y_means = Y_means.reshape((N, 1, n_obj)) * -1
@@ -242,7 +258,8 @@ def hvpi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarra
 
     # calculate hypervolume contribution of fmean point
     hv_valid = np.all(Y_means < upper_bound, axis=2)  # shape: (N, n_cell)
-    hv = np.prod(upper_bound - np.maximum(lower_bound, Y_means), axis=2)  # (N, n_cell)
+    hv = np.prod(upper_bound -
+                 np.maximum(lower_bound, Y_means), axis=2)  # (N, n_cell)
     hv = np.sum(hv * hv_valid, axis=1)  # shape: (N, 1)
 
     # HVPoI
@@ -250,12 +267,24 @@ def hvpi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarra
     return score
 
 
-def ehvi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarray:
+def ehvi(Y_means: np.array,
+         Y_vars: np.array,
+         pareto_front: Pareto) -> np.ndarray:
     """
     Calculate Expected Hyper-Volume Improvement (EHVI).
     Reference: (Couckuyt et al., 2014) Fast calculation of multiobjective
         probability of improvement and expected improvement criteria for
         Pareto optimization
+
+    Parameters
+    ----------
+    Y_means : np.ndarray of size n_points x n_objs with prediction means
+    Y_vars : np.ndarray of size n_points x n_objs with prediction variances
+    pareto_front: a Pareto object storing information about the Pareto front
+
+    Returns
+    -------
+    score : np.ndarray of size n_points with EHVI scores
     """
     Y_std = np.sqrt(Y_vars)
     N = Y_means.shape[0]
@@ -295,8 +324,10 @@ def ehvi(Y_means: np.array, Y_vars: np.array, pareto_front: Pareto) -> np.ndarra
     Y_std = Y_std.reshape((1, N, 1, n_obj))
 
     # calculate pdf, cdf
-    phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound) - Y_means) / Y_std)
-    phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound) - Y_means) / Y_std)
+    phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound)
+                                       - Y_means) / Y_std)
+    phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound)
+                                       - Y_means) / Y_std)
 
     Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
     Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
@@ -324,7 +355,7 @@ def noisy(
     Y_means: np.ndarray, P_f: np.ndarray, nadir: np.ndarray
 ) -> np.ndarray:
     """Noisy greedy acquisition score
-    
+
     Adds a random amount of noise to each predicted mean value. The noise is
     randomly sampled from a normal distribution centered at 0 with standard
     deviation equal to the standard deviation of the input predicted means.
@@ -395,7 +426,8 @@ def thompson(Y_means: np.ndarray, Y_vars: np.ndarray,
 
 
 def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
-       current_max: float, xi: float = 0.01, pareto_front: Pareto = None) -> np.ndarray:
+       current_max: float, xi: float = 0.01,
+       pareto_front: Pareto = None) -> np.ndarray:
     """Exected improvement acquisition score
 
     Parameters
@@ -407,7 +439,7 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
     xi : float (Default = 0.01)
         the amount by which to shift the improvement score
     pareto : Pareto (Default = None)
-        the Pareto front object corresponding to acquired points 
+        the Pareto front object corresponding to acquired points
 
     Returns
     -------
@@ -415,16 +447,16 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
         the expected improvement acquisition scores
     """
     if Y_means.shape[1] == 1:
-        I = Y_means - current_max + xi
+        improv = Y_means - current_max + xi
         Y_sd = np.sqrt(Y_vars)
         with np.errstate(divide='ignore', invalid='ignore'):
-            Z = I / Y_sd
-        E_imp = I * norm.cdf(Z) + Y_sd * norm.pdf(Z)
+            Z = improv / Y_sd
+        E_imp = improv * norm.cdf(Z) + Y_sd * norm.pdf(Z)
 
         # if the expected variance is 0, the expected improvement
         # is the predicted improvement
         mask = (Y_vars == 0)
-        E_imp[mask] = I[mask]
+        E_imp[mask] = improv[mask]
 
         return E_imp
 
@@ -433,7 +465,8 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
 
 
 def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
-       current_max: float, xi: float = 0.01, pareto_front: Pareto = None) -> np.ndarray:
+       current_max: float, xi: float = 0.01,
+       pareto_front: Pareto = None) -> np.ndarray:
     """Probability of improvement acquisition score
 
     Parameters
@@ -449,16 +482,17 @@ def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
         the probability of improvement acquisition scores
     """
     if Y_means.shape[1] == 1:
-        I = Y_means - current_max + xi
+        improv = Y_means - current_max + xi
         with np.errstate(divide='ignore'):
-            Z = I / np.sqrt(Y_vars)
+            Z = improv / np.sqrt(Y_vars)
         P_imp = norm.cdf(Z)
 
-        # if expected variance is 0, probability of improvement is 0 or 1 
-        # depending on whether the predicted improvement is negative or positive
+        # if expected variance is 0, probability of improvement is 0 or 1
+        # depending on whether the predicted improvement is
+        # negative or positive
         mask = (Y_vars == 0)
-        P_imp[mask] = np.where(I > 0, 1, 0)[mask]
+        P_imp[mask] = np.where(improv > 0, 1, 0)[mask]
 
         return P_imp
-    elif Y_means.shape[0] > 1: 
+    elif Y_means.shape[1] > 1:
         return hvpi(Y_means, Y_vars, pareto_front)

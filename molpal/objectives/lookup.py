@@ -2,12 +2,13 @@ import csv
 from functools import partial
 import gzip
 from pathlib import Path
-from typing import Collection, Dict, Optional, Union
+from typing import Collection, Dict, Optional
 
 from configargparse import ArgumentParser
 from tqdm import tqdm
 
 from molpal.objectives.base import Objective
+
 
 class LookupObjective(Objective):
     """A LookupObjective calculates the objective function by looking the
@@ -19,6 +20,8 @@ class LookupObjective(Objective):
     ----------
     self.data : Dict[str, Optional[float]]
         a dictionary containing the objective function value of each molecule
+    self.minimize: bool 
+        whether the objective is minimized 
 
     Parameters
     ----------
@@ -33,10 +36,10 @@ class LookupObjective(Objective):
     **kwargs
         unused and addditional keyword arguments
     """
-    def __init__(self, objective_config: str, minimize: bool = True, **kwargs):
-        path, delimiter, title_line, smiles_col, score_col = parse_config(
-            objective_config
-        )
+    def __init__(self, objective_config: str, **kwargs):
+        path, delimiter, title_line, smiles_col, score_col, minimize = parse_config(objective_config)
+
+        self.minimize = minimize
 
         if Path(path).suffix == ".gz":
             open_ = partial(gzip.open, mode="rt")
@@ -60,7 +63,8 @@ class LookupObjective(Objective):
         super().__init__(minimize=minimize)
 
     def forward(self, smis: Collection[str], *args, **kwargs) -> Dict[str, Optional[float]]:
-        return {smi: self.c * self.data[smi] if smi in self.data else None for smi in smis}
+        return {smi: self.c * self.data[smi] if smi in self.data 
+                else None for smi in smis}
 
 
 def parse_config(config: str):
@@ -100,4 +104,5 @@ def parse_config(config: str):
         not args.no_title_line,
         args.smiles_col,
         args.score_col,
+        args.minimize
     )

@@ -3,6 +3,7 @@ import scipy.stats
 
 # physbo/search/pareto.py (https://github.com/issp-center-dev/PHYSBO)
 
+
 class Rectangles(object):
     def __init__(self, n_dim, dtype):
         """
@@ -22,9 +23,11 @@ class Rectangles(object):
         self.lb = np.r_[self.lb, lb]
         self.ub = np.r_[self.ub, ub]
 
+
 def dominate(t1, t2):
     """domination rule for maximization problem"""
     return np.all(t1 >= t2) and np.any(t1 > t2)
+
 
 class Pareto(object):
     def __init__(self, num_objectives, dom_rule=None):

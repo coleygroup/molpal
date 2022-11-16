@@ -1,31 +1,30 @@
-"""This module contains Model implementations that utilize an NN model as their 
+"""This module contains Model implementations that utilize an NN model as their
 underlying model"""
-from functools import partial
-import logging
 import json
+import logging
 import os
+from functools import partial
 from pathlib import Path
-from typing import (Callable, Iterable, List, NoReturn,
-                    Optional, Sequence, Tuple, Type, TypeVar)
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
-
-import numpy as np
-from numpy import ndarray
-from tqdm import tqdm
-import tensorflow as tf
+from typing import (Callable, Iterable, List, NoReturn, Optional, Sequence,
+                    Tuple, Type, TypeVar)
 import tensorflow_addons as tfa
+import numpy as np
+import ray
+import tensorflow as tf
+from numpy import ndarray
 from tensorflow import keras
+from tqdm import tqdm
 
 from molpal.featurizer import Featurizer, feature_matrix
 from molpal.models.base import SingleTaskModel as Model
 
-import ray 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 Dataset = tf.data.Dataset
+
 
 def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
     """NN-type Model factory function"""
@@ -35,9 +34,10 @@ def nn(conf_method: Optional[str] = None, **kwargs) -> Type[Model]:
             'ensemble': NNEnsembleModel,
             'twooutput': NNTwoOutputModel,
             'mve': NNTwoOutputModel,
-            'none': NNModel
+            'none': NNModel,
+            None: NNModel
         }.get(conf_method, 'none')(conf_method=conf_method, **kwargs)
-        
+
     except KeyError:
         raise NotImplementedError(
             f'Unrecognized NN confidence method: "{conf_method}"')
@@ -70,7 +70,7 @@ class NN:
     output_size : int
         the dimension of the model output
     batch_size : int
-        the size to batch training into        
+        the size to batch training into
     uncertainty : Optional[str]
         the uncertainty method this model is using (if at all)
     uncertainty : bool
@@ -117,17 +117,17 @@ class NN:
         self.std = 0
 
         tf.random.set_seed(model_seed)
-        
-    def build(self, input_size, num_tasks, layer_sizes, dropout, 
+
+    def build(self, input_size, num_tasks, layer_sizes, dropout,
               uncertainty, activation):
         """Build the model, optimizer, and loss function"""
         # self.model = keras.Sequential()
 
         dropout_at_predict = uncertainty == 'dropout'
         output_size = 2*num_tasks if self.uncertainty else num_tasks
-        
+
         inputs = keras.layers.Input(shape=(input_size,))
-        
+
         hidden = inputs
         for layer_size in layer_sizes:
             hidden = keras.layers.Dense(
@@ -152,7 +152,7 @@ class NN:
             optimizer = keras.optimizers.Adam(learning_rate=0.001)
             loss = keras.losses.mse
         elif uncertainty == 'mve':
-            optimizer = keras.optimizers.Adam(learning_rate=0.05)
+            optimizer = keras.optimizers.Adam(learning_rate=0.001)
             loss = mve_loss
         else:
             raise ValueError(
@@ -173,7 +173,7 @@ class NN:
         featurize : Callable[[T], ndarray]
             a function that transforms an identifier into its uncompressed
             feature representation
-        
+
         Returns
         -------
         True
@@ -185,13 +185,13 @@ class NN:
 
         self.model.fit(
             X, Y, batch_size=self.batch_size, validation_split=0.1,
-            epochs=100, validation_freq=2, verbose=0,
+            epochs=50, validation_freq=2, verbose=0,
             callbacks=[
                keras.callbacks.EarlyStopping(
                     monitor='val_loss', patience=10,
                     restore_best_weights=True, verbose=0, mode='min'
                 ),
-                # tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
+               # tfa.callbacks.TQDMProgressBar(leave_epoch_progress=False)
             ]
         )
 
@@ -199,7 +199,7 @@ class NN:
 
     def predict(self, xs: Sequence[ndarray]) -> ndarray:
         X = np.stack(xs, axis=0)
-        Y_pred = self.model.predict(X,verbose=0,batch_size=self.batch_size)
+        Y_pred = self.model.predict(X, verbose=0, batch_size=self.batch_size)
 
         if self.uncertainty == 'mve':
             Y_pred[:, 0::2] = Y_pred[:, 0::2] * self.std + self.mean
@@ -208,7 +208,7 @@ class NN:
             Y_pred = Y_pred * self.std + self.mean
 
         return Y_pred
-    
+
     def save(self, path) -> str:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
@@ -228,7 +228,7 @@ class NN:
 
     def load(self, path):
         state = json.load(open(path, 'r'))
-        
+
         model_path = state['model_path']
         self.std = state['std']
         self.mean = state['mean']
@@ -241,13 +241,14 @@ class NN:
         self.model = keras.models.load_model(
             model_path, custom_objects=custom_objects
         )
-    
+
     def _normalize(self, ys: Sequence[float]) -> ndarray:
         Y = np.stack(list(ys))
         self.mean = np.nanmean(Y, axis=0)
         self.std = np.nanstd(Y, axis=0)
 
         return (Y - self.mean) / self.std
+
 
 class NNModel(Model):
     """A simple feed-forward neural network model
@@ -256,7 +257,7 @@ class NNModel(Model):
     ----------
     model : Type[NN]
         the underlying neural net on which to train and perform inference
-    
+
     Parameters
     ----------
     input_size : int
@@ -266,7 +267,7 @@ class NNModel(Model):
         during training and inference
     dropout : Optional[float] (Default = 0.0)
         the dropout probability during training
-    
+
     See also
     --------
     NNDropoutModel
@@ -311,19 +312,20 @@ class NNModel(Model):
 
     def save(self, path) -> str:
         return self.model.save(path)
-    
+
     def load(self, path):
         self.model.load(path)
+
 
 class NNEnsembleModel(Model):
     """A feed-forward neural network ensemble model for estimating mean
     and variance.
-    
+
     Attributes
     ----------
     models : List[Type[NN]]
         the underlying neural nets on which to train and perform inference
-    
+
     Parameters
     ----------
     input_size : int
@@ -344,7 +346,7 @@ class NNEnsembleModel(Model):
                  model_seed: Optional[int] = None, **kwargs):
         test_batch_size = test_batch_size or 4096
         self.build_model = partial(
-            NN.remote, input_size=input_size, num_tasks=1,
+            NN, input_size=input_size, num_tasks=1,
             batch_size=test_batch_size, dropout=dropout,
             model_seed=model_seed
         )
@@ -352,7 +354,7 @@ class NNEnsembleModel(Model):
         self.ensemble_size = ensemble_size
         self.models = [self.build_model() for _ in range(self.ensemble_size)]
 
-        self.bootstrap_ensemble = bootstrap_ensemble # TODO: Actually use this
+        self.bootstrap_ensemble = bootstrap_ensemble  # TODO: Actually use this
 
         super().__init__(test_batch_size=test_batch_size, **kwargs)
 
@@ -371,7 +373,8 @@ class NNEnsembleModel(Model):
                 self.build_model() for _ in range(self.ensemble_size)
             ]
 
-        return all([model.train.remote(xs, ys, featurizer) for model in self.models])
+        return all([model.train.remote(xs, ys, featurizer)
+                    for model in self.models])
 
     def get_means(self, xs: Sequence) -> np.ndarray:
         preds = np.zeros((len(xs), len(self.models)))
@@ -382,7 +385,8 @@ class NNEnsembleModel(Model):
 
         return np.mean(preds, axis=1)
 
-    def get_means_and_vars(self, xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
+    def get_means_and_vars(self,
+                           xs: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         preds = np.zeros((len(xs), len(self.models)))
         for j, model in tqdm(enumerate(self.models), leave=False,
                              desc='ensemble prediction', unit='model'):
@@ -395,20 +399,21 @@ class NNEnsembleModel(Model):
             model.save(path, f'model_{i}')
 
         return path
-    
+
     def load(self, path):
         for model, model_path in zip(self.models, path.iterdir()):
             model.load(model_path)
 
+
 class NNTwoOutputModel(Model):
     """Feed forward neural network with two outputs so it learns to predict
     its own uncertainty at the same time
-    
+
     Attributes
     ----------
     model : Type[NN]
         the underlying neural net on which to train and perform inference
-    
+
     Parameters
     ----------
     input_size : int
@@ -460,7 +465,7 @@ class NNTwoOutputModel(Model):
 
     def save(self, path) -> str:
         return self.model.save(path)
-    
+
     def load(self, path):
         self.model.load(path)
 
@@ -469,9 +474,10 @@ class NNTwoOutputModel(Model):
         in_range = xs < 100
         return np.log(1 + np.exp(xs*in_range))*in_range + xs*(1 - in_range)
 
+
 class NNDropoutModel(Model):
     """Feed forward neural network that uses MC dropout for UQ
-    
+
     Attributes
     ----------
     model : Type[NN]
@@ -517,7 +523,7 @@ class NNDropoutModel(Model):
               featurizer: Featurizer, retrain: bool = False) -> bool:
         if retrain:
             self.model = self.build_model()
-        
+
         return self.model.train(xs, ys, featurizer)
 
     def get_means(self, xs: Sequence) -> ndarray:
@@ -539,6 +545,6 @@ class NNDropoutModel(Model):
 
     def save(self, path) -> str:
         return self.model.save(path)
-    
+
     def load(self, path):
         self.model.load(path)

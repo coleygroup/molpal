@@ -128,14 +128,16 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
 #       OBJECTIVE ARGUMENTS       #
 ###################################
 def add_objective_args(parser: ArgumentParser) -> None:
-    parser.add_argument('-o', '--objective', required=True,
+    parser.add_argument('-o', '--objective', nargs='*', required=True,
                         choices={'lookup', 'docking'},
                         help='the objective function to use')
     parser.add_argument('--minimize', action='store_true', default=False,
                         help='whether to minimize the objective function')
-    parser.add_argument('--objective-config',
+    # parser.add_argument('--minimize', action='append_const', const=1, default=0)
+    parser.add_argument('--objective-config', nargs='*',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
-
+    parser.add_argument('--num-objectives', default=1,
+                        help='the number of objectives to optimize')
     # DockingObjective args
     # parser.add_argument('--software', default='vina',
     #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
@@ -181,8 +183,13 @@ def add_objective_args(parser: ArgumentParser) -> None:
 #       MODEL ARGUMENTS       #
 ###############################
 def add_model_args(parser: ArgumentParser) -> None:
-    parser.add_argument('--model', choices=('rf', 'gp', 'nn', 'mpn'),
-                        default='rf',
+    # parser.add_argument('--model', choices=('rf', 'gp', 'nn', 'mpn'),
+    #                     default='rf',
+    #                     help='the model type to use')
+    parser.add_argument('--model', nargs='*',
+                        # choices=('rf', 'gp', 'nn', 'mpn'),
+                        # default=['rf'],
+                        required=True,
                         help='the model type to use')
     parser.add_argument('--test-batch-size', type=int,
                         help='the size of batch of predictions during model inference. NOTE: This has nothing to do with model training/performance and might only affect the timing of the inference step. It is only useful to play with this parameter if performance is absolutely critical.')
@@ -191,7 +198,7 @@ def add_model_args(parser: ArgumentParser) -> None:
                         help='whether the model should be retrained from scratch at each iteration as opposed to retraining online.')
     parser.add_argument('--model-seed', type=int,
                         help='the random seed to use for model initialization. Not specifying will result in random model initializations each time the model is trained.')
-    
+
     # RF args
     parser.add_argument('--n-estimators', type=int, default=100,
                         help='the number of trees in the forest')
@@ -215,7 +222,7 @@ def add_model_args(parser: ArgumentParser) -> None:
 
     # NN/MPNN args
     parser.add_argument('--conf-method', default='none',
-                        choices={'ensemble', 'twooutput', 
+                        choices={'ensemble', 'twooutput',
                                  'mve', 'dropout', 'none'},
                         help='Confidence estimation method for NN/MPNN models')
 
@@ -268,8 +275,8 @@ def cleanup_args(args: Namespace):
         args_to_remove |= set()
     if args.model != 'mpn':
         args_to_remove |= {'init_lr', 'max_lr', 'final_lr'}
-    if args.model != 'nn' and args.model != 'mpn':
-        args_to_remove |= {'conf_method'}
+    # if args.model != 'nn' and args.model != 'mpn':
+    #     args_to_remove |= {'conf_method'}
 
     for arg in args_to_remove:
         delattr(args, arg)

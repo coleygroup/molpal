@@ -13,6 +13,7 @@ from molpal.utils import batches
 T = TypeVar('T')
 T_feat = TypeVar('T_feat')
 
+
 class MultiTaskModel:
     def __init__(self, models: Iterable[str], **kwargs) -> None:
         self.models = []
@@ -24,7 +25,7 @@ class MultiTaskModel:
             elif model == 'gp':
                 from molpal.models.sklmodels import GPModel
                 m = GPModel(**kwargs)
-                
+
             elif model == 'nn':
                 from molpal.models.nnmodels import nn
                 m = nn(**kwargs)
@@ -32,14 +33,14 @@ class MultiTaskModel:
             elif model == 'mpn':
                 from molpal.models.mpnmodels import mpn
                 m = mpn(**kwargs)
-            
+
             elif model == 'random':
                 from molpal.models.random import RandomModel
                 m = RandomModel(**kwargs)
 
             else:
                 raise NotImplementedError(f'Unrecognized model: "{model}"')
-            
+
             self.models.append(m)
 
     def __len__(self):
@@ -64,12 +65,88 @@ class MultiTaskModel:
 
         return True
 
-    def apply(self, *args, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
-        Y_preds = [model.apply(*args, **kwargs) for model in self.models]
-        Y_preds_mean, Y_preds_var = zip(*Y_preds)
+    # def apply(self, *args, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
+    #     Y_preds = [model.apply(*args, **kwargs) for model in self.models]
+    #     Y_preds_mean, Y_preds_var = zip(*Y_preds)
 
-        return np.stack(Y_preds_mean, axis=1), np.stack(Y_preds_var, axis=1)
-    
+    #     return np.stack(Y_preds_mean, axis=1), np.stack(Y_preds_var, axis=1)
+
+    def apply(
+        self, x_ids: Iterable[T], x_feats: Iterable[T_feat],
+        batched_size: Optional[int] = None,
+        size: Optional[int] = None, mean_only: bool = True,
+        disable: bool = False
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Apply the model to the inputs
+
+        Parameters
+        ----------
+        x_ids : Iterable[T]
+            an iterable of input identifiers that correspond to the
+            uncompressed input representations
+        x_feats : Iterable[T_feat]
+            an iterable of either batches or individual uncompressed feature
+            representations corresponding to the input identifiers
+        batched_size : Optional[int] (Default = None)
+            the size of the batches if xs is an iterable of batches
+        size : Optional[int] (Default = None)
+            the length of the iterable, if known
+        mean_only : bool (Default = True)
+            whether to generate the predicted variance in addition to the mean
+
+        Returns
+        -------
+        means : np.ndarray
+            the mean predicted values
+        variances: np.ndarray
+            the variance in the predicted means, empty if mean_only is True
+        """
+        if self.models[0].type_ == 'mpn':
+            # ^^ ASSUMES BOTH MODELS ARE EITHER MPN OR NOT!!! TODO: change this 
+            # MPNs predict directly on the input identifier
+            xs = x_ids
+            batched_size = None
+        else:
+            xs = x_feats
+
+        if batched_size:
+            n_batches = (size//batched_size) + 1 if size else None
+        else:
+            xs = batches(xs, self.models[0].test_batch_size)
+            n_batches = (size//self.models[0].test_batch_size) + 1 if size else None
+            batched_size = self.models[0].test_batch_size
+
+        meanss = []
+        variancess = []
+
+        if mean_only:
+            for batch_xs in tqdm(
+                xs, total=n_batches, desc='Inference', smoothing=0.,
+                unit='smi', unit_scale=batched_size, disable=disable
+            ):
+                means = np.array([model.get_means(batch_xs)
+                                 for model in self.models])
+                meanss.append(means)
+                variancess.append([])
+
+            meansss = np.concatenate(meanss, axis=1).T
+            variancesss = np.concatenate(variancess)
+            return meansss, variancesss
+        else:
+            for batch_xs in tqdm(
+                xs, total=n_batches, desc='Inference', smoothing=0.,
+                unit='smi', unit_scale=batched_size, disable=disable
+            ):
+                means = [model.get_means(batch_xs) for model in self.models]
+                variances = [model.get_means_and_vars(batch_xs)[1]
+                             for model in self.models]
+                meanss.append(means)
+                variancess.append(variances)
+
+            meansss = np.concatenate(meanss, axis=1).T
+            variancesss = np.concatenate(variancess, axis=1).T
+            return meansss, variancesss
+
     def save(self, basepath: str) -> Iterable[str]:
         basepath = Path(basepath)
         return [

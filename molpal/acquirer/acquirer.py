@@ -4,7 +4,7 @@ import heapq
 from itertools import chain
 import math
 from timeit import default_timer
-from typing import (Callable, Dict, Iterable, List, Mapping, 
+from typing import (Dict, Iterable, List, Mapping,
                     Optional, Set, TypeVar, Union)
 
 import numpy as np
@@ -13,6 +13,7 @@ from molpal.acquirer.pareto import Pareto
 from molpal.acquirer import metrics
 
 T = TypeVar('T')
+
 
 class Acquirer:
     """An Acquirer acquires inputs from an input pool for exploration.
@@ -39,12 +40,12 @@ class Acquirer:
         the threshold value to use in the random_threshold metric
     verbose : int
         the level of output the acquirer should print
-    dim : int 
-        the number of objectives optimized 
-    pareto_front : Optional[Pareto] 
-        an object that stores and updates the Pareto front 
+    dim : int
+        the number of objectives optimized
+    pareto_front : Optional[Pareto]
+        an object that stores and updates the Pareto front
         only defined if self.dim > 1
-    
+
     Parameters
     ----------
     size : int
@@ -72,7 +73,7 @@ class Acquirer:
                  init_size: Union[int, float] = 0.01,
                  batch_sizes: Iterable[Union[int, float]] = [0.01],
                  metric: str = 'greedy', dim: int = 1,
-                 nadir: Iterable[float]= (0),
+                 nadir: Iterable[float] = (0),
                  epsilon: float = 0., beta: int = 2, xi: float = 0.01,
                  threshold: float = float('-inf'),
                  stochastic_preds: bool = False,
@@ -111,25 +112,25 @@ class Acquirer:
     def dim(self) -> int:
         """The dimension of the objective for which we are acquiring"""
         return self.__dim
-    
+
     @dim.setter
     def dim(self, dim):
         if dim < 1:
             raise ValueError(f'Invalid dimension for acquisition. got: {dim}')
-        
+
         self.__dim = dim
 
     @property
     def needs(self) -> Set[str]:
-        """Set[str] : the values this acquirer needs to calculate acquisition 
+        """Set[str] : the values this acquirer needs to calculate acquisition
         utilities"""
         return metrics.get_needs(self.metric)
-    
+
     @property
     def init_size(self) -> int:
         """the number of inputs to acquire initially"""
         return self.__init_size
-    
+
     @init_size.setter
     def init_size(self, init_size: Union[int, float]):
         if isinstance(init_size, float):
@@ -145,7 +146,7 @@ class Acquirer:
     def batch_sizes(self) -> List[int]:
         """the number of inputs to acquire in exploration batch"""
         return self.__batch_sizes
-    
+
     @batch_sizes.setter
     def batch_sizes(self, batch_sizes: Iterable[Union[int, float]]):
         self.__batch_sizes = [bs for bs in batch_sizes]
@@ -279,7 +280,7 @@ class Acquirer:
 
         U = metrics.calc(
             self.metric, Y_means=Y_means, Y_vars=Y_vars,
-            P_f=P_f, current_max=current_max, 
+            pareto_front=self.pareto_front, current_max=current_max,
             threshold=self.threshold, beta=self.beta, xi=self.xi,
             stochastic=self.stochastic_preds, nadir=self.nadir
         )
@@ -296,7 +297,7 @@ class Acquirer:
             total = default_timer() - begin
             mins, secs = divmod(int(total), 60)
             print(f'      Utility calculation took {mins}m {secs}s')
-        
+
         if cluster_ids is None and cluster_sizes is None:
             heap = []
             for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
@@ -357,7 +358,7 @@ class Acquirer:
         The decay factor is calculated by an exponential decay based on the
         difference between a given heap's local maximum and the predicted
         global maximum then scaled by the current temperature. The temperature
-        is also an exponential decay based on the current iteration starting at 
+        is also an exponential decay based on the current iteration starting at
         the initial temperature and approaching the final temperature.
 
         Parameters
@@ -411,8 +412,9 @@ class Acquirer:
     @staticmethod
     def pareto_frontier(Y: np.ndarray) -> np.ndarray:
         """calculate the pareto frontier for the objective matrix Y
-        
-        code from: https://github.com/QUVA-Lab/artemis/blob/peter/artemis/general/pareto_efficiency.py"""
+
+        code from: https://github.com/QUVA-Lab/artemis/
+                   blob/peter/artemis/general/pareto_efficiency.py"""
         efficient_idxs = np.arange(Y.shape[0])
         Y_copy = Y
         idx = 0
@@ -432,4 +434,3 @@ class Acquirer:
         #     return is_efficient_mask
         # else:
         #     return is_efficient
-        
