@@ -566,7 +566,7 @@ class Explorer:
         p_data.mkdir(parents=True, exist_ok=True)
 
         if final:
-            p_scores = p_data / "all_explored_final.csv"
+            p_scores = self.path / "all_explored_final.csv"
             points = self.top_explored(n)
         else:
             p_scores = p_data / f"top_{n}_explored_iter_{self.iter}.csv"
