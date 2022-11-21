@@ -39,8 +39,10 @@ _if performing docking online_
 - the appropriate requirements as listed in the `pyscreener` [README](https://github.com/coleygroup/pyscreener)
 
 ## Installation
-
-The first step in installing MolPAL is to clone this repository: `git clone <this_repo>`
+The general steps in installing MolPAL are:
+1. cloning the repo: `git clone git@github.com:coleygroup/molpal.git`
+1. installing the dependencies (see below)
+1. installing the repo: `pip install -e .` (note that this is typically done after dependencies are installed)
 
 The easiest way to install all dependencies is to use conda along with the supplied [environment.yml](environment.yml) file, but you may also install them manually, if desired. All libraries listed in that file are **required** before using `MolPAL`
 
