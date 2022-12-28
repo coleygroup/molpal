@@ -151,6 +151,7 @@ class Explorer:
         self.acquirer = acquirer.Acquirer(size=len(self.pool), 
                                           dim=self.objective.dim,
                                           **kwargs)
+        self.cluster_type = kwargs['cluster_type'] or None
 
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
@@ -405,10 +406,17 @@ class Explorer:
         self._update_predictions()
 
         inputs = self.acquirer.acquire_batch(
-            xs=self.pool.smis(), y_means=self.Y_pred, y_vars=self.Y_var,
+            xs=self.pool.smis(), 
+            y_means=self.Y_pred, 
+            y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
-            cluster_ids=self.pool.cluster_ids(),
-            cluster_sizes=self.pool.cluster_sizes, t=(self.iter-1),
+            cluster_superset=10*self.acquirer.batch_size(t=self.iter-1),
+            cluster_type=self.cluster_type,
+            featurizer=self.featurizer,
+            objective=self.objective,
+            t=(self.iter-1),
+            # cluster_ids=self.pool.cluster_ids(),
+            # cluster_sizes=self.pool.cluster_sizes, 
         )
 
         new_scores = self.objective(inputs)

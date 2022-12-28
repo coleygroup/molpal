@@ -299,12 +299,20 @@ class Acquirer:
 
         if self.verbose > 1:
             print('Calculating acquisition utilities ...', end=' ')
+        
+        if cluster_superset: 
+            top_n_scored = cluster_superset
+        elif cluster_sizes: 
+            top_n_scored = Y_means.shape[0]
+        else: 
+            top_n_scored = batch_size
 
         U = metrics.calc(
             self.metric, Y_means=Y_means, Y_vars=Y_vars,
             pareto_front=self.pareto_front, current_max=current_max,
             threshold=self.threshold, beta=self.beta, xi=self.xi,
-            stochastic=self.stochastic_preds, nadir=self.nadir
+            stochastic=self.stochastic_preds, nadir=self.nadir, 
+            top_n_scored=top_n_scored
         )
 
         idxs = np.random.choice(
@@ -320,7 +328,7 @@ class Acquirer:
             mins, secs = divmod(int(total), 60)
             print(f'      Utility calculation took {mins}m {secs}s')
 
-        if cluster_ids is None and cluster_sizes is None:
+        if cluster_ids is None and cluster_sizes is None and cluster_superset is None:
             heap = []
             for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
                 if x in explored:
@@ -351,12 +359,12 @@ class Acquirer:
                 cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
 
             cluster_ids = cluster_fps(fps=cluster_basis, 
-                ncluster=self.batch_size, 
+                ncluster=batch_size, 
                 method='kmeans', 
                 ncpu=ray.cluster_resources()['CPU']
             )
 
-            d_cid_heap = {cid: [] for cid in range(self.batch_size)}
+            d_cid_heap = {cid: [] for cid in range(batch_size)}
 
             for x, u, cid in tqdm(zip(superset_xs, superset_us, cluster_ids),
                                   total=len(superset), desc='Acquiring'):
@@ -371,7 +379,7 @@ class Acquirer:
                 else:
                     heapq.heappushpop(heap, (u, x))
 
-            heaps = [heap for heap, _ in d_cid_heap.values()]
+            heaps = [heap for heap in d_cid_heap.values()]
             heap = list(chain(*heaps))
 
         else:

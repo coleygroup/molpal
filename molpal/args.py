@@ -123,6 +123,8 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                         help='the beta value to use in the UCB metric')
     parser.add_argument('--threshold', type=float,
                         help='the threshold value as a positive number to use in the threshold metric')
+    parser.add_argument('--cluster-type', type=str, choices={'fps','objs'}, default=None,
+                        help='the type of clustering to use during acquisition')
 
 ###################################
 #       OBJECTIVE ARGUMENTS       #

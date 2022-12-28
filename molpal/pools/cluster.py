@@ -82,8 +82,12 @@ def cluster_fps(
         the cluster id corresponding to a given fingerprint
     """
     begin = timeit.default_timer()
-
-    fps = sparse.vstack(fps, format="csr")
+    
+    try: 
+        fps = sparse.vstack(fps, format="csr")
+    except: 
+        fps = [sparse.csr_matrix(fp) for fp in fps]
+        fps = sparse.vstack(fps, format="csr")
 
     if method == "kmeans":
         clusterer = cluster.KMeans(n_clusters=ncluster, n_jobs=ncpu)
