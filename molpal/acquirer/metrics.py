@@ -7,6 +7,8 @@ import pygmo as pg
 import scipy.stats
 from scipy.stats import norm
 from molpal.acquirer.pareto import Pareto
+import pygmo 
+from tqdm import tqdm 
 
 # this module maintains an independent random number generator
 RG = np.random.default_rng()
@@ -32,6 +34,7 @@ def get_metric(metric: str) -> Callable[..., float]:
             'ts': thompson,
             'ei': ei,
             'pi': pi,
+            'nds': nds,
         }[metric]
     except KeyError:
         raise ValueError(f'Unrecognized metric: "{metric}"')
@@ -48,7 +51,8 @@ def get_needs(metric: str) -> Set[str]:
         'pi': {'means', 'vars'},
         'thompson': {'means', 'vars'},
         'ts': {'means', 'vars'},
-        'threshold': {'means'}
+        'threshold': {'means'},
+        'nds': {'means'},
     }.get(metric, set())
 
 
@@ -63,7 +67,8 @@ def get_multiobjective(metric: str) -> bool:
         'pi': True,
         'thompson': False,
         'ts': False,
-        'threshold': False
+        'threshold': False, 
+        'nds': True,
     }.get(metric, set())
 
 
@@ -71,6 +76,7 @@ def calc(
     metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
     pareto_front: Pareto, current_max: float, threshold: float,
     beta: int, xi: float, stochastic: bool, nadir: np.ndarray,
+    top_n_scored: int
 ) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
     PF_points, _ = pareto_front.export_front()
@@ -92,9 +98,10 @@ def calc(
         return ei(Y_means, Y_vars, current_max, xi, pareto_front=pareto_front)
     if metric == 'pi':
         return pi(Y_means, Y_vars, current_max, xi, pareto_front=pareto_front)
+    if metric == 'nds':
+        return nds(Y_means, top_n_scored)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
-
 
 def random(Y_means: np.ndarray) -> np.ndarray:
     """Random acquistion score
@@ -496,3 +503,44 @@ def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
         return P_imp
     elif Y_means.shape[1] > 1:
         return hvpi(Y_means, Y_vars, pareto_front)
+
+
+def nds(Y_means: np.ndarray, top_n_scored: int):
+    """
+    Parameters:
+    -----------
+    Y_means: np.ndarray (number of points x number of objectives) 
+    top_n_scored: int, the number of points to be assigned a rank. 
+        Usually less than the total number of points, so 
+        saves time by not computing rank for _all_ points
+
+    Returns: 
+    -------
+    scores: np.ndarray (number of points,)
+        Unranked points are assigned value of np.inf 
+        scores are negative of ranks (lower ranks = better, less negative)
+
+    """
+    ranks = np.inf*np.ones([Y_means.shape[0]])
+    Y_means_unranked = Y_means.copy()
+    this_rank = 0
+
+    pbar = tqdm(total=top_n_scored, postfix=None)
+    while np.isfinite(ranks).sum() < top_n_scored:
+        this_rank = this_rank + 1
+        if Y_means.shape[1] == 2: 
+            front_num = pygmo.non_dominated_front_2d(-1*Y_means_unranked)
+        else: 
+            pf = Pareto(num_objectives=Y_means.shape[1], )
+            pf.update_front(Y_means_unranked)
+            front_num = pf.front_num
+
+        ranks[front_num] = this_rank
+        Y_means_unranked[front_num] = -np.inf
+        # print(np.isfinite(ranks).sum())
+        pbar.n = np.isfinite(ranks).sum()
+        pbar.refresh()
+
+    return -1*ranks
+
+
