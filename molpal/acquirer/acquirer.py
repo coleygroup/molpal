@@ -8,9 +8,14 @@ from typing import (Dict, Iterable, List, Mapping,
                     Optional, Set, TypeVar, Union)
 
 import numpy as np
+import ray
 from tqdm import tqdm
+from molpal.objectives import Objective, MultiObjective
 from molpal.acquirer.pareto import Pareto
 from molpal.acquirer import metrics
+from molpal.featurizer import feature_matrix, Featurizer
+from molpal.pools.cluster import cluster_fps
+
 
 T = TypeVar('T')
 
@@ -224,6 +229,10 @@ class Acquirer:
                       explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
                       cluster_sizes: Optional[Mapping[int, int]] = None,
+                      cluster_superset: Optional[bool] = None,
+                      cluster_type: Optional[str] = None,
+                      objective: Optional[Union[Objective, MultiObjective]] = None,
+                      featurizer: Optional[Featurizer] = None, 
                       t: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
 
@@ -244,6 +253,19 @@ class Acquirer:
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
+        cluster_superset: Optional[int] (Default = None)
+            number of molecules in subset to cluster into #batch_size clusters
+            based on features and acquire cluster medoid 
+            If not None, requires cluster_type and either featurizer or objective
+        cluster_type: Optional[str] (Default = None)
+            'fps': clusters according to fingerprints (requires featurizer input)
+            'objs': clusters in objective space (requires objective input)
+        objective: Optional[Union[Objective, MultiObjective]]
+            objective to use if clustering in the objective space 
+            required if clister_superset not None and cluster_type = 'objs'
+        featurizer: Optional[Featurizer] (Default = None)
+            featurizer to use for clustering if cluster_superset not None 
+            and cluster_type = 'fps'
         t : Optional[int] (Default = None)
             the current iteration of batch acquisition
         is_random : bool (Default = False)
@@ -308,6 +330,50 @@ class Acquirer:
                     heapq.heappush(heap, (u, x))
                 else:
                     heapq.heappushpop(heap, (u, x))
+        elif cluster_superset:
+            superset = []
+            for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring superset'):
+                if x in explored:
+                    continue
+
+                if len(superset) < cluster_superset:
+                    heapq.heappush(superset, (u, x))
+                else:
+                    heapq.heappushpop(superset, (u, x))
+            
+            
+            superset_xs = [x for _, x in superset]
+            superset_us = [u for u, _ in superset]
+            
+            if cluster_type=='objs':
+                cluster_basis = list(objective(superset_xs).values())
+            elif cluster_type=='fps':
+                cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
+
+            cluster_ids = cluster_fps(fps=cluster_basis, 
+                ncluster=self.batch_size, 
+                method='kmeans', 
+                ncpu=ray.cluster_resources()['CPU']
+            )
+
+            d_cid_heap = {cid: [] for cid in range(self.batch_size)}
+
+            for x, u, cid in tqdm(zip(superset_xs, superset_us, cluster_ids),
+                                  total=len(superset), desc='Acquiring'):
+                
+                if x in explored: 
+                    continue
+
+                heap = d_cid_heap[cid]
+
+                if len(heap) < 1:
+                    heapq.heappush(heap, (u, x))
+                else:
+                    heapq.heappushpop(heap, (u, x))
+
+            heaps = [heap for heap, _ in d_cid_heap.values()]
+            heap = list(chain(*heaps))
+
         else:
             # TODO(degraff): fix for epsilon-X approaches
             # the random indices are not distributed evenly amongst clusters
