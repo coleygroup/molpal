@@ -124,7 +124,11 @@ class NN:
         # self.model = keras.Sequential()
 
         dropout_at_predict = uncertainty == 'dropout'
-        output_size = 2*num_tasks if self.uncertainty else num_tasks
+        if self.uncertainty == 'mve':
+            output_size = 2*num_tasks
+        else:
+            output_size = num_tasks
+        # output_size = 2*num_tasks if self.uncertainty else num_tasks
 
         inputs = keras.layers.Input(shape=(input_size,))
 
@@ -262,7 +266,7 @@ class NNModel(Model):
     ----------
     input_size : int
         the size of the input dimension of the NN
-    test_batch_size : Optional[int] (Defulat = 4096)
+    test_batch_size : Optional[int] (Default = 4096)
         the size into which inputs should be batched
         during training and inference
     dropout : Optional[float] (Default = 0.0)
