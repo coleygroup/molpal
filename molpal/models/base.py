@@ -116,10 +116,11 @@ class MultiTaskModel:
             n_batches = (size//self.models[0].test_batch_size) + 1 if size else None
             batched_size = self.models[0].test_batch_size
 
-        meanss = []
-        variancess = []
 
-        if mean_only:
+
+        if mean_only:        
+            meanss = []
+            variancess = []
             for batch_xs in tqdm(
                 xs, total=n_batches, desc='Inference', smoothing=0.,
                 unit='smi', unit_scale=batched_size, disable=disable
@@ -133,19 +134,32 @@ class MultiTaskModel:
             variancesss = np.concatenate(variancess)
             return meansss, variancesss
         else:
+            means_all = np.zeros((0,len(self)))
+            vars_all = np.zeros((0,len(self)))
             for batch_xs in tqdm(
                 xs, total=n_batches, desc='Inference', smoothing=0.,
                 unit='smi', unit_scale=batched_size, disable=disable
             ):
-                means = [model.get_means(batch_xs) for model in self.models]
-                variances = [model.get_means_and_vars(batch_xs)[1]
-                             for model in self.models]
-                meanss.append(means)
-                variancess.append(variances)
+                meanss = []
+                varss = []
+                for model in self.models: 
+                    means, vars = model.get_means_and_vars(batch_xs)
+                    meanss.append(means)
+                    varss.append(vars)
 
-            meansss = np.concatenate(meanss, axis=1).T
-            variancesss = np.concatenate(variancess, axis=1).T
-            return meansss, variancesss
+                means_all = np.concatenate([means_all, np.array(meanss).T])
+                vars_all = np.concatenate([vars_all, np.array(varss).T])
+
+                # means = [model.get_means(batch_xs) for model in self.models]
+                # variances = [model.get_means_and_vars(batch_xs)[1]
+                #              for model in self.models]
+                # meanss.append(means)
+                # variancess.append(variances)
+
+
+            # meansss = np.concatenate(meanss, axis=1).T
+            # variancesss = np.concatenate(variancess, axis=1).T
+            return means_all, vars_all
 
     def save(self, basepath: str) -> Iterable[str]:
         basepath = Path(basepath)
