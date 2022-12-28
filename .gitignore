@@ -176,3 +176,10 @@ lightning_logs
 prep_glide_csv.py
 *.bz2
 *.cxsmilesdata/EnamineHTS_scores.csv.gz
+ADFRsuite_x86_64Linux_1.0
+notebooks
+data
+ignore_files
+void
+autodock_vina_1_1_2_linux_x86
+FILE
