@@ -56,6 +56,7 @@ def cluster_fps(
     ncluster: int = 100,
     method: str = "minibatch",
     ncpu: Optional[int] = None,
+    init_size: Optional[int] = 1000, 
 ) -> np.ndarray:
     """Cluster the molecular fingerprints, fps, by a given method
 
@@ -75,7 +76,8 @@ def cluster_fps(
         - OPTICS clustering 'optics'
     ncpu : Optional[int]
         the number of cores to parallelize clustering over, if possible
-
+    init_size: Optional[int]
+        Number of samples to randomly sample for speeding up the initialization for minibatch
     Returns
     -------
     cluster_ids : np.ndarray
@@ -93,7 +95,7 @@ def cluster_fps(
         clusterer = cluster.KMeans(n_clusters=ncluster, n_jobs=ncpu)
     elif method == "minibatch":
         clusterer = cluster.MiniBatchKMeans(
-            n_clusters=ncluster, n_init=10, batch_size=100, init_size=1000
+            n_clusters=ncluster, n_init=10, batch_size=100, init_size=init_size
         )
     elif method == "optics":
         clusterer = cluster.OPTICS(min_samples=0.01, metric="jaccard", n_jobs=ncpu)

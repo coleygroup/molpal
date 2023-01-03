@@ -100,7 +100,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
 def add_acquisition_args(parser: ArgumentParser) -> None:
     parser.add_argument('--metric', '--alpha', default='random',
                         choices={'random', 'greedy', 'threshold', 'ts',
-                                 'ucb', 'ei', 'pi', 'thompson'},
+                                 'ucb', 'ei', 'pi', 'thompson', 'nds'},
                         help='the acquisition metric to use')
 
     parser.add_argument('--init-size',
@@ -125,6 +125,10 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                         help='the threshold value as a positive number to use in the threshold metric')
     parser.add_argument('--cluster-type', type=str, choices={'fps','objs'}, default=None,
                         help='the type of clustering to use during acquisition')
+    parser.add_argument('--cluster-superset', type=int, default=None,
+                        help='the size of the superset to cluster')
+    parser.add_argument('--scalarize', type=bool, default=False,
+                        help='whether to scalarize objectives for multi-objective optimization')
 
 ###################################
 #       OBJECTIVE ARGUMENTS       #
@@ -138,8 +142,8 @@ def add_objective_args(parser: ArgumentParser) -> None:
     # parser.add_argument('--minimize', action='append_const', const=1, default=0)
     parser.add_argument('--objective-config', nargs='*',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
-    parser.add_argument('--num-objectives', default=1,
-                        help='the number of objectives to optimize')
+    # parser.add_argument('--num-objectives', default=1,
+    #                     help='the number of objectives to optimize')
     # DockingObjective args
     # parser.add_argument('--software', default='vina',
     #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},

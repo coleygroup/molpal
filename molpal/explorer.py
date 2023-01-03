@@ -145,14 +145,19 @@ class Explorer:
         )
         self.retrain_from_scratch = retrain_from_scratch
 
-        self.objective = MultiObjective(kwargs.pop('objective'),
-                                        kwargs.pop('objective_config'))
+        self.objective = MultiObjective(kwargs['objective'],
+                                        kwargs['objective_config'])
 
         self.acquirer = acquirer.Acquirer(size=len(self.pool), 
                                           dim=self.objective.dim,
                                           **kwargs)
         self.cluster_type = kwargs['cluster_type'] or None
 
+        if self.cluster_type: 
+            self.cluster_superset = kwargs['cluster_superset'] or 10*self.acquirer.batch_sizes[0]
+        else: 
+            self.cluster_superset = None
+                
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
         self._validate_acquirer()
@@ -410,7 +415,7 @@ class Explorer:
             y_means=self.Y_pred, 
             y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
-            cluster_superset=10*self.acquirer.batch_size(t=self.iter-1),
+            cluster_superset=self.cluster_superset,
             cluster_type=self.cluster_type,
             featurizer=self.featurizer,
             objective=self.objective,
