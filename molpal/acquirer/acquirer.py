@@ -4,7 +4,7 @@ import heapq
 from itertools import chain
 import math
 from timeit import default_timer
-from typing import (Dict, Iterable, List, Mapping,
+from typing import (Dict, Iterable, List, Mapping, Sequence,
                     Optional, Set, TypeVar, Union)
 
 import numpy as np
@@ -50,6 +50,10 @@ class Acquirer:
     pareto_front : Optional[Pareto]
         an object that stores and updates the Pareto front
         only defined if self.dim > 1
+    scalarize : Optional[bool]
+        whether to scalarize objectives in multi-objective optimization
+    weights: Optional[Sequence[float]]
+        the weighting factors if scalarization is used
 
     Parameters
     ----------
@@ -71,6 +75,8 @@ class Acquirer:
         the random seed to use for initial batch acquisition
     verbose : int (Default = 0)
     dim : int (Default = 1)
+    scalarize: bool (Default = False)
+    weights: Sequence[float]
     **kwargs
         additional and unused keyword arguments
     """
@@ -83,7 +89,10 @@ class Acquirer:
                  threshold: float = float('-inf'),
                  stochastic_preds: bool = False,
                  temp_i: Optional[float] = None, temp_f: Optional[float] = 1.,
-                 seed: Optional[int] = None, verbose: int = 0, **kwargs):
+                 seed: Optional[int] = None, verbose: int = 0, 
+                 scalarize: Optional[bool] = False, 
+                 weights: Optional[Sequence[float]] = None,
+                 **kwargs):
         self.size = size
         self.init_size = init_size
         self.batch_sizes = batch_sizes
@@ -109,6 +118,15 @@ class Acquirer:
 
         metrics.set_seed(seed)
         self.verbose = verbose
+
+        self.scalarize = scalarize
+        
+        if weights: 
+            self.weights = weights 
+        elif self.scalarize: 
+            self.weights = np.ones(self.dim)/self.dim
+        else: 
+            self.weights = None
 
     def __len__(self) -> int:
         return self.size
@@ -287,6 +305,7 @@ class Acquirer:
             else:
                 P_f = Acquirer.pareto_frontier(Y)
                 self.pareto_front.update_front(Y)
+                current_max = np.partition(Y, -k)[-k]
         else:
             explored = {}
 
@@ -312,7 +331,8 @@ class Acquirer:
             pareto_front=self.pareto_front, current_max=current_max,
             threshold=self.threshold, beta=self.beta, xi=self.xi,
             stochastic=self.stochastic_preds, nadir=self.nadir, 
-            top_n_scored=top_n_scored
+            top_n_scored=top_n_scored, scalarize=self.scalarize, 
+            weights=self.weights,
         )
 
         idxs = np.random.choice(
@@ -357,11 +377,17 @@ class Acquirer:
                 cluster_basis = list(objective(superset_xs).values())
             elif cluster_type=='fps':
                 cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
+            else:  # default to obj clustering 
+                cluster_basis = list(objective(superset_xs).values())
+            
+            ncpus = ray.cluster_resources()['CPU']
+            print(f'Clustering with {ncpus} cpus')
 
             cluster_ids = cluster_fps(fps=cluster_basis, 
                 ncluster=batch_size, 
-                method='kmeans', 
-                ncpu=ray.cluster_resources()['CPU']
+                method='minibatch', 
+                ncpu=ray.cluster_resources()['CPU'],
+                init_size=3*batch_size,
             )
 
             d_cid_heap = {cid: [] for cid in range(batch_size)}

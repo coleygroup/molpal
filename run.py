@@ -36,7 +36,7 @@ def main():
                 _redis_password=os.environ['redis_password']
             )
         else:
-            ray.init(address='auto')
+            ray.init()
     except ConnectionError:
         ray.init()
     except PermissionError:

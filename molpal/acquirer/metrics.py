@@ -1,6 +1,6 @@
 """This module contains functions for calculating the acquisition score of an
 input based on various metrics"""
-from typing import Callable, Optional, Set
+from typing import Callable, Optional, Set, Iterable
 
 import numpy as np
 import pygmo as pg
@@ -76,9 +76,17 @@ def calc(
     metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
     pareto_front: Pareto, current_max: float, threshold: float,
     beta: int, xi: float, stochastic: bool, nadir: np.ndarray,
-    top_n_scored: int
+    top_n_scored: int, scalarize: Optional[bool] = False,
+    weights: Optional[Iterable[float]] = None,
 ) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
+    if scalarize: 
+        scores = calc_scalarized(metric, Y_means, Y_vars, 
+                               pareto_front, current_max, threshold, 
+                               beta, xi, stochastic, nadir, 
+                               top_n_scored, weights )
+        return scores
+    
     PF_points, _ = pareto_front.export_front()
     if metric == 'random':
         return random(Y_means)
@@ -102,6 +110,31 @@ def calc(
         return nds(Y_means, top_n_scored)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
+
+def calc_scalarized(
+    metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
+    pareto_front: Pareto, current_max: float, threshold: float,
+    beta: int, xi: float, stochastic: bool, nadir: np.ndarray,
+    top_n_scored: int, weights: Optional[Iterable[float]],
+):
+    """
+    Calculates metrics for individual objectives and 
+    scalarizes them according to weighting factors
+    """
+    n_objs = Y_means.shape[1]
+    
+    obj_scores = [calc(
+            metric, Y_means[:,obj], Y_vars[:,obj],
+            pareto_front, current_max[obj], threshold,
+            beta, xi, stochastic, nadir,
+            top_n_scored
+        ) 
+        for obj in range(n_objs)]
+    
+    obj_scores = np.stack(obj_scores).T # num_points x num_objs
+
+    return np.sum(weights*obj_scores,axis=1)
+
 
 def random(Y_means: np.ndarray) -> np.ndarray:
     """Random acquistion score
@@ -231,8 +264,8 @@ def hvpi(Y_means: np.array,
     N = Y_means.shape[0]
     n_obj = pareto_front.num_objectives
 
-    if pareto_front.reference_min is None:
-        pareto_front.set_reference_min()
+    # if pareto_front.reference_min is None:
+    pareto_front.set_reference_min()
     reference_min = pareto_front.reference_min
 
     # Pareto front with reference points
@@ -264,14 +297,14 @@ def hvpi(Y_means: np.array,
     poi = np.sum(np.prod(Phi_u - Phi_l, axis=2), axis=1)  # shape: (N, 1)
 
     # calculate hypervolume contribution of fmean point
-    hv_valid = np.all(Y_means < upper_bound, axis=2)  # shape: (N, n_cell)
-    hv = np.prod(upper_bound -
-                 np.maximum(lower_bound, Y_means), axis=2)  # (N, n_cell)
-    hv = np.sum(hv * hv_valid, axis=1)  # shape: (N, 1)
+    # hv_valid = np.all(Y_means < upper_bound, axis=2)  # shape: (N, n_cell)
+    # hv = np.prod(upper_bound -
+    #              np.maximum(lower_bound, Y_means), axis=2)  # (N, n_cell)
+    # hv = np.sum(hv * hv_valid, axis=1)  # shape: (N, 1)
 
     # HVPoI
-    score = hv * poi
-    return score
+    # score = hv * poi
+    return poi
 
 
 def ehvi(Y_means: np.array,
@@ -297,10 +330,10 @@ def ehvi(Y_means: np.array,
     N = Y_means.shape[0]
     n_obj = pareto_front.num_objectives
 
-    if pareto_front.reference_min is None:
-        pareto_front.set_reference_min()
-    if pareto_front.reference_max is None:
-        pareto_front.set_reference_max()
+    # if pareto_front.reference_min is None:
+    pareto_front.set_reference_min()
+    # if pareto_front.reference_max is None:
+    pareto_front.set_reference_max()
     reference_min = pareto_front.reference_min
     reference_max = pareto_front.reference_max
 
@@ -453,7 +486,7 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
     E_imp : np.ndarray
         the expected improvement acquisition scores
     """
-    if Y_means.shape[1] == 1:
+    if Y_means.ndim == 1 or Y_means.shape[1] == 1:
         improv = Y_means - current_max + xi
         Y_sd = np.sqrt(Y_vars)
         with np.errstate(divide='ignore', invalid='ignore'):
@@ -525,7 +558,7 @@ def nds(Y_means: np.ndarray, top_n_scored: int):
     Y_means_unranked = Y_means.copy()
     this_rank = 0
 
-    pbar = tqdm(total=top_n_scored, postfix=None)
+    # pbar = tqdm(total=top_n_scored)
     while np.isfinite(ranks).sum() < top_n_scored:
         this_rank = this_rank + 1
         if Y_means.shape[1] == 2: 
@@ -538,8 +571,8 @@ def nds(Y_means: np.ndarray, top_n_scored: int):
         ranks[front_num] = this_rank
         Y_means_unranked[front_num] = -np.inf
         # print(np.isfinite(ranks).sum())
-        pbar.n = np.isfinite(ranks).sum()
-        pbar.refresh()
+        # pbar.n = np.isfinite(ranks).sum()
+        # pbar.refresh()
 
     return -1*ranks
 
