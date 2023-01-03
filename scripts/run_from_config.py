@@ -9,7 +9,7 @@ import ray
 from molpal import args, Explorer
 
 paths_to_config = [
-    'moo_runs/config/DRD_multiobj_ei.ini']
+    'moo_runs/config/DRD_multiobj_pi.ini']
 
 def sigterm_handler(signum, frame):
     sys.exit(0)
@@ -43,7 +43,7 @@ def main(path_to_config):
                 num_cpus=48, num_gpus=1
             )
         else:
-            ray.init(num_cpus=20, num_gpus=1)
+            ray.init(num_cpus=60, num_gpus=2)
     except ConnectionError:
         ray.init(num_cpus=20, num_gpus=1)
     except PermissionError:
