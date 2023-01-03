@@ -1,6 +1,7 @@
 from typing import Dict, Tuple
 
-import ray.util.sgd.v2 as sgd
+# import ray.util.sgd.v2 as sgd
+import ray.train as sgd
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -152,8 +153,8 @@ def validate_step(
 
 def train_func(config: Dict):
     model = config["model"]
-    train_data = config["train_data"]
-    val_data = config["val_data"]
+    train_loader = config["train_loader"]
+    val_loader = config["val_loader"]
     uncertainty = config["uncertainty"]
     dataset_type = config["dataset_type"]
     metric = config.get("metric", "rmse")
@@ -179,27 +180,13 @@ def train_func(config: Dict):
 
     # print(list(model.parameters())[1])
 
-    train_loader = DataLoader(
-        train_data,
-        batch_size,
-        sampler=DistributedSampler(train_data),
-        num_workers=ncpu,
-        collate_fn=construct_molecule_batch,
-    )
-    val_loader = DataLoader(
-        val_data,
-        batch_size,
-        sampler=DistributedSampler(val_data),
-        num_workers=ncpu,
-        collate_fn=construct_molecule_batch,
-    )
 
     optimizer = Adam(model.parameters(), init_lr, weight_decay=0)
     scheduler = NoamLR(
         optimizer=optimizer,
         warmup_epochs=[warmup_epochs],
         total_epochs=[max_epochs] * num_lrs,
-        steps_per_epoch=len(train_data) / batch_size + 1,
+        steps_per_epoch=len(train_loader),
         init_lr=[init_lr],
         max_lr=[max_lr],
         final_lr=[final_lr],

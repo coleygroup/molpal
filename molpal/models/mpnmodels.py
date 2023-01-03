@@ -11,7 +11,8 @@ import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import ray
-from ray.util.sgd.v2 import Trainer
+# from ray.util.sgd.v2 import Trainer
+from ray.train import Trainer
 import torch
 from tqdm import tqdm, trange
 
@@ -207,7 +208,7 @@ class MPNN:
         ]
         trainer = pl.Trainer(
             logger=False,
-            max_epochs=self.epochs,
+            max_epochs=self.epochs, 
             callbacks=callbacks,
             gpus=1 if self.use_gpu else 0,
             precision=self.precision,
