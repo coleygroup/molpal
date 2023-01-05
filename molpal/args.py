@@ -127,8 +127,6 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                         help='the type of clustering to use during acquisition')
     parser.add_argument('--cluster-superset', type=int, default=None,
                         help='the size of the superset to cluster')
-    parser.add_argument('--scalarize', action='store_true', default=False,
-                        help='whether to scalarize objectives for multi-objective optimization')
 
 ###################################
 #       OBJECTIVE ARGUMENTS       #
@@ -137,53 +135,17 @@ def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('-o', '--objective', nargs='+', required=True,
                         choices={'lookup', 'docking'},
                         help='the objective function to use')
-    parser.add_argument('--minimize', action='store_true', default=False,
-                        help='whether to minimize the objective function')
+    # parser.add_argument('--minimize', action='store_true', default=False,
+    #                     help='whether to minimize the objective function')
     # parser.add_argument('--minimize', action='append_const', const=1, default=0)
     parser.add_argument('--objective-config', nargs='+',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
     # parser.add_argument('--num-objectives', default=1,
     #                     help='the number of objectives to optimize')
-    # DockingObjective args
-    # parser.add_argument('--software', default='vina',
-    #                     choices={'vina', 'psovina', 'smina', 'qvina', 'dock'},
-    #                     help='the name of the docking program to use')
-    # parser.add_argument('--receptor',
-    #                     help='the filename of the receptor')
-    # parser.add_argument('--box-center', type=float, nargs=3,
-    #                     metavar=('CENTER_X', 'CENTER_Y', 'CENTER_Z'),
-    #                     help='the x-, y-, and z-coordinates of the center of the docking box')
-    # parser.add_argument('--box-size', type=int, nargs=3,
-    #                     metavar=('SIZE_X', 'SIZE_Y', 'SIZE_Z'),
-    #                     help='the x-, y-, and z-dimensions of the docking box')
-    # parser.add_argument('--docked-ligand-file',
-    #                     help='the name of a file containing the coordinates of a docked/bound ligand. If using Vina-type software, this file must be a PDB format file.')
-    # parser.add_argument('--score-mode', default='best',
-    #                     help='the method by which to calculate an overall score from multiple scored conformations')
-
-    # # LookupObjective args
-    # parser.add_argument('--lookup-path',
-    #                     help='filepath pointing to a file containing lookup scoring data')
-    # parser.add_argument('--no-lookup-title-line', action='store_true',
-    #                     default=False,
-    #                     help='whether there is a title line in the data lookup file')
-    # parser.add_argument('--lookup-sep', default=',',
-    #                     help='the column separator in the data lookup file')
-    # parser.add_argument('--lookup-smiles-col', default=0, type=int,
-    #                     help='the column containing the SMILES strings in the data lookup file')
-    # parser.add_argument('--lookup-data-col', default=1, type=int,
-    #                     help='the column containing the score data in the data lookup file')
-
-# def modify_objective_args(args: Namespace) -> None:
-#     if args.objective == 'lookup':
-#         modify_LookupObjective_args(args)
-
-# def modify_LookupObjective_args(args: Namespace) -> None:
-#     args.lookup_title_line = not args.no_lookup_title_line
-#     delattr(args, 'no_lookup_title_line')
-
-#     if args.name is None:
-#         args.name = Path(args.library).stem
+    parser.add_argument('--scalarize', action='store_true', default=False,
+                        help='whether to scalarize objectives')
+    parser.add_argument('--lambdas', nargs='*', type=float,
+                        help='weighting factors (lambdas) to use for scalarization, if --scalarize included')
 
 ###############################
 #       MODEL ARGUMENTS       #

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Collection, Dict, Optional, TypeVar, List
 from molpal import objectives
+import numpy as np
 
 T = TypeVar("T")
 
@@ -51,7 +52,7 @@ class MultiObjective():
 
     def __init__(self, objective_list, obj_configs):
         if len(objective_list) != len(obj_configs): 
-            print('ERROR: Need same number of objectives and obj configs')
+            raise ValueError('Different number of objectives and objective configs')
 
         self.dim = len(objective_list)
         self.objectives = [objectives.objective(obj, config)
@@ -68,3 +69,43 @@ class MultiObjective():
 
     def __call__(self, smis: Collection[str]) -> Dict[str, List[float]]:
         return self.forward(smis)
+
+class ScalarizedObjective(MultiObjective):
+    """ A class for calculating the scalarized objective function for multiple objectives.
+    Inherits from MultiObjective class 
+
+    Attributes:
+    -----------
+    objectives : List[Objective] with length = self.dim
+    dim : number of objectives to be optimized
+    lambdas : Optional[List[float]] of weighting factors. Rescaled to sum to 1
+
+    Parameters:
+    -----------
+    objective_list: List of the objective types ('Lookup' or 'Docking')
+        for each objective.
+    objective_configs: List of paths to config file for each objective
+    lambdas: np.ndarray of weighting factors. If none given, defaults to equal weighting  
+
+    Note: len(objective_list) must equal len(objective_configs)!
+    """
+    def __init__(self, objective_list, obj_configs, lambdas=None):
+        
+        super.__init__(objective_list, obj_configs)
+        
+        if lambdas: 
+            self.lambdas = np.array(lambdas)/sum(lambdas)
+        else:
+            self.lambdas = np.ones(len(objective_list))/len(objective_list)
+
+    def forward(self, smis: Collection[str]) -> Dict[str, float]:
+        multi_scores = super.forward(smis)
+        scores = {}
+        for key, value in zip(scores.items()):
+            scores[key] = np.multiply(self.lambdas, value).sum()
+
+        return scores
+    
+    def __call__(self, smis: Collection[str]) -> Dict[str, float]:
+        return self.forward(smis)
+

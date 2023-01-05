@@ -10,7 +10,8 @@ import pickle
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 import numpy as np
 from molpal import acquirer, featurizer, models, pools
-from molpal.objectives.base import MultiObjective
+from molpal.objectives.base import MultiObjective, ScalarizedObjective
+from molpal.objectives import objective
 
 T = TypeVar('T')
 
@@ -145,8 +146,16 @@ class Explorer:
         )
         self.retrain_from_scratch = retrain_from_scratch
 
-        self.objective = MultiObjective(kwargs['objective'],
-                                        kwargs['objective_config'])
+        if len(kwargs['objective'])==1: 
+            self.objective = objective(kwargs['objective'][0],
+                                       kwargs['objective_config'][0])
+        elif kwargs['scalarize']: 
+            self.objective = ScalarizedObjective(kwargs['objective'],
+                                                 kwargs['objective_config'],
+                                                 kwargs['lambdas'])
+        else:                               
+            self.objective = MultiObjective(kwargs['objective'],
+                                            kwargs['objective_config'])
 
         self.acquirer = acquirer.Acquirer(size=len(self.pool), 
                                           dim=self.objective.dim,
