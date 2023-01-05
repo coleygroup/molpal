@@ -10,7 +10,7 @@ from typing import (Dict, Iterable, List, Mapping, Sequence,
 import numpy as np
 import ray
 from tqdm import tqdm
-from molpal.objectives import Objective, MultiObjective
+from molpal.objectives.base import Objective, MultiObjective
 from molpal.acquirer.pareto import Pareto
 from molpal.acquirer import metrics
 from molpal.featurizer import feature_matrix, Featurizer

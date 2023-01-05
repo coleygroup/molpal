@@ -127,20 +127,20 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
                         help='the type of clustering to use during acquisition')
     parser.add_argument('--cluster-superset', type=int, default=None,
                         help='the size of the superset to cluster')
-    parser.add_argument('--scalarize', type=bool, default=False,
+    parser.add_argument('--scalarize', action='store_true', default=False,
                         help='whether to scalarize objectives for multi-objective optimization')
 
 ###################################
 #       OBJECTIVE ARGUMENTS       #
 ###################################
 def add_objective_args(parser: ArgumentParser) -> None:
-    parser.add_argument('-o', '--objective', nargs='*', required=True,
+    parser.add_argument('-o', '--objective', nargs='+', required=True,
                         choices={'lookup', 'docking'},
                         help='the objective function to use')
     parser.add_argument('--minimize', action='store_true', default=False,
                         help='whether to minimize the objective function')
     # parser.add_argument('--minimize', action='append_const', const=1, default=0)
-    parser.add_argument('--objective-config', nargs='*',
+    parser.add_argument('--objective-config', nargs='+',
                         help='the path to a configuration file containing all of the parameters with which to perform objective function evaluations')
     # parser.add_argument('--num-objectives', default=1,
     #                     help='the number of objectives to optimize')

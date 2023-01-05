@@ -139,7 +139,7 @@ class Explorer:
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
 
         self.model = models.MultiTaskModel(
-            models=kwargs.pop('model'),
+            models=kwargs['model'],
             input_size=len(self.featurizer),
             **kwargs
         )

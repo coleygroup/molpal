@@ -1,7 +1,10 @@
+"""
+A Pareto class adopted from PHYSBO (https://github.com/issp-center-dev/PHYSBO)
+published in: "Bayesian optimization package: PHYSBO”, Yuichi Motoyama et al, 
+Computer Physics Communications Volume 278, September 2022, 108405.
+"""
 import numpy as np
 import scipy.stats
-
-# physbo/search/pareto.py (https://github.com/issp-center-dev/PHYSBO)
 
 
 class Rectangles(object):
