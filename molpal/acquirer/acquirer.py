@@ -50,10 +50,6 @@ class Acquirer:
     pareto_front : Optional[Pareto]
         an object that stores and updates the Pareto front
         only defined if self.dim > 1
-    scalarize : Optional[bool]
-        whether to scalarize objectives in multi-objective optimization
-    weights: Optional[Sequence[float]]
-        the weighting factors if scalarization is used
 
     Parameters
     ----------
@@ -75,8 +71,6 @@ class Acquirer:
         the random seed to use for initial batch acquisition
     verbose : int (Default = 0)
     dim : int (Default = 1)
-    scalarize: bool (Default = False)
-    weights: Sequence[float]
     **kwargs
         additional and unused keyword arguments
     """
@@ -90,8 +84,6 @@ class Acquirer:
                  stochastic_preds: bool = False,
                  temp_i: Optional[float] = None, temp_f: Optional[float] = 1.,
                  seed: Optional[int] = None, verbose: int = 0, 
-                 scalarize: Optional[bool] = False, 
-                 weights: Optional[Sequence[float]] = None,
                  **kwargs):
         self.size = size
         self.init_size = init_size
@@ -118,15 +110,6 @@ class Acquirer:
 
         metrics.set_seed(seed)
         self.verbose = verbose
-
-        self.scalarize = scalarize
-        
-        if weights: 
-            self.weights = weights 
-        elif self.scalarize: 
-            self.weights = np.ones(self.dim)/self.dim
-        else: 
-            self.weights = None
 
     def __len__(self) -> int:
         return self.size
@@ -331,8 +314,7 @@ class Acquirer:
             pareto_front=self.pareto_front, current_max=current_max,
             threshold=self.threshold, beta=self.beta, xi=self.xi,
             stochastic=self.stochastic_preds, nadir=self.nadir, 
-            top_n_scored=top_n_scored, scalarize=self.scalarize, 
-            weights=self.weights,
+            top_n_scored=top_n_scored, 
         )
 
         idxs = np.random.choice(

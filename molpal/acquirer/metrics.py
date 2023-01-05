@@ -76,16 +76,9 @@ def calc(
     metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
     pareto_front: Pareto, current_max: float, threshold: float,
     beta: int, xi: float, stochastic: bool, nadir: np.ndarray,
-    top_n_scored: int, scalarize: Optional[bool] = False,
-    weights: Optional[Iterable[float]] = None,
+    top_n_scored: int, 
 ) -> np.ndarray:
     """Call corresponding metric function with the proper args"""
-    if scalarize: 
-        scores = calc_scalarized(metric, Y_means, Y_vars, 
-                               pareto_front, current_max, threshold, 
-                               beta, xi, stochastic, nadir, 
-                               top_n_scored, weights )
-        return scores
     
     PF_points, _ = pareto_front.export_front()
     if metric == 'random':
@@ -110,30 +103,6 @@ def calc(
         return nds(Y_means, top_n_scored)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
-
-def calc_scalarized(
-    metric: str, Y_means: np.ndarray, Y_vars: np.ndarray,
-    pareto_front: Pareto, current_max: float, threshold: float,
-    beta: int, xi: float, stochastic: bool, nadir: np.ndarray,
-    top_n_scored: int, weights: Optional[Iterable[float]],
-):
-    """
-    Calculates metrics for individual objectives and 
-    scalarizes them according to weighting factors
-    """
-    n_objs = Y_means.shape[1]
-    
-    obj_scores = [calc(
-            metric, Y_means[:,obj], Y_vars[:,obj],
-            pareto_front, current_max[obj], threshold,
-            beta, xi, stochastic, nadir,
-            top_n_scored
-        ) 
-        for obj in range(n_objs)]
-    
-    obj_scores = np.stack(obj_scores).T # num_points x num_objs
-
-    return np.sum(weights*obj_scores,axis=1)
 
 
 def random(Y_means: np.ndarray) -> np.ndarray:
