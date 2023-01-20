@@ -83,7 +83,8 @@ class Acquirer:
                  threshold: float = float('-inf'),
                  stochastic_preds: bool = False,
                  temp_i: Optional[float] = None, temp_f: Optional[float] = 1.,
-                 seed: Optional[int] = None, verbose: int = 0, 
+                 seed: Optional[int] = None, verbose: int = 0,
+                 cluster_type: Optional[str] = None, cluster_superset: Optional[int] = None, 
                  **kwargs):
         self.size = size
         self.init_size = init_size
@@ -92,6 +93,9 @@ class Acquirer:
         self.metric = metric
         self.dim = dim
         self.pareto_front = Pareto(num_objectives=self.dim)
+
+        self.cluster_type = cluster_type
+        self.cluster_superset = cluster_superset
 
         self.nadir = np.array(nadir, dtype=float)
 
@@ -229,7 +233,6 @@ class Acquirer:
                       y_means: Iterable[float], y_vars: Iterable[float],
                       explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
-                      cluster_sizes: Optional[Mapping[int, int]] = None,
                       cluster_superset: Optional[bool] = None,
                       cluster_type: Optional[str] = None,
                       objective: Optional[Union[Objective, MultiObjective]] = None,
@@ -304,8 +307,6 @@ class Acquirer:
         
         if cluster_superset: 
             top_n_scored = cluster_superset
-        elif cluster_sizes: 
-            top_n_scored = Y_means.shape[0]
         else: 
             top_n_scored = batch_size
 
@@ -330,48 +331,25 @@ class Acquirer:
             mins, secs = divmod(int(total), 60)
             print(f'      Utility calculation took {mins}m {secs}s')
 
-        if cluster_ids is None and cluster_sizes is None and cluster_superset is None:
+        if self.cluster_type is None:
             heap = self.top_k(xs, U, batch_size, explored)
 
-        elif cluster_superset:
+        elif self.cluster_type in {'fps', 'objs'}:
             heap = self.clustered_batch(
+                xs, U, batch_size,
+                explored, objective, featurizer,
+            )
+        
+        elif self.cluster_type == 'both': 
+            heap = self.cluster_both(
                 xs, U, batch_size, 
-                explored, cluster_superset, cluster_type,
-                objective, featurizer
+                explored, objective, featurizer,
             )
 
-        else:
-            # TODO(degraff): fix for epsilon-X approaches
-            # the random indices are not distributed evenly amongst clusters
-            # TODO(degraff): fix for MOO
-            d_cid_heap = {
-                cid: ([], math.ceil(batch_size * cluster_size/U.size))
-                for cid, cluster_size in cluster_sizes.items()
-            }
-
-            global_pred_max = float('-inf')
-
-            for x, y_pred, u, cid in tqdm(zip(xs, Y_means, U, cluster_ids),
-                                          total=U.size, desc='Acquiring'):
-                global_pred_max = max(y_pred, global_pred_max)
-
-                if x in explored:
-                    continue
-
-                heap, heap_size = d_cid_heap[cid]
-                if len(heap) < heap_size:
-                    heapq.heappush(heap, (u, x))
-                else:
-                    heapq.heappushpop(heap, (u, x))
-
-            if self.temp_i and self.temp_f:
-                d_cid_heap = self._scale_heaps(
-                    d_cid_heap, global_pred_max, t,
-                    self.temp_i, self.temp_f
-                )
-
-            heaps = [heap for heap, _ in d_cid_heap.values()]
-            heap = list(chain(*heaps))
+        else: 
+            print(f'Cluster type {self.cluster_type} not recognized')
+            print('Proceeding with top-k batching')
+            heap = self.top_k(xs, U, batch_size, explored)
 
         if self.verbose > 1:
             print(f'Selected {len(heap)} new samples')
@@ -430,10 +408,10 @@ class Acquirer:
 
         return d_cid_heap
 
-    def top_k(self, xs, U, batch_size, explored, desc='Acquiring'): 
+    def top_k(self, xs, U, batch_size, explored): 
         """ creates heap with top k molecules given xs (smiles) and U (scores) """
         heap = []
-        for x, u in tqdm(zip(xs, U), total=U.size, desc=desc):
+        for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
             if x in explored:
                 continue
 
@@ -444,22 +422,24 @@ class Acquirer:
     
         return heap
     
-    def clustered_batch(self, xs, U, batch_size, explored, cluster_superset, cluster_type, objective, featurizer):
+    def clustered_batch(self, xs, U, batch_size, explored, objective = None, featurizer = None):
         """ clusters molecules according to cluster_type 
         and selects the best in each cluster for acquisition """
-        superset = self.top_k(xs, U, cluster_superset, explored, desc='Acquiring Superset')
+        batch_size = self.batch_size(t)
+
+        superset = self.top_k(xs, U, self.cluster_superset, explored, desc='Acquiring Superset')
 
         superset_xs = [x for _, x in superset]
         superset_us = [u for u, _ in superset]
 
-        if cluster_type=='objs':
+        if self.cluster_type=='objs':
             cluster_basis = list(objective(superset_xs).values())
-        elif cluster_type=='fps':
+        elif self.cluster_type=='fps':
             cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
         else:  # default to obj clustering 
             cluster_basis = list(objective(superset_xs).values())
         
-        print(f'Clustering according to {cluster_type}')
+        print(f'Clustering according to {self.cluster_type}')
 
         cluster_ids = cluster_fps(fps=cluster_basis, 
             ncluster=batch_size, 
@@ -487,10 +467,31 @@ class Acquirer:
         heap = list(chain(*heaps))
 
         return heap 
+    
+    def cluster_both(self, xs, U, batch_size, explored, objective, featurizer):
+        """ 
+        Clusters xs into (batch_size/2) clusters according to objectives
+        and acquires the best in each cluster. 
+        Then clusters xs into (batch_size/2) according to fingeprints and 
+        acquires the best in each cluster. If a value has already been 
+        acquired in this iteration from objective clustering, the second-best
+        in the cluster is acquired 
+        """
+        batch_size_objs = int(np.ceil(batch_size/2))
+        batch_size_fps = batch_size - batch_size_objs
+        
+        heap_objs = self.clustered_batch(xs, U, batch_size_objs, explored, objective=objective) 
+        
+        dont_acquire = {
+            **explored, 
+            **{x:u for u,x in heap_objs}
+        }
+        
+        heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, featurizer=featurizer)
 
+        heap = [heap_objs, heap_fps]
 
-
-
+        return heap 
     
     @classmethod
     def _calc_temp(cls, t: int, temp_i, temp_f) -> float:
