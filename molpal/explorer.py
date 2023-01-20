@@ -10,6 +10,7 @@ import pickle
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 import numpy as np
 from molpal import acquirer, featurizer, models, pools
+from molpal.models.base import MultiTaskModel
 from molpal.objectives.base import MultiObjective, ScalarizedObjective
 from molpal.objectives import objective
 
@@ -139,26 +140,41 @@ class Explorer:
         )
         self.pool = pools.pool(featurizer=self.featurizer, **kwargs)
 
-        self.model = models.MultiTaskModel(
-            models=kwargs['model'],
-            input_size=len(self.featurizer),
-            **kwargs
-        )
+
         self.retrain_from_scratch = retrain_from_scratch
 
         if len(kwargs['objective'])==1: 
             self.objective = objective(kwargs['objective'][0],
                                        kwargs['objective_config'][0])
+            model = kwargs.pop('model')
+            self.model = models.model(
+                model=model[0],
+                input_size=len(self.featurizer),
+                **kwargs
+            )
+            kwargs['model'] = model
         elif kwargs['scalarize']: 
             self.objective = ScalarizedObjective(kwargs['objective'],
                                                  kwargs['objective_config'],
                                                  kwargs['lambdas'])
+            model = kwargs.pop('model')
+            self.model = models.model(
+                model=model[0],
+                input_size=len(self.featurizer),
+                **kwargs
+            )
+            kwargs['model'] = model
         else:                               
             self.objective = MultiObjective(kwargs['objective'],
-                                            kwargs['objective_config'])
+                                            kwargs['objective_config'])        
+            self.model = MultiTaskModel(
+                models=kwargs['model'],
+                input_size=len(self.featurizer),
+                **kwargs
+            )
 
         self.acquirer = acquirer.Acquirer(size=len(self.pool), 
-                                          dim=self.objective.dim,
+                                          dim=len(self.objective),
                                           **kwargs)
         self.cluster_type = kwargs['cluster_type'] or None
 
@@ -571,7 +587,11 @@ class Explorer:
             p_scores = p_data / f'top_{m}_explored_iter_{self.iter}.csv'
 
         top_m = self.top_explored(m)
-        rows = [(k, *vs) for k, vs in top_m]
+        if len(self.objective) > 1: 
+            rows = [(k, *vs) for k, vs in top_m]
+        else: 
+            rows = [(k, vs) for k, vs in top_m]
+
         header = ['smiles', *[f'task_{i}' for i in range(1, len(rows[0]))]]
 
         with open(p_scores, 'w') as fid:
@@ -731,12 +751,20 @@ class Explorer:
         (mutates) self.failures : Dict[T, None]
             a dictionary storing the inputs for which scoring failed
         """
-        for x, y in new_scores.items():
-            if y is None or None in y:
-                self.failures[x] = y
-            else:
-                self.scores[x] = y
-                self.new_scores[x] = y
+        if len(self.objective) == 1: 
+            for x, y in new_scores.items():
+                if y is None:
+                    self.failures[x] = y
+                else:
+                    self.scores[x] = y
+                    self.new_scores[x] = y
+        else: 
+            for x, y in new_scores.items():
+                if None in y:
+                    self.failures[x] = y
+                else:
+                    self.scores[x] = y
+                    self.new_scores[x] = y
 
     def _update_model(self):
         """Update the prior distribution to generate a posterior distribution
