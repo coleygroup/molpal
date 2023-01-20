@@ -7,7 +7,9 @@ import pygmo as pg
 import scipy.stats
 from scipy.stats import norm
 from molpal.acquirer.pareto import Pareto
+from molpal.acquirer import utils
 import pygmo 
+import ray
 from tqdm import tqdm 
 
 # this module maintains an independent random number generator
@@ -259,8 +261,16 @@ def hvpi(Y_means: np.array,
     Y_std = Y_std.reshape((N, 1, n_obj))
 
     # calculate cdf
-    Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
-    Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
+    # Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
+    # Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
+    Phi_l = utils.chunked_stat(
+        x = lower_bound - Y_means / Y_std, 
+        func = utils.ndtr
+    )
+    Phi_u = utils.chunked_stat(
+        x = upper_bound - Y_means / Y_std, 
+        func = utils.ndtr
+    )
 
     #  calculate PoI
     poi = np.sum(np.prod(Phi_u - Phi_l, axis=2), axis=1)  # shape: (N, 1)
@@ -333,15 +343,40 @@ def ehvi(Y_means: np.array,
     Y_std = Y_std.reshape((1, N, 1, n_obj))
 
     # calculate pdf, cdf
-    phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound)
-                                       - Y_means) / Y_std)
-    phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound)
-                                       - Y_means) / Y_std)
+    # phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound)
+    #                                    - Y_means) / Y_std)
+    # phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound)
+    #                                    - Y_means) / Y_std)
 
-    Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
-    Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
-    Phi_a = scipy.special.ndtr((a - Y_means) / Y_std)
-    Phi_b = scipy.special.ndtr((b - Y_means) / Y_std)
+    # Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
+    # Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
+    # Phi_a = scipy.special.ndtr((a - Y_means) / Y_std)
+    # Phi_b = scipy.special.ndtr((b - Y_means) / Y_std)
+    phi_min_bu = utils.chunked_stat(
+        x=(np.minimum(b, upper_bound)- Y_means) / Y_std, 
+        func=utils.pdf,
+    )
+    phi_max_al = utils.chunked_stat(
+        x = (np.maximum(a, lower_bound)- Y_means) / Y_std,
+        func=utils.pdf,
+    )
+
+    Phi_l = utils.chunked_stat(
+        x = (lower_bound - Y_means) / Y_std, 
+        func=utils.ndtr
+    )
+    Phi_u = utils.chunked_stat(
+        x = (upper_bound - Y_means) / Y_std, 
+        func=utils.ndtr
+    )
+    Phi_a = utils.chunked_stat(
+        x = (a - Y_means) / Y_std, 
+        func=utils.ndtr
+    )
+    Phi_b = utils.chunked_stat(
+        x = (b - Y_means) / Y_std, 
+        func=utils.ndtr
+    )
 
     # calculate G
     is_type_A = np.logical_and(a < upper_bound, lower_bound < b)
@@ -490,7 +525,7 @@ def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
     P_imp : np.ndarray
         the probability of improvement acquisition scores
     """
-    if Y_means.shape[1] == 1:
+    if Y_means.ndim == 1 or Y_means.shape[1] == 1:
         improv = Y_means - current_max + xi
         with np.errstate(divide='ignore'):
             Z = improv / np.sqrt(Y_vars)
