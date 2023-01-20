@@ -278,7 +278,7 @@ class Acquirer:
             a list of selected inputs
         """
         current_max = -np.inf
-        P_f = np.array([current_max] * self.dim)
+        # P_f = np.array([current_max] * self.dim)
 
         if explored:
             ys = list(explored.values())
@@ -286,9 +286,9 @@ class Acquirer:
             if self.dim == 1:
                 current_max = np.partition(Y, -k)[-k]
             else:
-                P_f = Acquirer.pareto_frontier(Y)
+            #     P_f = Acquirer.pareto_frontier(Y)
                 self.pareto_front.update_front(Y)
-                current_max = np.partition(Y, -k)[-k]
+            #     current_max = np.partition(Y, -k)[-k]
         else:
             explored = {}
 
@@ -331,64 +331,14 @@ class Acquirer:
             print(f'      Utility calculation took {mins}m {secs}s')
 
         if cluster_ids is None and cluster_sizes is None and cluster_superset is None:
-            heap = []
-            for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring'):
-                if x in explored:
-                    continue
+            heap = self.top_k(xs, U, batch_size, explored)
 
-                if len(heap) < batch_size:
-                    heapq.heappush(heap, (u, x))
-                else:
-                    heapq.heappushpop(heap, (u, x))
         elif cluster_superset:
-            superset = []
-            for x, u in tqdm(zip(xs, U), total=U.size, desc='Acquiring superset'):
-                if x in explored:
-                    continue
-
-                if len(superset) < cluster_superset:
-                    heapq.heappush(superset, (u, x))
-                else:
-                    heapq.heappushpop(superset, (u, x))
-            
-            
-            superset_xs = [x for _, x in superset]
-            superset_us = [u for u, _ in superset]
-            
-            if cluster_type=='objs':
-                cluster_basis = list(objective(superset_xs).values())
-            elif cluster_type=='fps':
-                cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
-            else:  # default to obj clustering 
-                cluster_basis = list(objective(superset_xs).values())
-            
-            ncpus = ray.cluster_resources()['CPU']
-            print(f'Clustering with {ncpus} cpus')
-
-            cluster_ids = cluster_fps(fps=cluster_basis, 
-                ncluster=batch_size, 
-                method='minibatch', 
-                ncpu=ray.cluster_resources()['CPU'],
-                init_size=3*batch_size,
+            heap = self.clustered_batch(
+                xs, U, batch_size, 
+                explored, cluster_superset, cluster_type,
+                objective, featurizer
             )
-
-            d_cid_heap = {cid: [] for cid in range(batch_size)}
-
-            for x, u, cid in tqdm(zip(superset_xs, superset_us, cluster_ids),
-                                  total=len(superset), desc='Acquiring'):
-                
-                if x in explored: 
-                    continue
-
-                heap = d_cid_heap[cid]
-
-                if len(heap) < 1:
-                    heapq.heappush(heap, (u, x))
-                else:
-                    heapq.heappushpop(heap, (u, x))
-
-            heaps = [heap for heap in d_cid_heap.values()]
-            heap = list(chain(*heaps))
 
         else:
             # TODO(degraff): fix for epsilon-X approaches
@@ -480,6 +430,68 @@ class Acquirer:
 
         return d_cid_heap
 
+    def top_k(self, xs, U, batch_size, explored, desc='Acquiring'): 
+        """ creates heap with top k molecules given xs (smiles) and U (scores) """
+        heap = []
+        for x, u in tqdm(zip(xs, U), total=U.size, desc=desc):
+            if x in explored:
+                continue
+
+            if len(heap) < batch_size:
+                heapq.heappush(heap, (u, x))
+            else:
+                heapq.heappushpop(heap, (u, x))
+    
+        return heap
+    
+    def clustered_batch(self, xs, U, batch_size, explored, cluster_superset, cluster_type, objective, featurizer):
+        """ clusters molecules according to cluster_type 
+        and selects the best in each cluster for acquisition """
+        superset = self.top_k(xs, U, cluster_superset, explored, desc='Acquiring Superset')
+
+        superset_xs = [x for _, x in superset]
+        superset_us = [u for u, _ in superset]
+
+        if cluster_type=='objs':
+            cluster_basis = list(objective(superset_xs).values())
+        elif cluster_type=='fps':
+            cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
+        else:  # default to obj clustering 
+            cluster_basis = list(objective(superset_xs).values())
+        
+        print(f'Clustering according to {cluster_type}')
+
+        cluster_ids = cluster_fps(fps=cluster_basis, 
+            ncluster=batch_size, 
+            method='minibatch', 
+            ncpu=ray.cluster_resources()['CPU'],
+            init_size=3*batch_size,
+        )
+
+        d_cid_heap = {cid: [] for cid in range(batch_size)}
+
+        for x, u, cid in tqdm(zip(superset_xs, superset_us, cluster_ids),
+                                total=len(superset), desc='Acquiring'):
+            
+            if x in explored: 
+                continue
+
+            heap = d_cid_heap[cid]
+
+            if len(heap) < 1:
+                heapq.heappush(heap, (u, x))
+            else:
+                heapq.heappushpop(heap, (u, x))
+
+        heaps = [heap for heap in d_cid_heap.values()]
+        heap = list(chain(*heaps))
+
+        return heap 
+
+
+
+
+    
     @classmethod
     def _calc_temp(cls, t: int, temp_i, temp_f) -> float:
         """Calculate the temperature of the system"""
@@ -491,25 +503,25 @@ class Acquirer:
         """Calculate the decay factor of a given heap"""
         return math.exp(-(global_max - local_max)/temp)
 
-    @staticmethod
-    def pareto_frontier(Y: np.ndarray) -> np.ndarray:
-        """calculate the pareto frontier for the objective matrix Y
+    # @staticmethod
+    # def pareto_frontier(Y: np.ndarray) -> np.ndarray:
+    #     """calculate the pareto frontier for the objective matrix Y
 
-        code from: https://github.com/QUVA-Lab/artemis/
-                   blob/peter/artemis/general/pareto_efficiency.py"""
-        efficient_idxs = np.arange(Y.shape[0])
-        Y_copy = Y
-        idx = 0
-        while idx < len(Y_copy):
-            nondominated_point_mask = np.any(Y_copy > Y_copy[idx], axis=1)
-            nondominated_point_mask[idx] = True
+    #     code from: https://github.com/QUVA-Lab/artemis/
+    #                blob/peter/artemis/general/pareto_efficiency.py"""
+    #     efficient_idxs = np.arange(Y.shape[0])
+    #     Y_copy = Y
+    #     idx = 0
+    #     while idx < len(Y_copy):
+    #         nondominated_point_mask = np.any(Y_copy > Y_copy[idx], axis=1)
+    #         nondominated_point_mask[idx] = True
 
-            efficient_idxs = efficient_idxs[nondominated_point_mask]
-            Y_copy = Y_copy[nondominated_point_mask]
+    #         efficient_idxs = efficient_idxs[nondominated_point_mask]
+    #         Y_copy = Y_copy[nondominated_point_mask]
 
-            idx = np.sum(nondominated_point_mask[:idx]) + 1
+    #         idx = np.sum(nondominated_point_mask[:idx]) + 1
 
-        return Y[efficient_idxs]
+    #     return Y[efficient_idxs]
         # if return_mask:
         #     is_efficient_mask = np.zeros(N, dtype = bool)
         #     is_efficient_mask[is_efficient] = True
