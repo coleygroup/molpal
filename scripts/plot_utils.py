@@ -15,6 +15,9 @@ method_colors = {
     'random':'#818084',
 }
 
+method_order = list(method_colors.keys())
+# method_rank = dict(zip(method_order, range(len(method_order))))
+
 
 def set_style():
     """set_style"""

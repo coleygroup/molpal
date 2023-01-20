@@ -9,7 +9,7 @@ import ray
 from molpal import args, Explorer
 
 paths_to_config = [
-    'moo_runs/config/DRD_multiobj_pi.ini']
+    'moo_runs/config/DRD_multiobj_ei.ini']
 
 def sigterm_handler(signum, frame):
     sys.exit(0)
