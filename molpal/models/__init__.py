@@ -4,7 +4,6 @@ training data."""
 
 from typing import Optional, Set, Type
 
-from molpal.models.base import MultiTaskModel
 from molpal.models.base import SingleTaskModel as Model
 
 def model(model: str, **kwargs) -> Type[Model]:

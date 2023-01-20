@@ -32,6 +32,9 @@ class Objective(ABC):
     def forward(self, xs: Collection[T], *args, **kwargs) -> Dict[T, Optional[float]]:
         """Calculate the objective function for a collection of inputs"""
 
+    def __len__(self) -> int:
+        return 1 
+
 
 class MultiObjective():
     """ A class for calculating the objective function for all objectives.
@@ -70,6 +73,9 @@ class MultiObjective():
     def __call__(self, smis: Collection[str]) -> Dict[str, List[float]]:
         return self.forward(smis)
 
+    def __len__(self) -> int: 
+        return self.dim
+
 class ScalarizedObjective(MultiObjective):
     """ A class for calculating the scalarized objective function for multiple objectives.
     Inherits from MultiObjective class 
@@ -91,7 +97,7 @@ class ScalarizedObjective(MultiObjective):
     """
     def __init__(self, objective_list, obj_configs, lambdas=None):
         
-        super.__init__(objective_list, obj_configs)
+        super().__init__(objective_list, obj_configs)
         
         if lambdas: 
             self.lambdas = np.array(lambdas)/sum(lambdas)
@@ -99,13 +105,17 @@ class ScalarizedObjective(MultiObjective):
             self.lambdas = np.ones(len(objective_list))/len(objective_list)
 
     def forward(self, smis: Collection[str]) -> Dict[str, float]:
-        multi_scores = super.forward(smis)
+        multi_scores = super().forward(smis)
         scores = {}
-        for key, value in zip(scores.items()):
+        for key, value in multi_scores.items():
             scores[key] = np.multiply(self.lambdas, value).sum()
 
         return scores
     
     def __call__(self, smis: Collection[str]) -> Dict[str, float]:
         return self.forward(smis)
+
+    def __len__(self) -> int:
+        return 1
+
 
