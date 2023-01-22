@@ -484,9 +484,9 @@ class Acquirer:
         
         dont_acquire = {
             **explored, 
-            **{x:u for u,x in heap_objs}
+            **{x: u for u, x in heap_objs}
         }
-        
+
         heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, featurizer=featurizer)
 
         heap = [heap_objs, heap_fps]

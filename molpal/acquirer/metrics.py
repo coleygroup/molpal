@@ -7,7 +7,6 @@ import pygmo as pg
 import scipy.stats
 from scipy.stats import norm
 from molpal.acquirer.pareto import Pareto
-from molpal.acquirer import utils
 import pygmo 
 import ray
 from tqdm import tqdm 
@@ -211,7 +210,7 @@ def hvi(Y_means: np.ndarray,
 
     return S
 
-
+@ray.remote
 def hvpi(Y_means: np.array,
          Y_vars: np.array,
          pareto_front: Pareto) -> np.ndarray:
@@ -261,31 +260,15 @@ def hvpi(Y_means: np.array,
     Y_std = Y_std.reshape((N, 1, n_obj))
 
     # calculate cdf
-    # Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
-    # Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
-    Phi_l = utils.chunked_stat(
-        x = lower_bound - Y_means / Y_std, 
-        func = utils.ndtr
-    )
-    Phi_u = utils.chunked_stat(
-        x = upper_bound - Y_means / Y_std, 
-        func = utils.ndtr
-    )
+    Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
+    Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
 
     #  calculate PoI
     poi = np.sum(np.prod(Phi_u - Phi_l, axis=2), axis=1)  # shape: (N, 1)
 
-    # calculate hypervolume contribution of fmean point
-    # hv_valid = np.all(Y_means < upper_bound, axis=2)  # shape: (N, n_cell)
-    # hv = np.prod(upper_bound -
-    #              np.maximum(lower_bound, Y_means), axis=2)  # (N, n_cell)
-    # hv = np.sum(hv * hv_valid, axis=1)  # shape: (N, 1)
-
-    # HVPoI
-    # score = hv * poi
     return poi
 
-
+@ray.remote
 def ehvi(Y_means: np.array,
          Y_vars: np.array,
          pareto_front: Pareto) -> np.ndarray:
@@ -343,40 +326,15 @@ def ehvi(Y_means: np.array,
     Y_std = Y_std.reshape((1, N, 1, n_obj))
 
     # calculate pdf, cdf
-    # phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound)
-    #                                    - Y_means) / Y_std)
-    # phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound)
-    #                                    - Y_means) / Y_std)
+    phi_min_bu = scipy.stats.norm.pdf((np.minimum(b, upper_bound)
+                                       - Y_means) / Y_std)
+    phi_max_al = scipy.stats.norm.pdf((np.maximum(a, lower_bound)
+                                       - Y_means) / Y_std)
 
-    # Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
-    # Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
-    # Phi_a = scipy.special.ndtr((a - Y_means) / Y_std)
-    # Phi_b = scipy.special.ndtr((b - Y_means) / Y_std)
-    phi_min_bu = utils.chunked_stat(
-        x=(np.minimum(b, upper_bound)- Y_means) / Y_std, 
-        func=utils.pdf,
-    )
-    phi_max_al = utils.chunked_stat(
-        x = (np.maximum(a, lower_bound)- Y_means) / Y_std,
-        func=utils.pdf,
-    )
-
-    Phi_l = utils.chunked_stat(
-        x = (lower_bound - Y_means) / Y_std, 
-        func=utils.ndtr
-    )
-    Phi_u = utils.chunked_stat(
-        x = (upper_bound - Y_means) / Y_std, 
-        func=utils.ndtr
-    )
-    Phi_a = utils.chunked_stat(
-        x = (a - Y_means) / Y_std, 
-        func=utils.ndtr
-    )
-    Phi_b = utils.chunked_stat(
-        x = (b - Y_means) / Y_std, 
-        func=utils.ndtr
-    )
+    Phi_l = scipy.special.ndtr((lower_bound - Y_means) / Y_std)
+    Phi_u = scipy.special.ndtr((upper_bound - Y_means) / Y_std)
+    Phi_a = scipy.special.ndtr((a - Y_means) / Y_std)
+    Phi_b = scipy.special.ndtr((b - Y_means) / Y_std)
 
     # calculate G
     is_type_A = np.logical_and(a < upper_bound, lower_bound < b)
@@ -505,7 +463,7 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
         return E_imp
 
     elif Y_means.shape[1] > 1:
-        return ehvi(Y_means, Y_vars, pareto_front)
+        return chunked_ehvi(Y_means, Y_vars, pareto_front)
 
 
 def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
@@ -539,7 +497,7 @@ def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
 
         return P_imp
     elif Y_means.shape[1] > 1:
-        return hvpi(Y_means, Y_vars, pareto_front)
+        return chunked_pi(Y_means, Y_vars, pareto_front)
 
 
 def nds(Y_means: np.ndarray, top_n_scored: int):
@@ -579,5 +537,39 @@ def nds(Y_means: np.ndarray, top_n_scored: int):
         # pbar.refresh()
 
     return -1*ranks
+
+def chunked_ehvi(Y_means, Y_vars, pareto_front: Pareto, batch_size: int=1000): 
+    
+    n_chunks = np.ceil(Y_means.shape[0]/batch_size)
+    Y_means_chunks = np.array_split(Y_means, n_chunks, axis=0)
+    Y_vars_chunks = np.array_split(Y_vars, n_chunks, axis=0)
+    
+    stats = [
+        ehvi.remote(
+            Y_means_ch, Y_vars_ch, pareto_front
+        ) 
+        for Y_means_ch, Y_vars_ch in zip(Y_means_chunks, Y_vars_chunks)
+    ]
+
+    stats = [ray.get(stat) for stat in stats]
+    
+    return np.concatenate(stats)
+
+def chunked_pi(Y_means, Y_vars, pareto_front: Pareto, batch_size: int=1000): 
+    
+    n_chunks = np.ceil(Y_means.shape[0]/batch_size)
+    Y_means_chunks = np.array_split(Y_means, n_chunks, axis=0)
+    Y_vars_chunks = np.array_split(Y_vars, n_chunks, axis=0)
+    
+    stats = [
+        hvpi.remote(
+            Y_means_ch, Y_vars_ch, pareto_front
+        ) 
+        for Y_means_ch, Y_vars_ch in zip(Y_means_chunks, Y_vars_chunks)
+    ]
+
+    stats = [ray.get(stat) for stat in stats]
+    
+    return np.concatenate(stats)
 
 
