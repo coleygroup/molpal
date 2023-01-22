@@ -106,17 +106,20 @@ class MultiTaskModel:
             # MPNs predict directly on the input identifier
             xs = x_ids
             batched_size = None
+            test_batch_size = size
         else:
             xs = x_feats
 
         if batched_size:
             n_batches = (size//batched_size) + 1 if size else None
+        elif self.models[0].type_ == 'mpn':
+            xs = batches(xs, size)
+            n_batches = 1
+            batched_size = size
         else:
             xs = batches(xs, self.models[0].test_batch_size)
             n_batches = (size//self.models[0].test_batch_size) + 1 if size else None
             batched_size = self.models[0].test_batch_size
-
-
 
         if mean_only:        
             meanss = []
@@ -150,15 +153,6 @@ class MultiTaskModel:
                 means_all = np.concatenate([means_all, np.array(meanss).T])
                 vars_all = np.concatenate([vars_all, np.array(varss).T])
 
-                # means = [model.get_means(batch_xs) for model in self.models]
-                # variances = [model.get_means_and_vars(batch_xs)[1]
-                #              for model in self.models]
-                # meanss.append(means)
-                # variancess.append(variances)
-
-
-            # meansss = np.concatenate(meanss, axis=1).T
-            # variancesss = np.concatenate(variancess, axis=1).T
             return means_all, vars_all
 
     def save(self, basepath: str) -> Iterable[str]:
