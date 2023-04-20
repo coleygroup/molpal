@@ -256,15 +256,15 @@ def main():
     )
     args = parser.parse_args()
     args.title_line = not args.no_title_line
-    path = (args.output or Path(args.libraries[0])).with_suffix(".h5")
+    path = (args.output or Path(args.library[0])).with_suffix(".h5")
     if args.total_size is None:
         args.total_size = sum(
-            1 for _ in get_smis(args.libraries, args.title_line, args.delimiter, args.smiles_col)
+            1 for _ in get_smis(args.library, args.title_line, args.delimiter, args.smiles_col)
         )
 
     print("Precalculating feature matrix ...", end=" ")
 
-    smis = get_smis(args.libraries, args.title_line, args.delimiter, args.smiles_col)
+    smis = get_smis(args.library, args.title_line, args.delimiter, args.smiles_col)
     fps, invalid_lines = fps_hdf5(
         smis, args.total_size, args.fingerprint, args.radius, args.length, path
     )
