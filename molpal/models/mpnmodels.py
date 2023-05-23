@@ -138,7 +138,7 @@ class MPNN:
         ngpu = int(ray.cluster_resources().get('GPU', 0))
         if ngpu > 0:
             self.use_gpu = True
-            self._predict = ray.remote(num_cpus=ncpu, num_gpus=1)(mpnn.predict)
+            self._predict = ray.remote(num_cpus=ncpu, num_gpus=1, max_calls=1)(mpnn.predict)
             self.num_workers = ngpu
         else:
             self.use_gpu = False
