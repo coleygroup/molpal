@@ -91,7 +91,7 @@ def parse_config(config: str):
     parser = ArgumentParser()
     parser.add_argument('config', is_config_file=True)
     parser.add_argument('--path', required=True)
-    parser.add_argument('--sep', default=',')
+    parser.add_argument('--sep', type=lambda d: '\t' if d == '\\t' else d, default=',')
     parser.add_argument('--no-title-line', action='store_true', default=False)
     parser.add_argument('--smiles-col', type=int, default=0)
     parser.add_argument('--score-col', type=int, default=1)

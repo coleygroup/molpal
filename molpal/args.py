@@ -78,7 +78,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
                         help='the CSVs containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
                         help='whether there is no title line in the library files')
-    parser.add_argument('--delimiter', default=',',
+    parser.add_argument('--delimiter', type=lambda d: '\t' if d == '\\t' else d, default=',', 
                         help='the column separator in the library files')
     parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library files')

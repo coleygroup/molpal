@@ -225,7 +225,7 @@ def main():
                         help='whether there is no title line in the library file')
     parser.add_argument('--total-size', type=int,
                         help='the total number of molecules in the library file')
-    parser.add_argument('--delimiter', default=',',
+    parser.add_argument('--delimiter', type=lambda d: '\t' if d == '\\t' else d, default=',', 
                         help='the column separator in the library file')
     parser.add_argument('--smiles-col', default=0, type=int,
                         help='the column containing the SMILES string in the library file')
