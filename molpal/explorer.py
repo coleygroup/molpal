@@ -176,12 +176,6 @@ class Explorer:
         self.acquirer = acquirer.Acquirer(size=len(self.pool), 
                                           dim=len(self.objective),
                                           **kwargs)
-        self.cluster_type = kwargs['cluster_type'] or None
-
-        if self.cluster_type: 
-            self.cluster_superset = kwargs['cluster_superset'] or 10*self.acquirer.batch_sizes[0]
-        else: 
-            self.cluster_superset = None
                 
         if self.acquirer.metric == 'thompson':
             kwargs['dropout_size'] = 1
@@ -440,8 +434,6 @@ class Explorer:
             y_means=self.Y_pred, 
             y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
-            cluster_superset=self.cluster_superset,
-            cluster_type=self.cluster_type,
             featurizer=self.featurizer,
             objective=self.objective,
             t=(self.iter-1),

@@ -95,7 +95,11 @@ class Acquirer:
         self.pareto_front = Pareto(num_objectives=self.dim)
 
         self.cluster_type = cluster_type
-        self.cluster_superset = cluster_superset
+
+        if self.cluster_type: 
+            self.cluster_superset = cluster_superset or 10*self.batch_sizes[0]
+        else: 
+            self.cluster_superset = None
 
         self.nadir = np.array(nadir, dtype=float)
 
@@ -233,8 +237,6 @@ class Acquirer:
                       y_means: Iterable[float], y_vars: Iterable[float],
                       explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
-                      cluster_superset: Optional[bool] = None,
-                      cluster_type: Optional[str] = None,
                       objective: Optional[Union[Objective, MultiObjective]] = None,
                       featurizer: Optional[Featurizer] = None, 
                       t: Optional[int] = None, **kwargs) -> List[T]:
@@ -257,18 +259,11 @@ class Acquirer:
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
-        cluster_superset: Optional[int] (Default = None)
-            number of molecules in subset to cluster into #batch_size clusters
-            based on features and acquire cluster medoid 
-            If not None, requires cluster_type and either featurizer or objective
-        cluster_type: Optional[str] (Default = None)
-            'fps': clusters according to fingerprints (requires featurizer input)
-            'objs': clusters in objective space (requires objective input)
         objective: Optional[Union[Objective, MultiObjective]]
             objective to use if clustering in the objective space 
             required if clister_superset not None and cluster_type = 'objs'
         featurizer: Optional[Featurizer] (Default = None)
-            featurizer to use for clustering if cluster_superset not None 
+            featurizer to use for clustering if self.cluster_superset not None 
             and cluster_type = 'fps'
         t : Optional[int] (Default = None)
             the current iteration of batch acquisition
@@ -305,10 +300,7 @@ class Acquirer:
         if self.verbose > 1:
             print('Calculating acquisition utilities ...', end=' ')
         
-        if cluster_superset: 
-            top_n_scored = cluster_superset
-        else: 
-            top_n_scored = batch_size
+        top_n_scored = self.cluster_superset or batch_size
 
         U = metrics.calc(
             self.metric, Y_means=Y_means, Y_vars=Y_vars,
@@ -423,11 +415,10 @@ class Acquirer:
         return heap
     
     def clustered_batch(self, xs, U, batch_size, explored, objective = None, featurizer = None):
-        """ clusters molecules according to cluster_type 
+        """ clusters molecules according to self.cluster_type 
         and selects the best in each cluster for acquisition """
-        batch_size = self.batch_size(t)
 
-        superset = self.top_k(xs, U, self.cluster_superset, explored, desc='Acquiring Superset')
+        superset = self.top_k(xs, U, self.cluster_superset, explored)
 
         superset_xs = [x for _, x in superset]
         superset_us = [u for u, _ in superset]
@@ -480,6 +471,9 @@ class Acquirer:
         batch_size_objs = int(np.ceil(batch_size/2))
         batch_size_fps = batch_size - batch_size_objs
         
+        xs = list(xs)
+
+        self.cluster_type = 'objs'
         heap_objs = self.clustered_batch(xs, U, batch_size_objs, explored, objective=objective) 
         
         dont_acquire = {
@@ -487,8 +481,11 @@ class Acquirer:
             **{x: u for u, x in heap_objs}
         }
 
+        self.cluster_type = 'fps'
+        # fix below, as xs is exhausted here 
         heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, featurizer=featurizer)
 
+        self.cluster_type = 'both'
         heap = [heap_objs, heap_fps]
 
         return heap 
