@@ -486,7 +486,8 @@ class Acquirer:
         heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, featurizer=featurizer)
 
         self.cluster_type = 'both'
-        heap = [heap_objs, heap_fps]
+        # heap = [heap_objs, heap_fps]
+        heap = list(chain(*[heap_fps, heap_objs]))
 
         return heap 
     
