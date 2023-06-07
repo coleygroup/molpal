@@ -1,5 +1,6 @@
 from pathlib import Path 
-from typing import List, Optional 
+from typing import List, Optional, Union
+from molpal import args, pools, featurizer
 from molpal.acquirer.pareto import Pareto
 from molpal.objectives.lookup import LookupObjective
 from configargparse import ArgumentParser
@@ -13,10 +14,30 @@ import pickle
 set_style()
 
 # paths_to_config = sorted((Path('moo_runs') / 'objective').glob('*min*'))
-paths_to_config =  [Path('moo_runs/objective/DRD2_dock_max.ini'), Path('moo_runs/objective/DRD3_dock_min.ini')]
+paths_to_config =  [Path('moo_runs/objective/JAK2_min.ini'), Path('moo_runs/objective/LCK_max.ini')]
 # base_dir = Path('results/moo_results_2023-01-05-08-47')
-base_dir = Path('results/moo_results_2023-01-07-17-01')
-figname = base_dir / 'results_nn_maxmin.png'
+base_dir = Path('results/moo_results_2023-06-06-18-00_mace')
+figname = base_dir / 'dockstring_results.png'
+pool_sep = "\t"
+
+def get_pool(base_dir: Union[Path, str], pool_sep = None): 
+    """ Gets a pool from a config file. Assumes the pool in all runs in a base directory are the same """
+    config_file = list(base_dir.rglob("config.ini"))[0]
+    parser = ArgumentParser()
+    args.add_pool_args(parser)
+    args.add_general_args(parser)
+    args.add_encoder_args(parser)
+    params, unknown = parser.parse_known_args("--config " + str(config_file))
+    params = vars(params)
+    if pool_sep: 
+        params['delimiter'] = pool_sep
+
+    feat = featurizer.Featurizer(
+        fingerprint=params['fingerprint'],
+        radius=params['radius'], length=params['length']
+    )
+    pool = pools.pool(featurizer=feat, **params)
+    return pool
 
 def calc_hv(points: np.ndarray, ref_point = None):
     """ 
@@ -50,7 +71,8 @@ def calc_true_hv(paths_to_config: List):
     csv files 
     """
     objs = [LookupObjective(str(path)) for path in paths_to_config]
-    data = [obj.c*np.array(list(obj.data.values())) for obj in objs]
+    pool = get_pool(base_dir, pool_sep=pool_sep)
+    data = [[obj.c*obj.data[smi] for smi in pool.smis()] for obj in objs]
     data = np.array(data).T
     hv, reference_min = calc_hv(data)
     return hv, reference_min, objs
@@ -155,7 +177,8 @@ def plot_one_cluster_type(expts, filename):
     fig, axs = plt.subplots(1,1,figsize=(4,3))
     axs.set_ylabel('Hypervolume fraction')
     axs.set_xlabel('Iteration')
-    axs.set_title('NN models, no clustering')    
+    axs.set_title('JAK2/LCK Selectivity (MPN Surrogate)')    
+    axs.set_ylim(bottom=0.8, top=1)
 
     for key, data in expts.items():
         if key[2] == 'True': 
