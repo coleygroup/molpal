@@ -1,7 +1,6 @@
 from pathlib import Path 
 from typing import List, Optional, Union
 from molpal import args, pools, featurizer
-from molpal.acquirer.pareto import Pareto
 from molpal.objectives.lookup import LookupObjective
 from configargparse import ArgumentParser
 from plot_utils import set_style, method_colors, method_order
@@ -75,7 +74,7 @@ def calc_true_hv(paths_to_config: List):
     data = [[obj.c*obj.data[smi] for smi in pool.smis()] for obj in objs]
     data = np.array(data).T
     hv, reference_min = calc_hv(data)
-    return hv, reference_min, objs
+    return hv, reference_min, objs, data 
 
 def parse_config(config: Path): 
     parser = ArgumentParser()
@@ -107,7 +106,7 @@ def get_expt_hvs(run_dir: Path, reference_min, objs = None):
 
     return np.array(hvs)
 
-def analyze_runs(true_hv: float, reference_min, base_dir: Path, objs):
+def analyze_runs(true_hv: float, reference_min, base_dir: Path, objs, true_scores):
     folders = list(base_dir.rglob('iter_1'))
     folders = [folder.parent.parent for folder in folders]
     runs = {}
@@ -141,7 +140,6 @@ def sort_expts(expts):
         sorted_expts[key] = expts[key]
 
     return sorted_expts 
-
 
 def plot_by_cluster_type(expts, filename): 
     fig, axs = plt.subplots(nrows=1, ncols=3, sharey=True, figsize=(6,2.8))
@@ -199,8 +197,8 @@ def plot_one_cluster_type(expts, filename):
 
 
 if __name__ == '__main__': 
-    true_hv, reference_min, objs = calc_true_hv(paths_to_config)
-    runs = analyze_runs(true_hv, reference_min, base_dir, objs)
+    true_hv, reference_min, objs, true_scores = calc_true_hv(paths_to_config)
+    runs= analyze_runs(true_hv, reference_min, base_dir, objs, true_scores)
     expts = group_runs(runs)
     expts = sort_expts(expts)
     # plot_by_cluster_type(expts, figname)
