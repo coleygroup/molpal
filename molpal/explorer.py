@@ -13,6 +13,7 @@ from molpal import acquirer, featurizer, models, pools
 from molpal.models.base import MultiTaskModel
 from molpal.objectives.base import MultiObjective, ScalarizedObjective
 from molpal.objectives import objective
+from uncertainty_toolbox.recalibration import get_std_recalibrator
 
 T = TypeVar('T')
 
@@ -814,6 +815,20 @@ class Explorer:
             mean_only='vars' not in self.acquirer.needs
         )
 
+        # if len(self.Y_var) > 0: 
+        #     true_vals = np.array([
+        #         [self.objective.objectives[i].c * self.objective.objectives[i].data[smi]
+        #         for i in range(self.objective.dim)]
+        #         for smi in self.pool.smis()
+        #         ])
+            
+
+        #     # quick test to see if recalibration helps, remove later !!!
+        #     for i in range(len(self.model.models)):
+        #         recal = get_std_recalibrator(self.Y_pred[:,i], np.sqrt(self.Y_var[:,i]), y_true=true_vals[:,i])
+        #         for j, var in enumerate(self.Y_var[:,i]):
+        #             self.Y_var[j,i] = np.square(recal(np.sqrt(var)))
+        
         self.updated_model = False
 
     def _validate_acquirer(self):
