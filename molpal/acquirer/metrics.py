@@ -170,6 +170,10 @@ def greedy(
         the means if T is equal to 1 or the S-metric if T is greater than 1
         for each point
     """
+
+    if Y_means.ndim == 1:
+        return Y_means 
+    
     if Y_means.shape[1] > 1:
         return hvi(Y_means, PF_points, nadir)
 
