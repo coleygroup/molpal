@@ -13,6 +13,7 @@ method_colors = {
     'scalar_ei':'#013F2E',
     'scalar_pi':'#377857',
     'random':'#818084',
+    'scalar_greedy': '#6b8167', 
 }
 
 method_order = list(method_colors.keys())

@@ -17,7 +17,7 @@ set_style()
 # paths_to_config = sorted((Path('moo_runs') / 'objective').glob('*min*'))
 paths_to_config =  [Path('moo_runs/objective/JAK2_min.ini'), Path('moo_runs/objective/LCK_max.ini')]
 # base_dir = Path('results/moo_results_2023-01-05-08-47')
-base_dir = Path('results/moo_results_2023-05-30-17-45_dockstring')
+base_dir = Path('results/moo_all_w_greedy_baseline')
 figname = base_dir / 'dockstring_results_gd.png'
 pool_sep = "\t"
 
@@ -130,14 +130,15 @@ def sort_expts(expts):
 
 
 def plot_by_cluster_type(expts, filename): 
-    fig, axs = plt.subplots(nrows=1, ncols=3, sharey=True, figsize=(6,2.8))
+    fig, axs = plt.subplots(nrows=1, ncols=4, sharey=True, figsize=(8,2.8))
     axs[0].set_ylabel('Hypervolume fraction')
     axs[0].set_title('No Clustering')
     axs[1].set_title('Objective Clustering')
     axs[2].set_title('Feature Clustering')
+    axs[3].set_title('Feature and Objective')
     for ax in axs: 
         ax.set_xlabel('Iteration')
-    cls_to_ax = {'None':0, 'objs':1, 'fps':2,}
+    cls_to_ax = {'None':0, 'objs':1, 'fps':2, 'both': 3}
 
     for key, data in expts.items(): 
         if key[2] == 'True': 
@@ -152,12 +153,12 @@ def plot_by_cluster_type(expts, filename):
             facecolor=method_colors[metric], alpha=0.3
         )
     
-    legend = axs[2].legend(
-        loc=(1.1, 0.35), frameon=False, facecolor="none", fancybox=False, )
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    legend = plt.legend(by_label.values(), by_label.keys(), loc=7, frameon=False, facecolor="none", fancybox=False, )
     legend.get_frame().set_facecolor("none")
     
     fig.savefig(filename, bbox_inches="tight")
-
     
 def plot_one_cluster_type(expts, filename):
     fig, axs = plt.subplots(1,1,figsize=(4,3))
@@ -188,8 +189,8 @@ if __name__ == '__main__':
     runs_gd = analyze_runs(base_dir, true_scores, objs)
     expts = group_runs(runs_gd)
     expts = sort_expts(expts)
-    # plot_by_cluster_type(expts, figname)
-    plot_one_cluster_type(expts, figname)
+    plot_by_cluster_type(expts, figname)
+    # plot_one_cluster_type(expts, figname)
     print('done')
 
 
