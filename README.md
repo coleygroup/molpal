@@ -49,9 +49,12 @@ The following packages are _optional_ to install before running MolPAL:
 #### setup via conda
 __NOTE__: the `environment.yml` must be edited to reflect your machine's setup. To do this, uncomment out the appropriate line depending on your CUDA version or if you lack a GPU entirely. If you need a lower CUDA version than those specified in the environment YAML file, comment out the PyTorch line as well and go to the [pytorch wesbite](https://pytorch.org/get-started/locally/) to set the channels and versions of both the pytorch and cudatoolkit packages properly.
 
-0. (if necessary) [install conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)
+0. (if necessary) [install mamba](https://mamba.readthedocs.io/en/latest/installation.html)
 1. `cd /path/to/molpal`
-1. `conda env create -f environment.yml`
+2. `mamba env create -f environment.yml`
+3. `mamba activate multiscreen`
+4. `pip install -r requirements.txt`
+5. `python setup.py develop`
 
 Before running MolPAL, be sure to first activate the environment: `conda activate molpal`
 
