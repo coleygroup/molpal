@@ -150,7 +150,6 @@ cython_debug/
 *.smi
 *.pkl
 *.gz
-*.txt
 *.sh
 *.batch
 *.hdf5
