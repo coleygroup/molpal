@@ -10,5 +10,8 @@ def objective(objective, objective_config: str, **kwargs) -> Type[Objective]:
     if objective == 'lookup':
         from molpal.objectives.lookup import LookupObjective
         return LookupObjective(objective_config, **kwargs)
+    if objective == 'dockinglookup': 
+        from molpal.objectives.lookup import LookupDockingObjective
+        return LookupDockingObjective(objective_config, **kwargs)
 
     raise NotImplementedError(f'Unrecognized objective: "{objective}"')

@@ -133,7 +133,7 @@ def add_acquisition_args(parser: ArgumentParser) -> None:
 ###################################
 def add_objective_args(parser: ArgumentParser) -> None:
     parser.add_argument('-o', '--objective', nargs='+', required=True,
-                        choices={'lookup', 'docking'},
+                        choices={'lookup', 'docking', 'dockinglookup'},
                         help='the objective function to use')
     # parser.add_argument('--minimize', action='store_true', default=False,
     #                     help='whether to minimize the objective function')

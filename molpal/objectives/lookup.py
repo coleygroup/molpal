@@ -65,6 +65,18 @@ class LookupObjective(Objective):
     def forward(self, smis: Collection[str], *args, **kwargs) -> Dict[str, Optional[float]]:
         return {smi: self.c * self.data[smi] if smi in self.data 
                 else None for smi in smis}
+    
+
+class LookupDockingObjective(LookupObjective): 
+    """ 
+    The same as a LookupObjective, but converts all data points to min(0, d) for d in data.
+    This is to capture that positive docking scores do not add additional value beyond a value 
+    of 0 
+    """
+    def __init__(self, objective_config: str, **kwargs):
+        
+        super().__init__(objective_config, **kwargs)
+        self.data = {key: min(0, value) for key, value in self.data.items()}
 
 
 def parse_config(config: str):
