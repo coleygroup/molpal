@@ -303,7 +303,6 @@ class Explorer:
                 ave = 'N/A (no scores)'
         return (
             f'ITER: {self.iter}/{self.max_iters} | '
-            f'TOP-{self.k} AVE: {ave} | '
             f'BUDGET: {len(self)}/{self.budget}'
         )
 
@@ -358,12 +357,6 @@ class Explorer:
             self.explore_batch()
 
         print('Finished exploring!')
-        # print(f'FINAL TOP-{self.k} AVE: {self.top_k_avg:0.3f} | '
-        #       f'FINAL BUDGET: {len(self)}/{self.budget}.')
-        # print(f'Final averages')
-        # print(f'--------------')
-        # for k in [0.0001, 0.0005, 0.001, 0.005]:
-        #    print(f'TOP-{k:0.2%}: {self.avg(k):0.3f}')
 
         if self.write_final:
             self.write_scores(final=True)
@@ -596,7 +589,6 @@ class Explorer:
         if self.verbose > 0:
             print(f'Results were written to "{p_scores}"')
 
-    # TODO: fix this function for multiobj
     def load_scores(self, previous_scores: str) -> None:
         """Load the scores CSV located at saved_scores.
         
