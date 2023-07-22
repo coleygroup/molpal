@@ -92,10 +92,10 @@ def cluster_fps(
         fps = sparse.vstack(fps, format="csr")
 
     if method == "kmeans":
-        clusterer = cluster.KMeans(n_clusters=ncluster, n_jobs=ncpu)
+        clusterer = cluster.KMeans(n_clusters=ncluster)
     elif method == "minibatch":
         clusterer = cluster.MiniBatchKMeans(
-            n_clusters=ncluster, n_init=10, batch_size=100, init_size=init_size
+            n_clusters=ncluster, n_init=10, batch_size=int(256*(ncpu-1)), init_size=init_size, reassignment_ratio=0,
         )
     elif method == "optics":
         clusterer = cluster.OPTICS(min_samples=0.01, metric="jaccard", n_jobs=ncpu)
