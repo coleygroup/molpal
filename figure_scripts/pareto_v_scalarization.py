@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from read_results_utils import parse_config, calc_true_hv, get_hvs, get_scores, pareto_profile, true_pf, top_k_smiles, get_top_k_profile, calc_front_extent
 from organize_results import extract_data, create_run_dicts
-from plot_utils import set_size, set_style, labels, method_colors, it_colors, it_labels, shapes
+from plot_utils import set_size, set_style, labels, acq_labels, method_colors, it_colors, it_labels, shapes
 import pickle 
 import matplotlib.patches as mpatches
 from matplotlib.ticker import NullFormatter
@@ -13,11 +13,11 @@ import pandas as pd
 set_style()
 
 filetype='.pdf'
-target = 'IGF1R'
-offt = 'CYP'
+target = 'DRD3'
+offt = 'DRD2'
 
-base_dir = Path('results') / f'selective_{target}'
-save_dir = Path(f'figure_scripts/fig_1_{target}')
+base_dir = Path('results') / f'selective_{target}_dockinglookup'
+save_dir = Path(f'figure_scripts/fig_1_{target}_dockinglookup')
 save_dir.mkdir(parents=False, exist_ok=True)
 obj_configs =  [Path(f'moo_runs/objective/{target}_min.ini'), Path(f'moo_runs/objective/{offt}_max.ini')]
 pool_sep = "\t"
@@ -45,38 +45,83 @@ else:
         true_front = pickle.load(file)
 
 
-def plot_top_k():
-    true_hv, reference_min, objs, true_scores, all_smiles = calc_true_hv(obj_configs, base_dir, pool_sep)
+def scatter_top_1():
+    _, _, objs, true_scores, all_smiles = calc_true_hv(obj_configs, base_dir, pool_sep)
+    df1 = pd.DataFrame(true_scores, columns=[f'-{target}', offt])
+    df1['kind'] = 'All Data'
     top_k_smis, top_percent = top_k_smiles(k, all_smiles, true_scores)
     top_smis = [str(smi) for smi in top_k_smis]
     scores = [list(obj(top_smis).values()) for obj in objs]
     scores = np.array(scores).T
+    df2 = pd.DataFrame(scores, columns=[f'-{target}', offt])
+    df2['kind'] = f'Top {100*top_percent:0.03}%'
+    df = pd.concat([df1, df2])
 
-    fig, ax = plt.subplots(1,1)
-    ax.scatter(true_scores[:,0], true_scores[:,1], s=4, color='#B4B5B4', alpha=0.5, linewidths=0)
-    ax.scatter(scores[:,0], scores[:,1], s=4, color=method_colors['nds'], label=f'Top {top_percent*100:.2f}%', alpha=0.5, linewidths=0)
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    ax.set_xlim([xlim[0]-0.5, xlim[1]+0.5])
-    ax.set_ylim([ylim[0]-0.5, ylim[1]+0.5])
-    ax.locator_params(axis='y', nbins=5)
-    ax.locator_params(axis='x', nbins=5)
-    legend = ax.legend(handletextpad=0.1, markerscale=2)
-    legend.get_frame().set_facecolor("none")
-    ax.set_ylabel(f'{offt}')
-    ax.set_xlabel(f'-{target}')
+    fig, ax = plt.subplots(1,1, )
+    plt.tight_layout()
     
-    set_size(1.5, 1.5, ax=ax)
-    fig.savefig(save_dir/f'top_k_all.png',bbox_inches='tight', dpi=500, transparent=True)
 
-def subfig_a(run_dicts): 
+    g = sns.JointGrid(height=1.5, data=df, ratio=4)
+    sns.scatterplot(
+        data=df, s=1.5, alpha=0.3, 
+        ax = g.ax_joint, x=f'-{target}', 
+        y=f'{offt}', hue='kind', linewidth=0, 
+        palette=['#B4B5B4', method_colors['nds'] ], )
+    handles, labels = g.ax_joint.get_legend_handles_labels()
+    g.ax_joint.legend(handles=handles[1:], labels=labels[1:], handletextpad=0.1, loc='upper left')
+    g.ax_joint.yaxis.get_major_locator().set_params(integer=True)
+    g.ax_joint.yaxis.labelpad = 0
+    g.ax_joint.xaxis.labelpad = 0
+
+    g.ax_joint.xaxis.get_major_locator().set_params(integer=True)
+
+    sns.kdeplot(
+        data=df,
+        x=f'-{target}',
+        hue='kind',
+        palette=['#B4B5B4', method_colors['nds'] ],
+        ax=g.ax_marg_x, 
+        fill=True, common_norm=False, legend=False
+    )
+    sns.kdeplot(
+        data=df,
+        y=offt,
+        hue='kind',
+        palette=['#B4B5B4', method_colors['nds'] ],
+        ax=g.ax_marg_y, 
+        fill=True, common_norm=False, legend=False,
+    )
+    set_size(1.6, 1.6, ax=g.ax_joint)
+    g.savefig(save_dir/f'top_k_all.png',bbox_inches='tight', dpi=500, transparent=True)
+
+    # a = sns.jointplot(ax=ax, data=df, x=, y=f'{offt}', hue='kind', 
+    #                   palette=['#B4B5B4', method_colors['nds'] ], 
+    #                   joint_kws=dict(stat='probability'),
+    #                   height=1.5)
+    # ax.scatter(true_scores[:,0], true_scores[:,1], s=4, color='#B4B5B4', alpha=0.5, linewidths=0)
+    # ax.scatter(scores[:,0], scores[:,1], s=4, color=method_colors['nds'], label=f'Top {top_percent*100:.2f}%', alpha=0.5, linewidths=0)
+    # xlim = ax.get_xlim()
+    # ylim = ax.get_ylim()
+    # ax.set_xlim([xlim[0]-0.5, xlim[1]+0.5])
+    # ax.set_ylim([ylim[0]-0.5, ylim[1]+0.5])
+    # ax.locator_params(axis='y', nbins=5)
+    # ax.locator_params(axis='x', nbins=5)
+    # legend = ax.legend(handletextpad=0.1, markerscale=2)
+    # legend.get_frame().set_facecolor("none")
+    # ax.set_ylabel(f'{offt}')
+    # ax.set_xlabel(f'-{target}')
+    
+    
+    # fig.savefig(save_dir/f'top_k_all.png',bbox_inches='tight', dpi=500, transparent=True)
+
+def hv_profile(run_dicts): 
     pareto_data, scal_data, rand_data = extract_data(run_dicts, key='hv_profile')
     
     x = range(len(pareto_data['ei']['mean']))
 
     fig, ax = plt.subplots(1,1)
     for metric, entry in pareto_data.items(): 
-        ax.plot(x, entry['mean'], label=labels[metric], color=method_colors[metric],)
+        ax.plot(x, entry['mean'], label=acq_labels[metric][0], color=method_colors[metric],)
         ax.fill_between(x, entry['mean'] - entry['std'], entry['mean'] + entry['std'], 
                 facecolor = method_colors[metric], alpha=0.3
             )
@@ -97,7 +142,7 @@ def subfig_a(run_dicts):
 
     fig, ax = plt.subplots(1,1)
     for metric, entry in scal_data.items(): 
-        ax.plot(x, entry['mean'],'--', label=f'{labels[metric]} (scal)', color=method_colors[metric],)
+        ax.plot(x, entry['mean'],'--', label=acq_labels[metric][-1], color=method_colors[metric],)
         ax.fill_between(x, entry['mean'] - entry['std'], entry['mean'] + entry['std'], 
                 facecolor = method_colors[metric], alpha=0.3
             )
@@ -114,25 +159,26 @@ def subfig_a(run_dicts):
     set_size(1.5,1.5, ax=ax)
     fig.savefig(save_dir/f'A_2{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
-def subfig_b(run_dicts): 
+def igd(run_dicts): 
 
     pareto_data, scal_data, rand_data = extract_data(run_dicts, 'overall_igd')
     
-    x = np.array(range(4))/1.7
-    x[3] = x[3] - 0.1
+    w = 0.12
+    x = np.array(range(4))/2
+    x[3] = x[3] - w/2
 
     fig, ax = plt.subplots(1,1)
 
-    for i, (p_af, s_af) in enumerate([['ei', 'ei'], ['pi','pi'], ['nds', 'greedy']]): 
-        ax.bar(x[i]-0.1, pareto_data[p_af]['mean'], width=0.2, color=method_colors[p_af], align='center')
-        ax.errorbar(x[i]-0.1, pareto_data[p_af]['mean'], yerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
-        ax.bar(x[i]+0.1, scal_data[s_af]['mean'], width=0.2, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
-        ax.errorbar(x[i]+0.1, scal_data[s_af]['mean'], yerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+    for i, (p_af, s_af) in enumerate([['nds', 'greedy'], ['ei', 'ei'], ['pi','pi'], ]): 
+        ax.bar(x[i]-w/2, pareto_data[p_af]['mean'], width=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af], linewidth=0.8)
+        ax.errorbar(x[i]-w/2, pareto_data[p_af]['mean'], yerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+        ax.bar(x[i]+w/2, scal_data[s_af]['mean'], width=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
+        ax.errorbar(x[i]+w/2, scal_data[s_af]['mean'], yerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
 
-    ax.bar(x[3], rand_data['mean'], width=0.2, color=method_colors['random'], align='center')
+    ax.bar(x[3], rand_data['mean'], width=w, color=method_colors['random'], align='center', edgecolor=method_colors['random'], linewidth=0.8)
     ax.errorbar(x[3], rand_data['mean'], yerr=rand_data['std'], color='black', capsize=2, elinewidth=0.8, capthick=0.8)
 
-    ax.set_xticks(x, ['EI', 'PI', 'NDS/Greedy', 'Random'])
+    ax.set_xticks(x, ['NDS/\nGreedy', 'EHI/\nEI', 'PHI/\nPI',   'Random'])
     ax.locator_params(axis='y', nbins=5)
     ax.set_ylabel('IGD')
     handles = [mpatches.Patch( facecolor='k',edgecolor='black', linewidth=0.4), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
@@ -141,7 +187,7 @@ def subfig_b(run_dicts):
     set_size(1.5,1.5, ax=ax)    
     fig.savefig(save_dir/f'B_{target}{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
-def subfig_c(run_dicts, true_front, seed=59, model_seed=37):
+def moving_front(run_dicts, true_front, seed=59, model_seed=37):
     nds_data = [entry for entry in run_dicts if (entry['metric']=='pi' and entry['seed']==str(seed) and entry['model_seed']==str(model_seed))][0]
     greedy_data = [entry for entry in run_dicts if (entry['metric']=='greedy' and entry['seed']==str(seed) and entry['model_seed']==str(model_seed))][0]
 
@@ -177,7 +223,7 @@ def subfig_c(run_dicts, true_front, seed=59, model_seed=37):
     set_size(2, 2, ax=ax)
     fig.savefig(save_dir/f'C_2_{seed}_{model_seed}{filetype}',bbox_inches='tight', dpi=200, transparent=True) 
 
-def subfig_d(run_dicts):
+def number_pf_points(run_dicts):
     nds_data = np.array([[pf.shape[0] for pf in entry['pf_profile']]
                 for entry in run_dicts if (entry['metric']=='pi')])
     greedy_data = np.array([[pf.shape[0] for pf in entry['pf_profile']]
@@ -206,7 +252,7 @@ def subfig_d(run_dicts):
     ax.legend()
     fig.savefig(save_dir/f'D{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
-def subfig_top_k(run_dicts): 
+def fraction_top_1_profile(run_dicts): 
     pareto_data, scal_data, rand_data = extract_data(run_dicts, 'top-k-profile')
 
     x = range(len(pareto_data['ei']['mean']))
@@ -214,7 +260,7 @@ def subfig_top_k(run_dicts):
 
     fig, ax = plt.subplots(1,1)
     for metric, entry in pareto_data.items(): 
-        ax.plot(x, entry['mean'], label=labels[metric], color=method_colors[metric],)
+        ax.plot(x, entry['mean'], label=acq_labels[metric][0], color=method_colors[metric],)
         ax.fill_between(x, entry['mean'] - entry['std'], entry['mean'] + entry['std'], 
                 facecolor = method_colors[metric], alpha=0.3
             )
@@ -236,7 +282,7 @@ def subfig_top_k(run_dicts):
 
     fig, ax = plt.subplots(1,1)
     for metric, entry in scal_data.items(): 
-        ax.plot(x, entry['mean'],'--', label=f'{labels[metric]} (scal)', color=method_colors[metric],)
+        ax.plot(x, entry['mean'],'--', label=acq_labels[metric][-1], color=method_colors[metric],)
         ax.fill_between(x, entry['mean'] - entry['std'], entry['mean'] + entry['std'], 
                 facecolor = method_colors[metric], alpha=0.3
             )
@@ -253,7 +299,7 @@ def subfig_top_k(run_dicts):
     set_size(1.5,1.5, ax=ax)
     fig.savefig(save_dir/f'top_k_2{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
-def plot_end_top_k(run_dicts): 
+def final_top_1(run_dicts): 
 
     pareto_data, scal_data, rand_data = extract_data(run_dicts, 'top-k-profile')
     for entry in [*pareto_data.values(), *scal_data.values(), rand_data]: 
@@ -267,16 +313,16 @@ def plot_end_top_k(run_dicts):
 
     fig, ax = plt.subplots(1,1)
 
-    for i, (p_af, s_af) in enumerate([['nds', 'greedy'], ['ei', 'ei'], ['pi','pi'] ]): 
-        ax.bar(x[i]-w/2, pareto_data[p_af]['mean'], width=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af])
+    for i, (p_af, s_af) in enumerate([ ['nds', 'greedy'], ['ei', 'ei'], ['pi','pi']]): 
+        ax.bar(x[i]-w/2, pareto_data[p_af]['mean'], width=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af], linewidth=0.8)
         ax.errorbar(x[i]-w/2, pareto_data[p_af]['mean'], yerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
-        ax.bar(x[i]+w/2, scal_data[s_af]['mean'], width=w, color=method_colors[s_af], alpha = 0.8, align='center', hatch='////', edgecolor='black', linewidth=0.5)
+        ax.bar(x[i]+w/2, scal_data[s_af]['mean'], width=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
         ax.errorbar(x[i]+w/2, scal_data[s_af]['mean'], yerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
 
     ax.bar(x[3], rand_data['mean'], width=w, color=method_colors['random'], align='center', edgecolor=method_colors['random'])
     ax.errorbar(x[3], rand_data['mean'], yerr=rand_data['std'], color='black', capsize=2, elinewidth=0.8, capthick=0.8)
 
-    ax.set_xticks(x, ['NDS/Greedy', 'EI', 'PI', 'Random'])
+    ax.set_xticks(x, ['NDS/\nGreedy','EHI/\nEI', 'PHI/\nPI',   'Random'])
     ax.locator_params(axis='y', nbins=5)
     ax.set_ylabel('Fraction of top ~1%')
     ylim = ax.get_ylim()
@@ -287,7 +333,7 @@ def plot_end_top_k(run_dicts):
     set_size(1.5,1.5, ax=ax)    
     fig.savefig(save_dir/f'end_top_k{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
-def subfig_final_front(run_dicts, true_front, scal_metric='greedy', pareto_metric='pi', seed=59, model_seed=37):
+def final_front(run_dicts, true_front, scal_metric='greedy', pareto_metric='pi', seed=59, model_seed=37):
     nds_data = [entry for entry in run_dicts if (entry['metric']==pareto_metric and entry['seed']==str(seed) and entry['model_seed']==str(model_seed)) and not entry['scalarization']][0]
     greedy_data = [entry for entry in run_dicts if (entry['metric']==scal_metric and entry['seed']==str(seed) and entry['model_seed']==str(model_seed) and entry['scalarization'])][0]
     
@@ -295,21 +341,21 @@ def subfig_final_front(run_dicts, true_front, scal_metric='greedy', pareto_metri
     ax.plot(true_front[:,0], true_front[:,1], marker=shapes[-1], color=it_colors[-1], linewidth=0.5)
 
     front = nds_data['pf_profile'][-1]
-    ax.plot(front[:,0], front[:,1], marker=shapes[0], color=it_colors[0], label=labels[pareto_metric], linewidth=0.5)
+    ax.plot(front[:,0], front[:,1], marker=shapes[0], color=method_colors[pareto_metric], label=acq_labels[pareto_metric][0], linewidth=0.5)
 
     ax.set_ylabel(f'{offt}')
     ax.set_xlabel(f'-{target}')
     ax.legend()
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()    
-    set_size(1.5, 1.5, ax=ax)
+    set_size(1.3, 1.3, ax=ax)
     fig.savefig(save_dir/f'final_front_{pareto_metric}_{model_seed}{filetype}',bbox_inches='tight', dpi=200, transparent=True)
     
     fig, ax = plt.subplots(1,1)
     ax.plot(true_front[:,0], true_front[:,1], marker=shapes[-1], color=it_colors[-1], linewidth=0.5)
     
     front = greedy_data['pf_profile'][-1]
-    ax.plot(front[:,0], front[:,1], marker=shapes[3], color=it_colors[3], label=f'{labels[scal_metric]}_scal', linewidth=0.5)
+    ax.plot(front[:,0], front[:,1],  '--', marker=shapes[3], color=method_colors[scal_metric], label=acq_labels[scal_metric][-1], linewidth=0.5)
 
     ax.set_ylabel(f'{offt}')
     ax.set_xlabel(f'-{target}')
@@ -318,7 +364,7 @@ def subfig_final_front(run_dicts, true_front, scal_metric='greedy', pareto_metri
 
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    set_size(1.5, 1.5, ax=ax)
+    set_size(1.3, 1.3, ax=ax)
     fig.savefig(save_dir/f'final_front_{scal_metric}_scal_{model_seed}{filetype}',bbox_inches='tight', dpi=200, transparent=True) 
 
 def end_extents(run_dicts):
@@ -365,20 +411,20 @@ def fraction_true_front(run_dicts, true_front):
 
     fig, ax = plt.subplots(1,1)
 
-    for i, (p_af, s_af) in enumerate([['nds', 'greedy'], ['ei', 'ei'], ['pi','pi'] ]): 
-        ax.barh(x[i]-w/2, pareto_data[p_af]['mean'], height=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af])
-        ax.errorbar(pareto_data[p_af]['mean'], x[i]-w/2, xerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
-        ax.barh(x[i]+w/2, scal_data[s_af]['mean'], height=w, color=method_colors[s_af], alpha = 0.8, align='center', hatch='/////', edgecolor='black', linewidth=0.5)
-        ax.errorbar(scal_data[s_af]['mean'], x[i]+w/2, xerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
-
     ax.barh(x[3], rand_data['mean'], height=w, color=method_colors['random'], align='center', edgecolor=method_colors['random'])
     ax.errorbar(rand_data['mean'], x[3],  xerr=rand_data['std'], color='black', capsize=2, elinewidth=0.8, capthick=0.8)
 
-    ax.set_yticks(x, ['NDS/Greedy', 'EI', 'PI', 'Random'])
+    for i, (p_af, s_af) in enumerate([['pi','pi'], ['ei', 'ei'],  ['nds', 'greedy'], ]): 
+        ax.barh(x[i]-w/2, pareto_data[p_af]['mean'], height=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af], linewidth=0.8)
+        ax.errorbar(pareto_data[p_af]['mean'], x[i]-w/2, xerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+        ax.barh(x[i]+w/2, scal_data[s_af]['mean'], height=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
+        ax.errorbar(scal_data[s_af]['mean'], x[i]+w/2, xerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+
+    ax.set_yticks(x, ['Greedy\nNDS', 'EI\nEHI','PI\nPHI',   'Random',  ])
     ax.locator_params(axis='x', nbins=5)
-    ax.set_xlabel('Fraction of non-dominated points')
+    ax.set_xlabel('Fraction of non-dominated points') 
     handles = [mpatches.Patch( facecolor='k',edgecolor='k',), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
-    # legend = plt.legend(handles, ['Pareto', 'Scalarized'], frameon=False)
+    legend = plt.legend(handles, ['Pareto', 'Scalarized'], frameon=False)
 
     set_size(1.5,1.5, ax=ax)    
     fig.savefig(save_dir/f'fraction_non_dominated{filetype}',bbox_inches='tight', dpi=200, transparent=True)
@@ -462,23 +508,23 @@ def all_hist_2d():
 
 
 if __name__ == '__main__': 
-    # plot_top_k()
-    # subfig_a(run_dicts)
-    # subfig_b(run_dicts)
-    # subfig_c(run_dicts, true_front, seed=47, model_seed=29)
-    # subfig_d(run_dicts)
-    # subfig_top_k(run_dicts)
+    scatter_top_1()
+    hv_profile(run_dicts)
+    igd(run_dicts)
+    # moving_front(run_dicts, true_front, seed=47, model_seed=29)
+    # number_pf_points(run_dicts)
+    fraction_top_1_profile(run_dicts)
     # for s1, s2 in zip([47, 53, 59, 61, 67], [29, 31, 37, 41, 43]):
-    #     subfig_final_front(run_dicts, true_front, seed=s1, model_seed=s2)
-    # subfig_final_front(run_dicts, true_front, scal_metric='pi', seed=47, model_seed=29)
-    # plot_end_top_k(run_dicts)
-    # fraction_true_front(run_dicts, true_front)
+    #     final_front(run_dicts, true_front, seed=s1, model_seed=s2)
+    # final_front(run_dicts, true_front, pareto_metric='ei', scal_metric='pi', seed=47, model_seed=29)
+    final_top_1(run_dicts)
+    fraction_true_front(run_dicts, true_front)
     # end_extents(run_dicts)
-    score_type='all_scores'
-    violin_plots(run_dicts, scalarization='True', metric='random', score_type=score_type)
-    violin_plots(run_dicts, scalarization=False, metric='pi', score_type=score_type)
-    violin_plots(run_dicts, scalarization='True', metric='greedy', score_type=score_type)
+    # score_type='all_scores'
+    # violin_plots(run_dicts, scalarization='True', metric='random', score_type=score_type)
+    # violin_plots(run_dicts, scalarization=False, metric='pi', score_type=score_type)
+    # violin_plots(run_dicts, scalarization='True', metric='greedy', score_type=score_type)
     # all_hist_2d()
-    # subfig_final_front(run_dicts, true_front, seed=61, model_seed=41, pareto_metric='ei', scal_metric='ei')
+    # final_front(run_dicts, true_front, seed=61, model_seed=41, pareto_metric='ei', scal_metric='ei')
 
 

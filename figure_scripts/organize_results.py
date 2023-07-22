@@ -43,8 +43,8 @@ def create_run_dicts(base_dir, obj_configs, k=0.01, pool_sep=','):
     return run_dicts, true_front
 
 def extract_data(run_dicts, key: str):
-    pareto_data = {label: {'all': [], 'mean': [], 'std': []} for label in ['ei', 'pi', 'nds']}
-    scal_data = {label: {'all': [], 'mean': [], 'std': []} for label in ['ei', 'pi', 'greedy']}
+    pareto_data = {label: {'all': [], 'mean': [], 'std': []} for label in ['nds', 'ei', 'pi', ]}
+    scal_data = {label: {'all': [], 'mean': [], 'std': []} for label in ['greedy', 'ei', 'pi', ]}
     rand_data = {'all': [], 'mean': [], 'std': []}
 
     for run_dict in run_dicts: 

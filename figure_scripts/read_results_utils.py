@@ -2,7 +2,7 @@ from configargparse import ArgumentParser
 from pathlib import Path 
 from typing import List, Union, Dict
 from molpal import args, pools, featurizer
-from molpal.objectives.lookup import LookupObjective
+from molpal.objectives.lookup import LookupDockingObjective
 import numpy as np 
 import pygmo as pg 
 import pickle 
@@ -83,7 +83,8 @@ def calc_true_hv(paths_to_config: List, base_dir, pool_sep=','):
     Assumes the smiles order is the same in all objective 
     csv files 
     """
-    objs = [LookupObjective(str(path)) for path in paths_to_config]
+    # objs = [LookupObjective(str(path)) for path in paths_to_config]
+    objs = [LookupDockingObjective(str(path)) for path in paths_to_config]
     pool = get_pool(base_dir, pool_sep=pool_sep)
     smis = list(pool.smis())
     data = [[obj.c*obj.data[smi] for smi in smis] for obj in objs]
@@ -99,7 +100,7 @@ def get_hvs(all_scores, reference_min, objs = None):
         
     return np.array(hvs)
 
-def get_scores(run_dir: Path, objs: List[LookupObjective]):
+def get_scores(run_dir: Path, objs: List[LookupDockingObjective]):
     iter_dirs = sorted((run_dir / 'chkpts').glob('iter_*'))
     all_scores = []
     all_acquired = []
@@ -203,7 +204,8 @@ def get_top_k_profile(explored_smis, top_k_smis):
 
 def top_k_smis_from_pool(k, pool, paths_to_config):
     smis = list(pool.smis())
-    objs = [LookupObjective(str(path)) for path in paths_to_config]
+    # objs = [LookupObjective(str(path)) for path in paths_to_config]
+    objs = [LookupDockingObjective(str(path)) for path in paths_to_config]
     data = [[obj.c*obj.data[smi] for smi in smis] for obj in objs]
     scores = np.array(data).T
     top_smis, _ = top_k_smiles(k, smis, scores)
