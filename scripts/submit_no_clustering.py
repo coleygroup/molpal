@@ -8,12 +8,12 @@ from molpal import args, Explorer
 from pathlib import Path
 import subprocess
 
-base_config = Path('moo_runs/config/IGF1R_CYP_selectivity.ini')
+base_config = Path('moo_runs/config/DRD3_DRD2_selectivity.ini')
 timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
-out_dir = Path(f'results/selective_IGF1R')
+out_dir = Path(f'results/selective_DRD3_dockinglookup')
 
-seeds = [61, 67] # [47, 53, 59] 
-model_seeds = [41, 43] # [29, 31, 37] #, 
+seeds = [61, 67, 47, 53, 59] 
+model_seeds = [41, 43, 29, 31, 37] #, 
 cmds = []
 
 # scalarization AFs

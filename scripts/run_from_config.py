@@ -10,7 +10,7 @@ from molpal import args, Explorer
 
 paths_to_config = [
     # 'moo_runs/config/DRD_multiobj_ei.ini',
-    'moo_runs/config/JAK2_LCK_selectivity.ini'
+    'moo_runs/config/obj_debug.ini'
     ]
 
 def sigterm_handler(signum, frame):
@@ -45,9 +45,9 @@ def main(path_to_config):
                 num_cpus=48, num_gpus=1
             )
         else:
-            ray.init(num_cpus=32, num_gpus=2)
+            ray.init(num_cpus=60, num_gpus=2)
     except ConnectionError:
-        ray.init(num_cpus=20, num_gpus=1)
+        ray.init(num_cpus=32, num_gpus=1)
     except PermissionError:
         print('Failed to create a temporary directory for ray')
         raise
