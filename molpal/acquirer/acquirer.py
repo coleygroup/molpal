@@ -1,7 +1,7 @@
 """This module contains the Acquirer class, which is used to gather inputs for
 a subsequent round of exploration based on prior prediction data."""
 import heapq
-from itertools import chain
+from itertools import chain, cycle
 import math
 from timeit import default_timer
 from typing import (Dict, Iterable, List, Mapping, Sequence,
@@ -276,7 +276,6 @@ class Acquirer:
             a list of selected inputs
         """
         current_max = -np.inf
-        # P_f = np.array([current_max] * self.dim)
 
         if explored:
             ys = list(explored.values())
@@ -416,7 +415,9 @@ class Acquirer:
     
     def clustered_batch(self, xs, U, batch_size, explored, objective = None, featurizer = None):
         """ clusters molecules according to self.cluster_type 
-        and selects the best in each cluster for acquisition """
+        and selects the best in each cluster for acquisition. When there are few dimensions
+        and many clusters, some clusters may be empty. To address this, we iterate through
+        clusters (largest first) until the batch size is met """
 
         superset = self.top_k(xs, U, self.cluster_superset, explored)
 
@@ -439,23 +440,21 @@ class Acquirer:
             init_size=3*batch_size,
         )
 
-        d_cid_heap = {cid: [] for cid in range(batch_size)}
+        clusters = {cid: [] for cid in np.unique(cluster_ids)}
+        for cid, x, u in zip(cluster_ids, superset_xs, superset_us):
+            heapq.heappush(clusters[cid], (-u, x))
+        cluster_order = sorted(clusters, key=lambda k: len(clusters[k]), reverse=True) 
+        # reorder so largest clusters are sampled first 
 
-        for x, u, cid in tqdm(zip(superset_xs, superset_us, cluster_ids),
-                                total=len(superset), desc='Acquiring'):
-            
-            if x in explored: 
-                continue
+        cluster_cycle = cycle(cluster_order)
 
-            heap = d_cid_heap[cid]
+        heap = []
 
-            if len(heap) < 1:
-                heapq.heappush(heap, (u, x))
-            else:
-                heapq.heappushpop(heap, (u, x))
-
-        heaps = [heap for heap in d_cid_heap.values()]
-        heap = list(chain(*heaps))
+        while len(heap) < batch_size: 
+            cid = next(cluster_cycle)
+            if len(clusters[cid]) > 0: 
+                neg_u, x = heapq.heappop(clusters[cid])
+                heap.append((-neg_u, x))
 
         return heap 
     
@@ -482,11 +481,9 @@ class Acquirer:
         }
 
         self.cluster_type = 'fps'
-        # fix below, as xs is exhausted here 
         heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, featurizer=featurizer)
 
         self.cluster_type = 'both'
-        # heap = [heap_objs, heap_fps]
         heap = list(chain(*[heap_fps, heap_objs]))
 
         return heap 
@@ -502,28 +499,3 @@ class Acquirer:
         """Calculate the decay factor of a given heap"""
         return math.exp(-(global_max - local_max)/temp)
 
-    # @staticmethod
-    # def pareto_frontier(Y: np.ndarray) -> np.ndarray:
-    #     """calculate the pareto frontier for the objective matrix Y
-
-    #     code from: https://github.com/QUVA-Lab/artemis/
-    #                blob/peter/artemis/general/pareto_efficiency.py"""
-    #     efficient_idxs = np.arange(Y.shape[0])
-    #     Y_copy = Y
-    #     idx = 0
-    #     while idx < len(Y_copy):
-    #         nondominated_point_mask = np.any(Y_copy > Y_copy[idx], axis=1)
-    #         nondominated_point_mask[idx] = True
-
-    #         efficient_idxs = efficient_idxs[nondominated_point_mask]
-    #         Y_copy = Y_copy[nondominated_point_mask]
-
-    #         idx = np.sum(nondominated_point_mask[:idx]) + 1
-
-    #     return Y[efficient_idxs]
-        # if return_mask:
-        #     is_efficient_mask = np.zeros(N, dtype = bool)
-        #     is_efficient_mask[is_efficient] = True
-        #     return is_efficient_mask
-        # else:
-        #     return is_efficient

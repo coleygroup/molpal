@@ -219,8 +219,12 @@ def hvpi(Y_means: np.array,
          Y_vars: np.array,
          pareto_front: Pareto) -> np.ndarray:
     """
-    Calculate Hypervolume-based Probability of Improvement (HVPI).
-    Reference: (Couckuyt et al., 2014) Fast calculation of multiobjective
+    Modified from PHYSBO: (https://github.com/issp-center-dev/PHYSBO)
+    "Bayesian optimization package: PHYSBO”, Yuichi Motoyama et al, 
+    Computer Physics Communications Volume 278, September 2022, 108405.
+
+    Calculate Expected Hyper-Volume Improvement (EHVI).
+    Reference for algorithm: (Couckuyt et al., 2014) Fast calculation of multiobjective
         probability of improvement and expected improvement criteria for
         Pareto optimization
 
@@ -277,8 +281,12 @@ def ehvi(Y_means: np.array,
          Y_vars: np.array,
          pareto_front: Pareto) -> np.ndarray:
     """
+    Modified from PHYSBO: (https://github.com/issp-center-dev/PHYSBO)
+    "Bayesian optimization package: PHYSBO”, Yuichi Motoyama et al, 
+    Computer Physics Communications Volume 278, September 2022, 108405.
+
     Calculate Expected Hyper-Volume Improvement (EHVI).
-    Reference: (Couckuyt et al., 2014) Fast calculation of multiobjective
+    Reference for algorithm: (Couckuyt et al., 2014) Fast calculation of multiobjective
         probability of improvement and expected improvement criteria for
         Pareto optimization
 
