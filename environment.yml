@@ -1,4 +1,4 @@
-name: multiscreen
+name: molpalx
 
 channels:
   - conda-forge
@@ -8,7 +8,7 @@ dependencies:
   # - pytorch::cudatoolkit # for cuda < 11
   # - pytorch::cpuonly
   - python=3.8
-  - pytorch::pytorch
+  - pytorch::pytorch=1.13
   - pip
   - openbabel=3.1.1
   - rdkit=2021.03.3 
