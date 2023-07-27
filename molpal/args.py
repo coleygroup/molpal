@@ -203,13 +203,6 @@ def add_model_args(parser: ArgumentParser) -> None:
 #       STOPPING ARGUMENTS       #
 ##################################
 def add_stopping_args(parser: ArgumentParser) -> None:
-    parser.add_argument('-k', '--top-k', dest='k',
-                        type=restricted_float_or_int, default=0.0005,
-                        help='the top k ligands from which to calculate an average score expressed either as an integer or as a fraction of the pool')
-    parser.add_argument('-w', '--window-size', type=int, default=3,
-                        help='the window size to use for calculation of the moving average of the top-k scores')
-    parser.add_argument('--delta', type=restricted_float, default=0.01,
-                        help='the minimum acceptable difference between the moving average of the top-k scores and the current average the top-k score in order to continue exploration')
     parser.add_argument('--max-iters', type=int, default=10,
                         help='the maximum number of iterations to explore for')
     parser.add_argument('--budget', 

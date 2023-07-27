@@ -58,23 +58,14 @@ class Explorer:
         objective function value for the most recent batch of labeled inputs
     updated_model : bool
         whether the predictions are currently out-of-date with the model
-    top_k_avg : float
-        the average of the top-k explored inputs
     Y_pred : np.ndarray
         a list parallel to the pool containing the mean predicted score
         for an input
     Y_var : np.ndarray
         a list parallel to the pool containing the variance in the predicted
         score for an input. Will be empty if model does not provide variance
-    recent_avgs : List[float]
-        a list containing the recent top-k averages
-    delta : float
-        the minimum acceptable fractional difference between the current 
-        average and the moving average in order to continue exploration
     max_iters : int
         the maximum number of batches to explore
-    window_size : int
-        the number of recent averages from which to calculate a moving average
     write_final : bool
         whether the list of explored inputs and their scores should be written
         to a file at the end of exploration
@@ -93,10 +84,6 @@ class Explorer:
     Parameters
     ----------
     name : str
-    k : Union[int, float], default=0.01
-    window_size : int, default=3
-        the number of top-k averages from which to calculate a moving average
-    delta : float, default=0.01
     max_iters : int, default=10
     budget : Union[int, float], default=1.
     root : str, default='.'
@@ -120,8 +107,8 @@ class Explorer:
         if budget is less than 0
     """
     def __init__(self, path: Union[str, Path] = "molpal",
-                 k: Union[int, float] = 0.01, window_size: int = 3,
-                 delta: float = 0.01, max_iters: int = 10,
+                 k: Union[int, float] = 0.01,
+                 max_iters: int = 10,
                  budget: Union[int, float] = 1.,
                  write_final: bool = True, write_intermediate: bool = False,
                  chkpt_freq: int = 0, checkpoint_file: Optional[str] = None,
@@ -182,11 +169,8 @@ class Explorer:
         self._validate_acquirer()
 
         # stopping attributes
-        self.k = k
-        self.delta = delta
         self.budget = budget
         self.max_iters = max_iters
-        self.window_size = window_size
 
         # logging attributes
         self.write_final = write_final
@@ -201,7 +185,6 @@ class Explorer:
         self.new_scores = {}
         self.adjustment = 0
         self.updated_model = None
-        self.recent_avgs = []
         self.Y_pred = np.array([])
         self.Y_var = np.array([])
 
@@ -283,24 +266,8 @@ class Explorer:
         self.__budget = budget
 
     @property
-    def top_k_avg(self) -> Optional[float]:
-        """The most recent top-k average of the explored inputs. None if k
-        inputs have not yet been explored"""
-        try:
-            return self.recent_avgs[-1]
-        except IndexError:
-            return None
-
-    @property
     def status(self) -> str:
         """The current status of the exploration in string format"""        
-        if self.top_k_avg:
-            ave = f'{self.top_k_avg:0.3f}' 
-        else:
-            if len(self.scores) > 0:
-                ave = f'N/A (only {len(self.scores)} scores)'
-            else:
-                ave = 'N/A (no scores)'
         return (
             f'ITER: {self.iter}/{self.max_iters} | '
             f'BUDGET: {len(self)}/{self.budget}'
@@ -315,12 +282,6 @@ class Explorer:
         a. explored the entire pool
            (not implemented right now due to complications with warm starting)
         b. explored for at least <max_iters> iters
-        c. exceeded the maximum budget
-        d. the current top-k average is within a fraction <delta> of the moving
-           top-k average. This requires two sub-conditions to be met:
-           1. the explorer has successfully explored at least k inputs
-           2. the explorer has completed at least <window_size> iters after
-              sub-condition (1) has been met
 
         Returns
         -------
@@ -331,11 +292,8 @@ class Explorer:
             return True
         if len(self) >= self.budget:
             return True
-        if len(self.recent_avgs) < self.window_size:
-            return False
-
-        sma = sum(self.recent_avgs[-self.window_size:]) / self.window_size
-        return (self.top_k_avg - sma) / sma <= self.delta
+        
+        return False
 
     def explore(self):
         self.run()
@@ -365,11 +323,6 @@ class Explorer:
         """Perform an initial round of exploration
 
         Must be called before explore_batch()
-
-        Returns
-        -------
-        avg : float
-            the average score of the batch
         """
         inputs = self.acquirer.acquire_initial(
             xs=self.pool.smis(),
@@ -380,10 +333,6 @@ class Explorer:
         new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
 
-        # self.top_k_avg = self.avg()
-        # if len(self.scores) >= self.k: (remove top k stuff for MOO)
-        #     self.recent_avgs.append(self.avg())
-
         if self.write_intermediate:
             self.write_scores(include_failed=True)
 
@@ -393,17 +342,8 @@ class Explorer:
             self.checkpoint()
             self.previous_chkpt_iter = self.iter
 
-        # valid_scores = [y for y in new_scores.values()
-        #                 if y is not None or None not in y]
-        # return sum(valid_scores) / len(valid_scores)
-
     def explore_batch(self) -> float:
         """Perform a round of exploration
-
-        Returns
-        -------
-        avg : float
-            the average score of the batch
 
         Raises
         ------
@@ -417,7 +357,7 @@ class Explorer:
 
         if self.num_explored >= len(self.pool):
             self.iter += 1
-            return self.top_k_avg
+            return 
 
         self._update_model()
         self._update_predictions()
@@ -428,7 +368,6 @@ class Explorer:
             y_vars=self.Y_var,
             explored={**self.scores, **self.failures},
             featurizer=self.featurizer,
-            objective=self.objective,
             t=(self.iter-1),
             # cluster_ids=self.pool.cluster_ids(),
             # cluster_sizes=self.pool.cluster_sizes, 
@@ -436,10 +375,6 @@ class Explorer:
 
         new_scores = self.objective(inputs)
         self._clean_and_update_scores(new_scores)
-
-        # self.top_k_avg = self.avg()
-        # if len(self.scores) >= self.k:
-        #     self.recent_avgs.append(self.avg())
 
         if self.write_intermediate:
             self.write_scores(include_failed=True)
@@ -452,33 +387,6 @@ class Explorer:
 
         # valid_scores = [y for y in new_scores.values() if y is not None]
         # return sum(valid_scores)/len(valid_scores)
-
-    def avg(self, k: Union[int, float, None] = None) -> float:
-        """Calculate the average of the top k molecules
-        
-        Parameter
-        ---------
-        k : Union[int, float, None], default = None)
-            the number of molecules to consider when calculating the
-            average, expressed either as a specific number or as a 
-            fraction of the pool. If the value specified is greater than the 
-            number of successfully evaluated inputs, return the average of all 
-            succesfully evaluated inputs. If None, use self.k
-        
-        Returns
-        -------
-        float
-            the top-k average
-        """
-        k = k or self.k
-        if isinstance(k, float):
-            k = int(k * len(self.pool))
-        k = min(k, len(self.scores))
-
-        if k == len(self.scores):
-            return sum(score for _, score in self.scores.items()) / k
-        
-        return sum(score for _, score in self.top_explored(k)) / k
 
     def top_explored(self, k: Union[int, float, None] = None) -> List[Tuple]:
         """Get the top-k explored molecules
@@ -497,7 +405,7 @@ class Explorer:
             a list of tuples containing the identifier and score of the 
             top-k inputs, sorted by their score on the first task
         """
-        k = k or self.k
+        k = k
         if isinstance(k, float):
             k = int(k * len(self.pool))
         k = min(k, len(self.scores))
@@ -506,34 +414,6 @@ class Explorer:
             return heapq.nlargest(k, self.scores.items(), key=itemgetter(1))
         
         return sorted(self.scores.items(), key=itemgetter(1), reverse=True)[:k]
-
-    def top_preds(self, k: Union[int, float, None] = None) -> List[Tuple]:
-        """Get the current top predicted molecules and their scores
-        
-        Parameter
-        ---------
-        k : Union[int, float, None], default=None
-            see documentation for avg()
-        
-        Returns
-        -------
-        top_preds : List[Tuple[T, float]]
-            a list of tuples containing the identifier and predicted score of 
-            the top-k predicted inputs, sorted by their predicted score
-        """
-        k = k or self.k
-        if isinstance(k, float):
-            k = int(k * len(self.pool))
-        k = min(k, len(self.scores))
-
-        selected = []
-        for x, y in zip(self.pool.smis(), self.Y_pred):
-            if len(selected) < k:
-                heapq.heappush(selected, (y, x))
-            else:
-                heapq.heappushpop(selected, (y, x))
-
-        return [(x, y) for y, x in selected]
 
     def write_scores(self, m: Union[int, float] = 1., 
                      final: bool = False,
@@ -656,7 +536,6 @@ class Explorer:
             'new_scores': str(new_scores_pkl.absolute()),
             'adjustment': self.adjustment,
             'updated_model': self.updated_model,
-            'recent_avgs': self.recent_avgs,
             'preds': str(preds_npz.absolute()),
             'model': self.model.save(chkpt_dir / 'model')
         }
@@ -685,7 +564,6 @@ class Explorer:
         self.adjustment = state['adjustment']
         
         self.updated_model = state['updated_model']
-        self.recent_avgs.extend(state['recent_avgs'])
 
         preds_npz = np.load(state['preds'])
         self.Y_pred = preds_npz['Y_pred']
