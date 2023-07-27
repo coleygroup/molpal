@@ -10,7 +10,6 @@ from typing import (Dict, Iterable, List, Mapping, Sequence,
 import numpy as np
 import ray
 from tqdm import tqdm
-from molpal.objectives.base import Objective, MultiObjective
 from molpal.acquirer.pareto import Pareto
 from molpal.acquirer import metrics
 from molpal.featurizer import feature_matrix, Featurizer
@@ -237,7 +236,6 @@ class Acquirer:
                       y_means: Iterable[float], y_vars: Iterable[float],
                       explored: Optional[Mapping] = None, k: int = 1,
                       cluster_ids: Optional[Iterable[int]] = None,
-                      objective: Optional[Union[Objective, MultiObjective]] = None,
                       featurizer: Optional[Featurizer] = None, 
                       t: Optional[int] = None, **kwargs) -> List[T]:
         """Acquire a batch of inputs to explore
@@ -259,9 +257,6 @@ class Acquirer:
             a parallel iterable for the cluster ID of each input
         cluster_sizes : Optional[Mapping[int, int]] (Default = None)
             a mapping from a cluster id to the sizes of that cluster
-        objective: Optional[Union[Objective, MultiObjective]]
-            objective to use if clustering in the objective space 
-            required if clister_superset not None and cluster_type = 'objs'
         featurizer: Optional[Featurizer] (Default = None)
             featurizer to use for clustering if self.cluster_superset not None 
             and cluster_type = 'fps'
@@ -278,14 +273,13 @@ class Acquirer:
         current_max = -np.inf
 
         if explored:
-            ys = list(explored.values())
-            Y = np.nan_to_num(np.array(ys, dtype=float), nan=-np.inf)
+            ys = np.array(list(explored.values()), dtype=float)
             if self.dim == 1:
+                Y = np.nan_to_num(ys, nan=-np.inf)
                 current_max = np.partition(Y, -k)[-k]
             else:
-            #     P_f = Acquirer.pareto_frontier(Y)
+                Y = ys[~np.isnan(ys).any(axis=1)]
                 self.pareto_front.update_front(Y)
-            #     current_max = np.partition(Y, -k)[-k]
         else:
             explored = {}
 
@@ -326,15 +320,23 @@ class Acquirer:
             heap = self.top_k(xs, U, batch_size, explored)
 
         elif self.cluster_type in {'fps', 'objs'}:
+            xs = list(xs)
+            preds = {
+                x: means for x, means in zip(xs, Y_means)
+            }
             heap = self.clustered_batch(
                 xs, U, batch_size,
-                explored, objective, featurizer,
+                explored, preds, featurizer,
             )
         
         elif self.cluster_type == 'both': 
+            xs = list(xs)
+            preds = {
+                x: means for x, means in zip(xs, Y_means)
+            }            
             heap = self.cluster_both(
                 xs, U, batch_size, 
-                explored, objective, featurizer,
+                explored, preds, featurizer,
             )
 
         else: 
@@ -413,7 +415,7 @@ class Acquirer:
     
         return heap
     
-    def clustered_batch(self, xs, U, batch_size, explored, objective = None, featurizer = None):
+    def clustered_batch(self, xs, U, batch_size, explored, preds, featurizer = None):
         """ clusters molecules according to self.cluster_type 
         and selects the best in each cluster for acquisition. When there are few dimensions
         and many clusters, some clusters may be empty. To address this, we iterate through
@@ -425,11 +427,11 @@ class Acquirer:
         superset_us = [u for u, _ in superset]
 
         if self.cluster_type=='objs':
-            cluster_basis = list(objective(superset_xs).values())
+            cluster_basis = np.stack([preds[x] for x in superset_xs])
         elif self.cluster_type=='fps':
             cluster_basis = feature_matrix(superset_xs, featurizer=featurizer)
         else:  # default to obj clustering 
-            cluster_basis = list(objective(superset_xs).values())
+            cluster_basis = np.stack([preds[x] for x in superset_xs])
         
         print(f'Clustering according to {self.cluster_type}')
 
@@ -458,9 +460,9 @@ class Acquirer:
 
         return heap 
     
-    def cluster_both(self, xs, U, batch_size, explored, objective, featurizer):
+    def cluster_both(self, xs, U, batch_size, explored, y_means, featurizer):
         """ 
-        Clusters xs into (batch_size/2) clusters according to objectives
+        Clusters xs into (batch_size/2) clusters according to objective predictions
         and acquires the best in each cluster. 
         Then clusters xs into (batch_size/2) according to fingeprints and 
         acquires the best in each cluster. If a value has already been 
@@ -473,7 +475,7 @@ class Acquirer:
         xs = list(xs)
 
         self.cluster_type = 'objs'
-        heap_objs = self.clustered_batch(xs, U, batch_size_objs, explored, objective=objective) 
+        heap_objs = self.clustered_batch(xs, U, batch_size_objs, explored, y_means) 
         
         dont_acquire = {
             **explored, 
