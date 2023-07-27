@@ -64,9 +64,7 @@ class MultiObjective():
     def forward(self, smis: Collection[str]) -> Dict[str, List[float]]:
         scores = {}
         for smi in smis:
-            scores[smi] = [self.objectives[i].c * self.objectives[i].data[smi]
-                           if smi in self.objectives[i].data else None
-                           for i in range(self.dim)]
+            scores[smi] = [self.objectives[i]([smi])[smi] for i in range(self.dim)]
 
         return scores
 
