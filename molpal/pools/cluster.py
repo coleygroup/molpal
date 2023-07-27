@@ -105,6 +105,6 @@ def cluster_fps(
     cluster_ids = clusterer.fit_predict(fps)
 
     elapsed = timeit.default_timer() - begin
-    print(f"Clustering and predictions took: {elapsed:0.3f}s")
+    print(f"Clustering took: {elapsed:0.3f}s")
 
     return cluster_ids
