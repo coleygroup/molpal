@@ -220,7 +220,7 @@ def main():
     parser.add_argument('--length', type=int, default=2048,
                         help='the length of the fingerprint')
     parser.add_argument('--library', required=True, nargs='+',
-                        help='the files containing members of the MoleculePool')
+                        help='the file containing members of the MoleculePool')
     parser.add_argument('--no-title-line', action='store_true', default=False,
                         help='whether there is no title line in the library file')
     parser.add_argument('--total-size', type=int,
@@ -232,8 +232,9 @@ def main():
     args = parser.parse_args()
     args.title_line = not args.no_title_line
     
-    path = args.path or Path(args.library).parent
-    name = args.name or Path(args.library).stem
+    path = args.path or Path(args.library[0]).parent
+
+    name = args.name or Path(args.library[0]).stem
     filepath = (path / name).with_suffix('.h5')
 
     print('Precalculating feature matrix ...', end=' ')
@@ -244,6 +245,7 @@ def main():
     smis = get_smis(
         args.library, args.title_line, args.delimiter, args.smiles_col
     )
+
     fps, invalid_lines = fps_hdf5(
         smis, total_size, args.fingerprint,
         args.radius, args.length, filepath
