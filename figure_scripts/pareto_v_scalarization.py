@@ -68,7 +68,7 @@ def scatter_top_1():
         y=f'{offt}', hue='kind', linewidth=0, 
         palette=['#B4B5B4', method_colors['nds'] ], )
     handles, labels = g.ax_joint.get_legend_handles_labels()
-    g.ax_joint.legend(handles=handles[1:], labels=labels[1:], handletextpad=0.1, loc='upper left')
+    g.ax_joint.legend(handles=handles[1:], labels=labels[1:], handletextpad=0.1, loc='lower left')
     g.ax_joint.yaxis.get_major_locator().set_params(integer=True)
     g.ax_joint.yaxis.labelpad = 0
     g.ax_joint.xaxis.labelpad = 0
@@ -93,26 +93,6 @@ def scatter_top_1():
     )
     set_size(1.6, 1.6, ax=g.ax_joint)
     g.savefig(save_dir/f'top_k_all.png',bbox_inches='tight', dpi=500, transparent=True)
-
-    # a = sns.jointplot(ax=ax, data=df, x=, y=f'{offt}', hue='kind', 
-    #                   palette=['#B4B5B4', method_colors['nds'] ], 
-    #                   joint_kws=dict(stat='probability'),
-    #                   height=1.5)
-    # ax.scatter(true_scores[:,0], true_scores[:,1], s=4, color='#B4B5B4', alpha=0.5, linewidths=0)
-    # ax.scatter(scores[:,0], scores[:,1], s=4, color=method_colors['nds'], label=f'Top {top_percent*100:.2f}%', alpha=0.5, linewidths=0)
-    # xlim = ax.get_xlim()
-    # ylim = ax.get_ylim()
-    # ax.set_xlim([xlim[0]-0.5, xlim[1]+0.5])
-    # ax.set_ylim([ylim[0]-0.5, ylim[1]+0.5])
-    # ax.locator_params(axis='y', nbins=5)
-    # ax.locator_params(axis='x', nbins=5)
-    # legend = ax.legend(handletextpad=0.1, markerscale=2)
-    # legend.get_frame().set_facecolor("none")
-    # ax.set_ylabel(f'{offt}')
-    # ax.set_xlabel(f'-{target}')
-    
-    
-    # fig.savefig(save_dir/f'top_k_all.png',bbox_inches='tight', dpi=500, transparent=True)
 
 def hv_profile(run_dicts): 
     pareto_data, scal_data, rand_data = extract_data(run_dicts, key='hv_profile')

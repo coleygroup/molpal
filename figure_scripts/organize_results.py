@@ -1,11 +1,49 @@
-from pathlib import Path
 import numpy as np 
-import matplotlib.pyplot as plt 
-import pandas as pd 
 from read_results_utils import parse_config, calc_true_hv, get_hvs, get_scores, pareto_profile, true_pf, top_k_smiles, get_top_k_profile, calc_front_extent
 from tqdm import tqdm 
-import pickle 
-import matplotlib.patches as mpatches
+from rdkit.Chem.Scaffolds import MurckoScaffold
+from rdkit import Chem
+from tqdm import tqdm
+
+def scaffold_storage(base_dir, obj_configs, pool_sep=','):
+    _, _, objs, _, all_smiles = calc_true_hv(obj_configs, base_dir, pool_sep)
+    run_dicts = []
+    scaffold_dict, generic_dict = get_scaffold_map(all_smiles)
+    for run_folder in tqdm(list(base_dir.glob('seed*')), desc='Reading Results'): 
+        tags = parse_config(run_folder/'config.ini') 
+        _, _, explored_smis = get_scores(run_folder, objs)
+        scaffolds, number = get_scaffold_profile(explored_smis, scaffold_dict)
+        generic_scaffs, number_generic = get_scaffold_profile(explored_smis, generic_dict)
+        run_dict = {
+            'n_scaffold_profile': number,
+            'acquired_scaffolds': scaffolds,
+            'explored_smis': explored_smis,
+            'n_generic_scaffold_profile': number_generic,
+            'acquired_generic_scaffolds': generic_scaffs,            
+            'scalarization': tags['scalarize'],
+            'metric': tags['metric'], 
+            'seed': tags['seed'],
+            'model_seed': tags['model_seed'],
+            'cluster_type': str(tags['cluster_type']),
+        }
+        run_dicts.append(run_dict)
+    
+    return run_dicts
+
+def get_scaffold_profile(explored_smis, scaffold_dict):
+    scaffolds = []
+    number = []
+    for smis in explored_smis: 
+        iter_scaff = set([scaffold_dict[smi] for smi in smis])
+        scaffolds.append(iter_scaff) 
+        number.append(len(iter_scaff))
+    return scaffolds, number 
+
+def get_scaffold_map(smis): 
+    scaffold_dict = {smi: MurckoScaffold.MurckoScaffoldSmilesFromSmiles(smi) for smi in tqdm(smis, desc='getting scaffolds')}
+    generic_scaffold_dict = {smi: Chem.MolToSmiles(MurckoScaffold.MakeScaffoldGeneric(Chem.MolFromSmiles(scaff)))
+                             for smi, scaff in tqdm(scaffold_dict.items(), 'making scaffolds generic')}
+    return scaffold_dict, generic_scaffold_dict
 
 def create_run_dicts(base_dir, obj_configs, k=0.01, pool_sep=','):
     runs = []
