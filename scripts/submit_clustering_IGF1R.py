@@ -10,11 +10,11 @@ import subprocess
 
 base_config = Path('moo_runs/config/IGF1R_CYP_selectivity.ini')
 timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
-out_dir = Path(f'results/IGF1R_clustering')
+out_dir = Path(f'results/IGF1R_clustering_dockinglookup_objs')
 
 seeds = [47, 53, 59, 61, 67]
 model_seeds =  [29, 31, 37, 41, 43]
-cluster_types = ['fps', 'objs', 'both'] # ['both', 'objs', 'fps'] 
+cluster_types = ['both'] # ['fps',  'objs'] #, 
 cmds = []
 acq = 'pi'
 

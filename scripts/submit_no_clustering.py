@@ -10,14 +10,14 @@ import subprocess
 
 base_config = Path('moo_runs/config/DRD3_DRD2_selectivity.ini')
 timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
-out_dir = Path(f'results/selective_DRD3_dockinglookup')
+out_dir = Path(f'results/selective_DRD3')
 
 seeds = [61, 67, 47, 53, 59] 
 model_seeds = [41, 43, 29, 31, 37] #, 
 cmds = []
 
 # scalarization AFs
-for acq in ['ei', 'pi', 'greedy']: 
+for acq in ['pi', 'greedy']: 
     for seed, model_seed in zip(seeds, model_seeds):
         tags = [f'seed-{seed}-{model_seed}', acq, 'scal']
         out_folder = out_dir / '_'.join(tags)
@@ -26,21 +26,21 @@ for acq in ['ei', 'pi', 'greedy']:
         cmds.append(cmd)
 
 # Pareto AFs
-for acq in ['ei', 'pi', 'nds']: 
-    for seed, model_seed in zip(seeds, model_seeds):
-        tags = [f'seed-{seed}-{model_seed}', acq]
-        out_folder = out_dir / '_'.join(tags)
-        cmd = f'python3 run.py --config {base_config} --metric {acq} --output-dir {out_folder} --model-seed {model_seed} --seed {seed}'
+# for acq in ['ei', 'pi', 'nds']: 
+#     for seed, model_seed in zip(seeds, model_seeds):
+#         tags = [f'seed-{seed}-{model_seed}', acq]
+#         out_folder = out_dir / '_'.join(tags)
+#         cmd = f'python3 run.py --config {base_config} --metric {acq} --output-dir {out_folder} --model-seed {model_seed} --seed {seed}'
         
-        cmds.append(cmd)
+#         cmds.append(cmd)
 
-# Random AFs
-for seed, model_seed in zip(seeds, model_seeds):
-    tags = [f'seed-{seed}-{model_seed}', 'random']
-    out_folder = out_dir / '_'.join(tags)
-    cmd = f'python3 run.py --config {base_config} --metric random --output-dir {out_folder} --model-seed {model_seed} --seed {seed} --scalarize'
+# # Random AFs
+# for seed, model_seed in zip(seeds, model_seeds):
+#     tags = [f'seed-{seed}-{model_seed}', 'random']
+#     out_folder = out_dir / '_'.join(tags)
+#     cmd = f'python3 run.py --config {base_config} --metric random --output-dir {out_folder} --model-seed {model_seed} --seed {seed} --scalarize'
     
-    cmds.append(cmd)
+#     cmds.append(cmd)
 
 print(f'Running {len(cmds)} molpal runs:')
 for cmd in cmds: 

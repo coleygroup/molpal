@@ -10,6 +10,7 @@ from molpal import args, Explorer
 
 paths_to_config = [
     # 'moo_runs/config/DRD_multiobj_ei.ini',
+    # 'moo_runs/enamine_runs/main.ini',
     'moo_runs/config/obj_debug.ini'
     ]
 
