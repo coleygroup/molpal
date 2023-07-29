@@ -460,7 +460,7 @@ class Acquirer:
 
         return heap 
     
-    def cluster_both(self, xs, U, batch_size, explored, y_means, featurizer):
+    def cluster_both(self, xs, U, batch_size, explored, preds, featurizer):
         """ 
         Clusters xs into (batch_size/2) clusters according to objective predictions
         and acquires the best in each cluster. 
@@ -475,7 +475,7 @@ class Acquirer:
         xs = list(xs)
 
         self.cluster_type = 'objs'
-        heap_objs = self.clustered_batch(xs, U, batch_size_objs, explored, y_means) 
+        heap_objs = self.clustered_batch(xs, U, batch_size_objs, explored, preds) 
         
         dont_acquire = {
             **explored, 
@@ -483,7 +483,7 @@ class Acquirer:
         }
 
         self.cluster_type = 'fps'
-        heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, featurizer=featurizer)
+        heap_fps = self.clustered_batch(xs, U, batch_size_fps, dont_acquire, preds, featurizer=featurizer)
 
         self.cluster_type = 'both'
         heap = list(chain(*[heap_fps, heap_objs]))
