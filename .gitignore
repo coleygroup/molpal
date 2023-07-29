@@ -1,3 +1,27 @@
+# large files 
+data
+
+# debugging files 
+notebooks/
+void/
+
+# results files 
+results/
+lightning_logs/
+checkpoints/
+# *.json
+# *.data*
+# *.index
+# *.pb
+
+# figures 
+*.pdf 
+*.png
+
+# miscellaneous 
+FILE
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -137,48 +161,3 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-*.ipynb
-*.csv
-*.pt
-*.ckpt
-*.err
-*.out
-*.log
-*.pdbqt
-*.pdb
-*.sdf
-*.smi
-*.pkl
-*.gz
-*.sh
-*.batch
-*.hdf5
-*.npy
-*.npz
-*.h5
-*.png
-*.pdf
-*.json
-*.ini
-
-.vscode/
-.DS_Store
-analyze_test_loss.py
-config_local
-scripts/distance.py
-fps_umap.py
-molpal_umap.py
-lightning_logs
-*.pb
-*.data*
-*.index
-prep_glide_csv.py
-*.bz2
-*.cxsmilesdata/EnamineHTS_scores.csv.gz
-ADFRsuite_x86_64Linux_1.0
-notebooks
-data
-ignore_files
-void
-autodock_vina_1_1_2_linux_x86
-FILE
