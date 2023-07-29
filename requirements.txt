@@ -12,8 +12,8 @@ imageio
 ipykernel
 pathlib 
 matplotlib 
-pygmo
-pymoo
 pandas 
 setuptools
 scipy
+pygmo
+pymoo
