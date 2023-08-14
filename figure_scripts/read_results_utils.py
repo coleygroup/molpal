@@ -52,12 +52,6 @@ def calc_hv(points: np.ndarray, ref_point = None):
     Calculates the hypervolume assuming maximization of a list of points 
     points: np.ndarray of shape (n_points, n_objs) 
     """
-    n_objs = points.shape[1]
-
-    # change positive docking scores off-target to zero, as pos. scores add no value 
-    points[:,1] = np.clip(points[:,1], a_min=None, a_max=0)
-    points[:,0] = np.clip(points[:,0], a_min=0, a_max=None)
-
     if ref_point is None: 
         front_min = points.min(axis=0, keepdims=True)
         w = np.max(points, axis=0, keepdims=True) - front_min
@@ -92,7 +86,7 @@ def calc_true_hv(paths_to_config: List, base_dir, pool_sep=','):
     hv, reference_min = calc_hv(data.copy())
     return hv, reference_min, objs, data, smis 
 
-def get_hvs(all_scores, reference_min, objs = None):  
+def get_hvs(all_scores, reference_min):  
     hvs = []
     for scores in all_scores:         
         hv, _ = calc_hv(scores.copy(), ref_point=reference_min)
@@ -102,6 +96,9 @@ def get_hvs(all_scores, reference_min, objs = None):
 
 def get_scores(run_dir: Path, objs: List[LookupDockingObjective]):
     iter_dirs = sorted((run_dir / 'chkpts').glob('iter_*'))
+    its = [int(n.stem.split('_')[1]) for n in iter_dirs]
+    iter_dirs = [dir for _, dir in sorted(zip(its, iter_dirs))]
+    
     all_scores = []
     all_acquired = []
     explored_smis = []
@@ -132,7 +129,7 @@ def get_scores(run_dir: Path, objs: List[LookupDockingObjective]):
     return all_scores, all_acquired, explored_smis
 
 def pareto_profile(all_scores, reference_min, true_pf): 
-    pf = Pareto(num_objectives=2)
+    pf = Pareto(num_objectives=all_scores[0].shape[1], compute_metrics=False)
     pf.set_reference_min(reference_min)
     fronts = []
     
@@ -143,18 +140,17 @@ def pareto_profile(all_scores, reference_min, true_pf):
         fronts.append(front)
 
     final_front = front
-    interp_front_x = np.linspace(np.min(true_pf[:,0]), np.max(true_pf[:,0]), 5*true_pf.shape[0])
-    interp_y = np.interp(interp_front_x, true_pf[:,0], true_pf[:,1])
-    interp_pf = np.vstack([interp_front_x, interp_y]).T
-    pf = np.vstack([true_pf, interp_pf])
+    # interp_front_x = np.linspace(np.min(true_pf[:,0]), np.max(true_pf[:,0]), 5*true_pf.shape[0])
+    # interp_y = np.interp(interp_front_x, true_pf[:,0], true_pf[:,1])
+    # interp_pf = np.vstack([interp_front_x, interp_y]).T
+    # pf = np.vstack([true_pf, interp_pf])
 
+    pf = true_pf.copy()
     ind = GD(pf)
     final_front_gd = ind(final_front)
     all_gd = ind(all_scores[-1])
 
     pf = true_pf.copy()
-    pf[:,1] = np.clip(pf[:,1], a_min=None, a_max=0)
-    pf[:,0] = np.clip(pf[:,0], a_min=0, a_max=None)
 
     ind = IGD(pf)
     final_igd = ind(final_front)

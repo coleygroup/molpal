@@ -52,7 +52,7 @@ def create_run_dicts(base_dir, obj_configs, k=0.01, pool_sep=','):
     top_k_smis, top_percent = top_k_smiles(k, all_smiles, true_scores)
     true_front = true_pf(true_scores, reference_min)
     run_dicts = []
-    for run_folder in tqdm(list(base_dir.glob('seed*')), desc='Reading Results'): 
+    for run_folder in tqdm(sorted(list(base_dir.glob('seed*'))), desc='Reading Results'): 
         tags = parse_config(run_folder/'config.ini') 
         all_scores, all_acquired, explored_smis = get_scores(run_folder, objs)
         hv_fracs = get_hvs(all_scores, reference_min, objs)/true_hv
@@ -81,16 +81,21 @@ def create_run_dicts(base_dir, obj_configs, k=0.01, pool_sep=','):
     return run_dicts, true_front
 
 def extract_data(run_dicts, key: str):
-    pareto_data = {label: {'all': [], 'mean': [], 'std': []} for label in ['nds', 'ei', 'pi', ]}
-    scal_data = {label: {'all': [], 'mean': [], 'std': []} for label in ['greedy', 'ei', 'pi', ]}
-    rand_data = {'all': [], 'mean': [], 'std': []}
+    pareto_data = {label: {'all': [], 'mean': [], 'std': [], 'model_seeds': [], 'seeds': []} for label in ['nds', 'ei', 'pi', ]}
+    scal_data = {label: {'all': [], 'mean': [], 'std': [], 'model_seeds': [], 'seeds': []} for label in ['greedy', 'ei', 'pi', ]}
+    rand_data = {'all': [], 'mean': [], 'std': [], 'seeds': [], 'model_seeds': []}
 
     for run_dict in run_dicts: 
         if run_dict['metric'] == 'random': 
             rand_data['all'].append(run_dict[key])
+            rand_data['seeds'].append(run_dict['seed'])
+            rand_data['model_seeds'].append(run_dict['model_seed'])
             continue
         data = scal_data if run_dict['scalarization'] else pareto_data
         data[run_dict['metric']]['all'].append(run_dict[key])
+        data[run_dict['metric']]['seeds'].append(run_dict['seed'])
+        data[run_dict['metric']]['model_seeds'].append(run_dict['model_seed'])
+
     
     for entry in [*pareto_data.values(), *scal_data.values(), rand_data]: 
         entry['mean'] = np.array(entry['all']).mean(axis=0) 

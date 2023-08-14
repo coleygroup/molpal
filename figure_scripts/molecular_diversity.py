@@ -3,7 +3,8 @@
 from read_results_utils import get_pool, top_k_smis_from_pool
 from plot_utils import set_style, set_size, cluster_labels, cluster_colors
 from pathlib import Path 
-import umap.umap_ as umap
+# import umap.umap_ as umap
+import umap
 import random 
 import math 
 import numpy as np 
@@ -17,10 +18,9 @@ from sklearn.decomposition import PCA
 import seaborn as sns
 
 acq_func = 'pi'
-c_type = 'both'
+c_type = 'objs'
 base_dir = Path('results') / f'IGF1R_clustering'
-save_dir = Path(f'figure_scripts/molecular_diversity_figs_v2/')
-fname = f'{save_dir}/top_15_fp_matrix.pkl'
+save_dir = Path(f'figure_scripts/molecular_diversity_figs/')
 obj_configs =  [Path(f'moo_runs/objective/IGF1R_min.ini'), Path(f'moo_runs/objective/CYP_max.ini')]
 if c_type=='None': 
     run_dir = base_dir / f'seed-47-29_{acq_func}'
@@ -128,7 +128,7 @@ def get_save_pool_info(k=None):
             pickle.dump(reducer, f)
     
     else: 
-        rand_fps = sample_fps(pool, fraction=0.5)
+        rand_fps = sample_fps(pool, fraction=1)
         fp_matrix = np.stack(rand_fps) 
         # reducer, transformed = fit_reducer_umap_only(fp_matrix, random_state=25, n_neighbors=10, min_dist=0.005)
         reducer, transformed = fit_reducer_umap_only(fp_matrix, random_state=25, n_neighbors=5, min_dist=0.01)
@@ -228,13 +228,13 @@ def random_15_umap():
     plot_umap(transformed, red_acq, fname=f'all_random_{acq_func}_{c_type}_debug.pdf') 
 
 if __name__=='__main__': 
-    get_save_pool_info()
+    # get_save_pool_info()
     # get_save_pool_info(k=0.1)
     # random_15_umap()
     # top_k_iterations(0.05)
-    # random_iterations()
-    empty_kde()
-    print('done')
+    random_iterations()
+    # empty_kde()
+    # print('done')
 
 
 

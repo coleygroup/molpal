@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 labels = {'ei': 'EI', 'pi': 'PI', 'nds': 'NDS', 'greedy': 'Greedy'}
-acq_labels = {'ei': ['EHI', 'EI'], 'pi': ['PHI', 'PI'], 'nds': ['NDS'],'greedy': ['Greedy']}
+acq_labels = {'ei': ['EHI', 'EI'], 'pi': ['PHI', 'PI'], 'nds': ['NDS'],'greedy': ['Greedy'], 'random': ['Random']}
 method_colors = {
     'ei':'#405E90',
     'pi':'#D45127',
@@ -24,7 +24,7 @@ method_colors = {
 }
 
 cluster_labels = {
-    'None': 'None',
+    'None': 'No clustering',
     'fps': 'Feature',
     'objs': 'Obj',
     'both': 'Feature + Obj'

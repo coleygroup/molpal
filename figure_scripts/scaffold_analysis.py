@@ -13,7 +13,7 @@ filetype='.pdf'
 target = 'IGF1R'
 offt = 'CYP'
 
-base_dir = Path('results') / f'{target}_clustering_dockinglookup'
+base_dir = Path('results') / f'{target}_clustering'
 save_dir = Path(f'figure_scripts/scaffold_analysis')
 save_dir.mkdir(parents=False, exist_ok=True)
 obj_configs =  [Path(f'moo_runs/objective/{target}_min.ini'), Path(f'moo_runs/objective/{offt}_max.ini')]
@@ -83,5 +83,5 @@ def generic_scaffold_number_profile(run_dicts):
 
 
 if __name__=='__main__':
-    scaffold_number_profile(run_dicts)
+    # scaffold_number_profile(run_dicts)
     generic_scaffold_number_profile(run_dicts)

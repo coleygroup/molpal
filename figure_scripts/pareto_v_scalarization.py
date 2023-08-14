@@ -13,11 +13,13 @@ import pandas as pd
 set_style()
 
 filetype='.pdf'
-target = 'DRD3'
-offt = 'DRD2'
+target = 'JAK2'
+offt = 'LCK'
 
-base_dir = Path('results') / f'selective_{target}_dockinglookup'
-save_dir = Path(f'figure_scripts/fig_1_{target}_dockinglookup')
+cases = {'DRD3': 1, 'JAK2': 2, 'IGF1R': 3}
+
+base_dir = Path('results') / f'selective_{target}'
+save_dir = Path(f'figure_scripts/fig_1_{target}')
 save_dir.mkdir(parents=False, exist_ok=True)
 obj_configs =  [Path(f'moo_runs/objective/{target}_min.ini'), Path(f'moo_runs/objective/{offt}_max.ini')]
 pool_sep = "\t"
@@ -67,8 +69,8 @@ def scatter_top_1():
         ax = g.ax_joint, x=f'-{target}', 
         y=f'{offt}', hue='kind', linewidth=0, 
         palette=['#B4B5B4', method_colors['nds'] ], )
-    handles, labels = g.ax_joint.get_legend_handles_labels()
-    g.ax_joint.legend(handles=handles[1:], labels=labels[1:], handletextpad=0.1, loc='lower left')
+
+    g.ax_joint.get_legend().remove()
     g.ax_joint.yaxis.get_major_locator().set_params(integer=True)
     g.ax_joint.yaxis.labelpad = 0
     g.ax_joint.xaxis.labelpad = 0
@@ -400,7 +402,7 @@ def fraction_true_front(run_dicts, true_front):
         ax.barh(x[i]+w/2, scal_data[s_af]['mean'], height=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
         ax.errorbar(scal_data[s_af]['mean'], x[i]+w/2, xerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
 
-    ax.set_yticks(x, ['Greedy\nNDS', 'EI\nEHI','PI\nPHI',   'Random',  ])
+    ax.set_yticks(x, ['PI\nPHI', 'EI\nEHI', 'Greedy\nNDS',  'Random',  ])
     ax.locator_params(axis='x', nbins=5)
     ax.set_xlabel('Fraction of non-dominated points') 
     handles = [mpatches.Patch( facecolor='k',edgecolor='k',), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
@@ -485,26 +487,176 @@ def all_hist_2d():
     
     plt.savefig(save_dir/f'2d_hist.png',bbox_inches='tight', dpi=500)
 
+def iter_table(run_dicts, key='hv_profile'):
+    runs = []
+    for run in run_dicts: 
+        run_info = {
+            'Case': cases[target],
+            'AF': acq_labels[run['metric']][-1] if run['scalarization'] else acq_labels[run['metric']][0],
+            'Model Seed': run['model_seed'],
+            'Init Seed': run['seed'],
+        }
+        iter_info = {
+            f'{i}': f'{run[key][i]:.2f}' for i in range(len(run[key]))
+        }
+        runs.append({**run_info, **iter_info})
+    df = pd.DataFrame(runs)
+    df = df.sort_values(by=['AF','Model Seed'])
+    df.to_csv(save_dir/f'{key}_table.csv', index=False)
+    str_df = df.to_latex(escape=False, index=False)
+    with open(save_dir/f'{key}_table.txt','w') as f:
+        f.writelines(str_df)
+    return df
 
+def end_table(run_dicts):
+    def f(st): 
+        return f'${st:0.2f}$'
+    runs = []
+    for run in run_dicts: 
+        pf = run['final_pf']
+        frac_true_front = sum([point.tolist() in true_front.tolist() for point in pf])/len(true_front)
+        runs.append({
+            'Case': cases[target],
+            'AF': acq_labels[run['metric']][-1] if run['scalarization'] else acq_labels[run['metric']][0],
+            'Model Seed': run['model_seed'],
+            'Init Seed': run['seed'],
+            'Top 1%': f(run['top-k-profile'][-1]),
+            'Hypervolume': f(run['hv_profile'][-1]),
+            'IGD': f(run['overall_igd']),
+            'Fraction of True Front': f(frac_true_front),
+        })
+    df = pd.DataFrame(runs)
+    df = df.sort_values(by=['AF','Model Seed'])
+    df.to_csv(save_dir/f'end_iter_table.csv', index=False)
+    str_df = df.to_latex(escape=False, index=False)
+    with open(save_dir/f'end_iter_table.txt','w') as f:
+        f.writelines(str_df)
+    return df
+
+def iter_table_means(key='hv_profile'): 
+    pareto_data, scal_data, rand_data = extract_data(run_dicts, key=key)
+    
+    runs = []
+
+    for metric, entry in pareto_data.items(): 
+        run_info = {
+            'Case': cases[target],
+            'Acquisition Function': acq_labels[metric][0],
+        }
+        means = entry['mean']
+        stds = entry['std']
+        iter_info = {
+            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.3f}$' for i in range(len(means))
+        }
+        runs.append({**run_info, **iter_info})
+
+        
+    for metric, entry in scal_data.items(): 
+        run_info = {
+            'Case': cases[target],
+            'Acquisition Function': acq_labels[metric][-1],
+        }
+        means = entry['mean']
+        stds = entry['std']
+        iter_info = {
+            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.3f}$' for i in range(len(means))
+        }
+        runs.append({**run_info, **iter_info})
+
+    run_info = {
+        'Case': cases[target],
+        'Acquisition Function': acq_labels['random'][-1],
+    }
+    means = rand_data['mean']
+    stds = rand_data['std']
+    iter_info = {
+        f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.3f}$' for i in range(len(means))
+    }
+    runs.append({**run_info, **iter_info})
+        
+    df = pd.DataFrame(runs)
+    df = df.sort_values(by=['Acquisition Function'])
+    df.to_csv(save_dir/f'{key}_means.csv', index=False)
+    str_df = df.to_latex(escape=False, index=False)
+    with open(save_dir/f'{key}_means.txt','w') as f:
+        f.writelines(str_df)
+    return df
+
+def end_table_means():
+    for entry in run_dicts: 
+        pf = entry['final_pf']
+        frac = sum([point.tolist() in true_front.tolist() for point in pf])/len(true_front)
+        entry['fraction_first_rank'] = frac
+
+    igd_pareto, igd_scal, igd_rand = extract_data(run_dicts, 'overall_igd')
+    fracnd_pareto, fracnd_scal, fracnd_rand = extract_data(run_dicts, 'fraction_first_rank')
+    topk_pareto, topk_scal, topk_rand = extract_data(run_dicts, 'top-k-profile')
+    hv_pareto, hv_scal, hv_rand = extract_data(run_dicts, key='hv_profile')
+    for entry in [*topk_pareto.values(), *topk_scal.values(), topk_rand, *hv_pareto.values(), *hv_scal.values(), hv_rand]: 
+        entry['all'] = [profile[-1] for profile in entry['all']]
+        entry['mean'] = entry['mean'][-1]
+        entry['std'] = entry['std'][-1]    
+
+    def f(m, std): 
+        return f'${m:0.2f} \pm {std:0.3f}$'
+    
+    runs = []
+    for acq in ['nds', 'ei', 'pi']:
+        runs.append({
+            'Case': cases[target],
+            'Acquisition Function': acq_labels[acq][0],
+            'Top 1\%': f(topk_pareto[acq]['mean'], topk_pareto[acq]['std']),
+            'HV': f(hv_pareto[acq]['mean'], hv_pareto[acq]['std']),
+            'IGD': f(igd_pareto[acq]['mean'], igd_pareto[acq]['std']),
+            'Fraction of True Front': f(fracnd_pareto[acq]['mean'], fracnd_pareto[acq]['std']),
+        })
+
+    for acq in ['greedy', 'ei', 'pi']:
+        runs.append({
+            'Case': cases[target],
+            'Acquisition Function': acq_labels[acq][-1],
+            'Top 1\%': f(topk_scal[acq]['mean'], topk_scal[acq]['std']),
+            'HV': f(hv_scal[acq]['mean'], hv_scal[acq]['std']),
+            'IGD': f(igd_scal[acq]['mean'], igd_scal[acq]['std']),
+            'Fraction of True Front': f(fracnd_scal[acq]['mean'], fracnd_scal[acq]['std']),
+        })
+
+    acq = 'random'
+    runs.append({
+        'Case': cases[target],
+        'Acquisition Function': acq_labels[acq][-1],
+        'Top 1\%': f(topk_rand['mean'], topk_rand['std']),
+        'HV': f(hv_rand['mean'], hv_rand['std']),
+        'IGD': f(igd_rand['mean'], igd_rand['std']),
+        'Fraction of True Front': f(fracnd_rand['mean'], fracnd_rand['std']),
+    })
+
+    df = pd.DataFrame(runs)
+    df = df.sort_values(by=['Acquisition Function'])
+    df.to_csv(save_dir/f'end_means_table.csv', index=False)
+    str_df = df.to_latex(escape=False, index=False)
+    with open(save_dir/f'end_means_table.txt','w') as f:
+        f.writelines(str_df)
+    return df
 
 if __name__ == '__main__': 
-    scatter_top_1()
-    hv_profile(run_dicts)
-    igd(run_dicts)
+    # scatter_top_1()
+    # hv_profile(run_dicts)
+    # igd(run_dicts)
     # moving_front(run_dicts, true_front, seed=47, model_seed=29)
     # number_pf_points(run_dicts)
-    fraction_top_1_profile(run_dicts)
-    # for s1, s2 in zip([47, 53, 59, 61, 67], [29, 31, 37, 41, 43]):
-    #     final_front(run_dicts, true_front, seed=s1, model_seed=s2)
+    # fraction_top_1_profile(run_dicts)
+    # final_front(run_dicts, true_front, seed=47, model_seed=29, scal_metric='greedy', pareto_metric='pi',)
+    # final_front(run_dicts, true_front, seed=47, model_seed=29, scal_metric='ei', pareto_metric='ei',)
     # final_front(run_dicts, true_front, pareto_metric='ei', scal_metric='pi', seed=47, model_seed=29)
-    final_top_1(run_dicts)
-    fraction_true_front(run_dicts, true_front)
-    # end_extents(run_dicts)
-    # score_type='all_scores'
-    # violin_plots(run_dicts, scalarization='True', metric='random', score_type=score_type)
-    # violin_plots(run_dicts, scalarization=False, metric='pi', score_type=score_type)
-    # violin_plots(run_dicts, scalarization='True', metric='greedy', score_type=score_type)
-    # all_hist_2d()
+    # final_top_1(run_dicts)
+    # fraction_true_front(run_dicts, true_front)
     # final_front(run_dicts, true_front, seed=61, model_seed=41, pareto_metric='ei', scal_metric='ei')
+    # iter_table(run_dicts, key='hv_profile')
+    # iter_table(run_dicts, key='top-k-profile')
+    # end_table(run_dicts)
+    iter_table_means(key='hv_profile')
+    iter_table_means(key='top-k-profile')
+    end_table_means()
 
 
