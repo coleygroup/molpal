@@ -17,3 +17,4 @@ setuptools
 scipy
 pygmo
 pymoo
+umap-learn
