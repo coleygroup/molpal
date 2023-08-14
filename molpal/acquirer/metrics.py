@@ -214,12 +214,12 @@ def hvi(Y_means: np.ndarray,
 
     return S
 
-@ray.remote
+@ray.remote(num_cpus=4)
 def hvpi(Y_means: np.array,
          Y_vars: np.array,
          pareto_front: Pareto) -> np.ndarray:
     """
-    Modified from PHYSBO: (https://github.com/issp-center-dev/PHYSBO)
+    Modified from PHYSBO: (https://github.com/issp-centeqr-dev/PHYSBO)
     "Bayesian optimization package: PHYSBO”, Yuichi Motoyama et al, 
     Computer Physics Communications Volume 278, September 2022, 108405.
 
@@ -276,7 +276,7 @@ def hvpi(Y_means: np.array,
 
     return poi
 
-@ray.remote
+@ray.remote(num_cpus=8)
 def ehvi(Y_means: np.array,
          Y_vars: np.array,
          pareto_front: Pareto) -> np.ndarray:
@@ -475,7 +475,11 @@ def ei(Y_means: np.ndarray, Y_vars: np.ndarray,
         return E_imp
 
     elif Y_means.shape[1] > 1:
-        return chunked_ehvi(Y_means, Y_vars, pareto_front)
+        if Y_means.shape[1] > 2:
+            batch_size = 10
+        else:
+            batch_size = 1000
+        return chunked_ehvi(Y_means, Y_vars, pareto_front, batch_size=batch_size)
 
 
 def pi(Y_means: np.ndarray, Y_vars: np.ndarray,
@@ -538,9 +542,10 @@ def nds(Y_means: np.ndarray, top_n_scored: int):
         if Y_means.shape[1] == 2: 
             front_num = pygmo.non_dominated_front_2d(-1*Y_means_unranked)
         else: 
-            pf = Pareto(num_objectives=Y_means.shape[1], )
+            pf = Pareto(num_objectives=Y_means.shape[1], compute_metrics=False)
             pf.update_front(Y_means_unranked)
-            front_num = pf.front_num
+            pf.sort_front()
+            _, front_num = pf.export_front()
 
         ranks[front_num] = this_rank
         Y_means_unranked[front_num] = -np.inf
@@ -563,7 +568,7 @@ def chunked_ehvi(Y_means, Y_vars, pareto_front: Pareto, batch_size: int=1000):
         for Y_means_ch, Y_vars_ch in zip(Y_means_chunks, Y_vars_chunks)
     ]
 
-    stats = [ray.get(stat) for stat in stats]
+    stats = [ray.get(stat) for stat in tqdm(stats, desc='Calculating EHI', unit='chunk')]
     
     return np.concatenate(stats)
 
@@ -580,8 +585,8 @@ def chunked_pi(Y_means, Y_vars, pareto_front: Pareto, batch_size: int=1000):
         for Y_means_ch, Y_vars_ch in zip(Y_means_chunks, Y_vars_chunks)
     ]
 
-    stats = [ray.get(stat) for stat in stats]
+    acq_scores = [ray.get(stat) for stat in tqdm(stats, desc='Calculating PHI', unit='chunk')]
     
-    return np.concatenate(stats)
+    return np.concatenate(acq_scores)
 
 

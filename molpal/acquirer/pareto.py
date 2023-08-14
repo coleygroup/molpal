@@ -33,16 +33,14 @@ def dominate(t1, t2):
 
 
 class Pareto(object):
-    def __init__(self, num_objectives, dom_rule=None):
+    def __init__(self, num_objectives, dom_rule=None, compute_metrics=True):
         self.num_objectives = num_objectives
         self.front = np.zeros((0, self.num_objectives))
         self.front_num = np.zeros(0, dtype=int)
         self.num_compared = 0
-        self.dom_rule = dom_rule
+        self.dom_rule = dom_rule if dom_rule is not None else dominate 
         self.front_updated = False
-
-        if self.dom_rule is None:
-            self.dom_rule = dominate
+        self.compute_metrics = compute_metrics
 
         self.cells = Rectangles(num_objectives, int)
         self.reference_min = None
@@ -59,35 +57,37 @@ class Pareto(object):
         else:
             tt = t
 
-        front_updated = False
-
+        front_updated = False 
         for k in range(len(tt)):
             point = tt[k]
             is_front = True
-            for i in range(len(self.front)):
-                if self.dom_rule(self.front[i], point):
-                    is_front = False
-                    break
+
+            bool_1 = (self.front >= point[None, :]).all(-1)
+            bool_2 = (self.front > point[None, :]).any(-1)
+            compares = np.logical_and(bool_1, bool_2)
+            is_front = ~np.any(compares)
 
             if is_front:
-                front_updated = True
-                dom_filter = np.full(len(self.front), True, dtype=bool)
-                for i in range(len(self.front)):
-                    if self.dom_rule(point, self.front[i]):
-                        dom_filter[i] = False
+                front_updated = True            
+                dom_1 = (point[None, :] >= self.front).all(-1)
+                dom_2 = (point[None, :] > self.front).any(-1)
+                dom_filter = ~np.logical_and(dom_1, dom_2)
 
-                self.front = np.r_[self.front[dom_filter], point[np.newaxis, :]]
-                self.front_num = np.r_[self.front_num[dom_filter], self.num_compared]
+                self.front = np.vstack([self.front[dom_filter], point[None, :]])
+                self.front_num = np.concatenate([self.front_num[dom_filter], [self.num_compared]])
 
             self.num_compared += 1
 
-        if front_updated:
-            sorted_idx = self.front[:, 0].argsort()
-            self.front = self.front[sorted_idx, :]
-            self.front_num = self.front_num[sorted_idx]
+        if front_updated and self.compute_metrics:
+            self.sort_front()
             self.divide_non_dominated_region()
 
         self.front_updated = front_updated
+
+    def sort_front(self):
+        sorted_idx = self.front[:, 0].argsort()
+        self.front = self.front[sorted_idx, :]
+        self.front_num = self.front_num[sorted_idx]
 
     def export_front(self):
         return self.front, self.front_num
