@@ -107,7 +107,10 @@ class ScalarizedObjective(MultiObjective):
         multi_scores = super().forward(smis)
         scores = {}
         for key, value in multi_scores.items():
-            scores[key] = np.multiply(self.lambdas, value).sum()
+            if None in value: 
+                scores[key] = None 
+            else: 
+                scores[key] = np.multiply(self.lambdas, value).sum()
 
         return scores
     
