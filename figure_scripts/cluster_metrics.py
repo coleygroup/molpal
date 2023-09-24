@@ -198,22 +198,92 @@ def hypervolume(run_dicts):
                 facecolor = cluster_colors[c_type], alpha=0.3
             )
     
-    legend = ax.legend(frameon=False, facecolor="none", fancybox=False, loc='upper left', labelspacing=0.3)
+    legend = ax.legend(frameon=False, facecolor="none", fancybox=False, loc='lower right', labelspacing=0.3)
     ylim = ax.get_ylim()
-    ax.set_ylabel('Fraction of top ~1%')
+    ax.set_ylabel('Hypervolume fraction')
     ax.locator_params(axis='y', nbins=5)
     ax.set_xticks(x)
     set_size(1.5,1.5, ax=ax)    
     fig.savefig(save_dir/f'hv{filetype}',bbox_inches='tight', dpi=200, transparent=True)   
 
+def iter_table_means(key='hv_profile'): 
+    data = extract_cluster_data(run_dicts, key=key)
+    
+    runs = []
+
+    for metric, entry in data.items(): 
+        run_info = {
+            'Cluster Type': cluster_labels[metric]
+        }
+        means = entry['mean']
+        stds = entry['std']
+        iter_info = {
+            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.2f}$' for i in range(len(means))
+        }
+        runs.append({**run_info, **iter_info})
+        
+    df = pd.DataFrame(runs)
+    df = df.sort_values(by=['Cluster Type'])
+    str_df = df.to_latex(escape=False, index=False, multicolumn_format='c')
+    with open(save_dir/f'{key}_means.txt','w') as f:
+        f.writelines(str_df)
+    return df
+
+def end_table_means(run_dicts, scaffold_run_dicts):
+    for entry in run_dicts: 
+        pf = entry['final_pf']
+        frac = sum([point.tolist() in true_front.tolist() for point in pf])/len(true_front)
+        entry['fraction_first_rank'] = frac
+
+    igd_data = extract_cluster_data(run_dicts, 'overall_igd')
+    fracnd_data = extract_cluster_data(run_dicts, 'fraction_first_rank')
+    topk_data = extract_cluster_data(run_dicts, 'top-k-profile')
+    hv_data = extract_cluster_data(run_dicts, key='hv_profile')
+
+    scaffold_data = extract_cluster_data(scaffold_run_dicts, 'n_generic_scaffold_profile')
+
+    for entry in [*topk_data.values(), *hv_data.values(), *scaffold_data.values()]: 
+        entry['all'] = [profile[-1] for profile in entry['all']]
+        entry['mean'] = entry['mean'][-1]
+        entry['std'] = entry['std'][-1]    
+
+    def f(m, std): 
+        return f'${m:0.2f} \pm {std:0.2f}$'
+    
+    def f2(m, std): 
+        return f'${m:0.0f} \pm {std:0.0f}$'
+    
+    runs = []
+    for c_type in cluster_labels.keys():
+        runs.append({
+            'Cluster Type': cluster_labels[c_type],
+            'Top 1\%': f(topk_data[c_type]['mean'], topk_data[c_type]['std']),
+            'HV': f(hv_data[c_type]['mean'], hv_data[c_type]['std']),
+            'IGD': f(igd_data[c_type]['mean'], igd_data[c_type]['std']),
+            'Fraction of True Front': f(fracnd_data[c_type]['mean'], fracnd_data[c_type]['std']),
+            'Number of Scaffolds': f2(scaffold_data[c_type]['mean'], scaffold_data[c_type]['std'])
+        })
+
+    df = pd.DataFrame(runs)
+    df = df.sort_values(by=['Cluster Type'])
+    str_df = df.to_latex(escape=False, index=False)
+    with open(save_dir/f'end_means_table.txt','w') as f:
+        f.writelines(str_df)
+    return df
 
 if __name__=='__main__':
-    #subfig_top_k(run_dicts)
-    plot_end_top_k(run_dicts)
+    # subfig_top_k(run_dicts)
+    # plot_end_top_k(run_dicts)
     # for c_type in ['None', 'objs', 'fps', 'both']:
     #     final_pf(run_dicts, true_front, c_type=c_type)
     # fraction_true_front(run_dicts, true_front)
     # scatter_acquired(run_dicts, 29, 47)
     # igd(run_dicts)
     # hypervolume(run_dicts)
+    iter_table_means('hv_profile')
+    iter_table_means('top-k-profile')
+    with open('figure_scripts/scaffold_analysis/results.pickle','rb') as f:
+        scaffold_dicts = pickle.load(f)
+    end_table_means(run_dicts, scaffold_dicts)
+
 

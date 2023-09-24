@@ -1,7 +1,7 @@
 from pathlib import Path
 import numpy as np 
 import matplotlib.pyplot as plt 
-from read_results_utils import parse_config, calc_true_hv, get_hvs, get_scores, pareto_profile, true_pf, top_k_smiles, get_top_k_profile, calc_front_extent
+from read_results_utils import calc_true_hv, true_pf, top_k_smiles
 from organize_results import extract_data, create_run_dicts
 from plot_utils import set_size, set_style, labels, acq_labels, method_colors, it_colors, it_labels, shapes
 import pickle 
@@ -13,8 +13,8 @@ import pandas as pd
 set_style()
 
 filetype='.pdf'
-target = 'JAK2'
-offt = 'LCK'
+target = 'IGF1R'
+offt = 'CYP'
 
 cases = {'DRD3': 1, 'JAK2': 2, 'IGF1R': 3}
 
@@ -163,10 +163,12 @@ def igd(run_dicts):
     ax.set_xticks(x, ['NDS/\nGreedy', 'EHI/\nEI', 'PHI/\nPI',   'Random'])
     ax.locator_params(axis='y', nbins=5)
     ax.set_ylabel('IGD')
+    ylim = ax.get_ylim()
+    ax.set_ylim([ylim[0], ylim[1]+0.1])
     handles = [mpatches.Patch( facecolor='k',edgecolor='black', linewidth=0.4), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
     legend = plt.legend(handles, ['Pareto', 'Scalarized'], frameon=False, labelspacing=0.3)
 
-    set_size(1.5,1.5, ax=ax)    
+    set_size(1.5,1.25, ax=ax)    
     fig.savefig(save_dir/f'B_{target}{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
 def moving_front(run_dicts, true_front, seed=59, model_seed=37):
@@ -205,35 +207,6 @@ def moving_front(run_dicts, true_front, seed=59, model_seed=37):
     set_size(2, 2, ax=ax)
     fig.savefig(save_dir/f'C_2_{seed}_{model_seed}{filetype}',bbox_inches='tight', dpi=200, transparent=True) 
 
-def number_pf_points(run_dicts):
-    nds_data = np.array([[pf.shape[0] for pf in entry['pf_profile']]
-                for entry in run_dicts if (entry['metric']=='pi')])
-    greedy_data = np.array([[pf.shape[0] for pf in entry['pf_profile']]
-                for entry in run_dicts if (entry['metric']=='greedy')])
-    
-    nds_means = nds_data.mean(axis=0)
-    nds_stds = nds_data.std(axis=0)
-    greedy_means = greedy_data.mean(axis=0)
-    greedy_stds = greedy_data.std(axis=0)
-
-    fig, ax = plt.subplots(1,1)
-    x = range(len(greedy_means))
-    
-    ax.plot(x, greedy_means, label='Greedy', color=it_colors[0],)
-    ax.fill_between(x, greedy_means - greedy_stds, greedy_means + greedy_stds, 
-            facecolor = it_colors[0], alpha=0.3
-        )
-    ax.plot(x, nds_means, label='PI', color=it_colors[1],)
-    ax.fill_between(x, nds_means - nds_stds, nds_means + nds_stds, 
-            facecolor =it_colors[1], alpha=0.3
-        )
-
-    set_size(1.5, 1.5, ax=ax)
-    ax.set_xlabel('Iteration')
-    ax.set_ylabel('Number of PF points')
-    ax.legend()
-    fig.savefig(save_dir/f'D{filetype}',bbox_inches='tight', dpi=200, transparent=True)
-
 def fraction_top_1_profile(run_dicts): 
     pareto_data, scal_data, rand_data = extract_data(run_dicts, 'top-k-profile')
 
@@ -255,11 +228,11 @@ def fraction_top_1_profile(run_dicts):
     legend = ax.legend(frameon=False, facecolor="none", fancybox=False, loc='upper left', labelspacing=0.3)
     legend.get_frame().set_facecolor("none")
     ylim = ax.get_ylim()
-    ax.set_ylim([ylim[0], ylim[1]+0.05])
+    ax.set_ylim([ylim[0], ylim[1]+0.1])
     ax.set_ylabel('Fraction of top ~1%')
     ax.locator_params(axis='y', nbins=5)
     ax.set_xticks(x)
-    set_size(1.5,1.5, ax=ax)    
+    set_size(1.5,1.25, ax=ax)    
     fig.savefig(save_dir/f'top_k_1{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
     fig, ax = plt.subplots(1,1)
@@ -275,10 +248,10 @@ def fraction_top_1_profile(run_dicts):
         )    
     legend = ax.legend(frameon=False, facecolor="none", fancybox=False, loc='upper left', labelspacing=0.3)
     legend.get_frame().set_facecolor("none")
-    ax.set_ylim([ylim[0], ylim[1]+0.05])
+    ax.set_ylim([ylim[0], ylim[1]+0.1])
     ax.set_xticks(x)
     ax.yaxis.set_tick_params(left=False, labelleft=False)
-    set_size(1.5,1.5, ax=ax)
+    set_size(1.5,1.25, ax=ax)
     fig.savefig(save_dir/f'top_k_2{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
 def final_top_1(run_dicts): 
@@ -308,12 +281,46 @@ def final_top_1(run_dicts):
     ax.locator_params(axis='y', nbins=5)
     ax.set_ylabel('Fraction of top ~1%')
     ylim = ax.get_ylim()
-    ax.set_ylim([0, ylim[1]+0.1])
+    ax.set_ylim([0, ylim[1]+0.15])
     handles = [mpatches.Patch( facecolor='k',), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
-    legend = plt.legend(handles, ['Pareto', 'Scalarized'], frameon=False)
+    legend = plt.legend(handles, ['Pareto', 'Scalarized'], frameon=False, loc='upper left')
+
+    set_size(1.5,1.25, ax=ax)    
+    fig.savefig(save_dir/f'end_top_k{filetype}',bbox_inches='tight', dpi=200, transparent=True)
+
+def final_hv(run_dicts): 
+
+    pareto_data, scal_data, rand_data = extract_data(run_dicts, 'hv_profile')
+    for entry in [*pareto_data.values(), *scal_data.values(), rand_data]: 
+        entry['all'] = [profile[-1] for profile in entry['all']]
+        entry['mean'] = entry['mean'][-1]
+        entry['std'] = entry['std'][-1]
+
+    w = 0.12
+    x = np.array(range(4))/2
+    x[3] = x[3] - w/2
+
+    fig, ax = plt.subplots(1,1)
+
+    for i, (p_af, s_af) in enumerate([ ['nds', 'greedy'], ['ei', 'ei'], ['pi','pi']]): 
+        ax.bar(x[i]-w/2, pareto_data[p_af]['mean'], width=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af], linewidth=0.8)
+        ax.errorbar(x[i]-w/2, pareto_data[p_af]['mean'], yerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+        ax.bar(x[i]+w/2, scal_data[s_af]['mean'], width=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
+        ax.errorbar(x[i]+w/2, scal_data[s_af]['mean'], yerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+
+    ax.bar(x[3], rand_data['mean'], width=w, color=method_colors['random'], align='center', edgecolor=method_colors['random'])
+    ax.errorbar(x[3], rand_data['mean'], yerr=rand_data['std'], color='black', capsize=2, elinewidth=0.8, capthick=0.8)
+
+    ax.set_xticks(x, ['NDS/\nGreedy','EHI/\nEI', 'PHI/\nPI',   'Random'])
+    ax.locator_params(axis='y', nbins=5)
+    ax.set_ylabel('Hypervolume fraction')
+    ylim = ax.get_ylim()
+    ax.set_ylim([rand_data['mean']-0.2, 1.09])
+    handles = [mpatches.Patch( facecolor='k',), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
+    legend = plt.legend(handles, ['Pareto', 'Scalarized'], frameon=False, loc='upper left')
 
     set_size(1.5,1.5, ax=ax)    
-    fig.savefig(save_dir/f'end_top_k{filetype}',bbox_inches='tight', dpi=200, transparent=True)
+    fig.savefig(save_dir/f'end_hv{filetype}',bbox_inches='tight', dpi=200, transparent=True)
 
 def final_front(run_dicts, true_front, scal_metric='greedy', pareto_metric='pi', seed=59, model_seed=37):
     nds_data = [entry for entry in run_dicts if (entry['metric']==pareto_metric and entry['seed']==str(seed) and entry['model_seed']==str(model_seed)) and not entry['scalarization']][0]
@@ -393,16 +400,16 @@ def fraction_true_front(run_dicts, true_front):
 
     fig, ax = plt.subplots(1,1)
 
-    ax.barh(x[3], rand_data['mean'], height=w, color=method_colors['random'], align='center', edgecolor=method_colors['random'])
-    ax.errorbar(rand_data['mean'], x[3],  xerr=rand_data['std'], color='black', capsize=2, elinewidth=0.8, capthick=0.8)
+    ax.barh(x[0], rand_data['mean'], height=w, color=method_colors['random'], align='center', edgecolor=method_colors['random'])
+    ax.errorbar(rand_data['mean'], x[0],  xerr=rand_data['std'], color='black', capsize=2, elinewidth=0.8, capthick=0.8)
 
     for i, (p_af, s_af) in enumerate([['pi','pi'], ['ei', 'ei'],  ['nds', 'greedy'], ]): 
-        ax.barh(x[i]-w/2, pareto_data[p_af]['mean'], height=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af], linewidth=0.8)
-        ax.errorbar(pareto_data[p_af]['mean'], x[i]-w/2, xerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
-        ax.barh(x[i]+w/2, scal_data[s_af]['mean'], height=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
-        ax.errorbar(scal_data[s_af]['mean'], x[i]+w/2, xerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+        ax.barh(x[i+1]+w/2, pareto_data[p_af]['mean'], height=w, color=method_colors[p_af], align='center', edgecolor=method_colors[p_af], linewidth=0.8)
+        ax.errorbar(pareto_data[p_af]['mean'], x[i+1]+w/2, xerr=pareto_data[p_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
+        ax.barh(x[i+1]-w/2, scal_data[s_af]['mean'], height=w, color=method_colors[s_af], alpha = 1, align='center', hatch='///', edgecolor='black', linewidth=0.8)
+        ax.errorbar(scal_data[s_af]['mean'], x[i+1]-w/2, xerr=scal_data[s_af]['std'], color='black', capsize=2, capthick=0.8, elinewidth=0.8)
 
-    ax.set_yticks(x, ['PI\nPHI', 'EI\nEHI', 'Greedy\nNDS',  'Random',  ])
+    ax.set_yticks(x, ['Random', 'PHI\nPI', 'EHI\nEI', 'NDS\nGreedy',    ])
     ax.locator_params(axis='x', nbins=5)
     ax.set_xlabel('Fraction of non-dominated points') 
     handles = [mpatches.Patch( facecolor='k',edgecolor='k',), mpatches.Patch( facecolor='white',hatch='////////',edgecolor='black', linewidth=0.4)]
@@ -502,8 +509,7 @@ def iter_table(run_dicts, key='hv_profile'):
         runs.append({**run_info, **iter_info})
     df = pd.DataFrame(runs)
     df = df.sort_values(by=['AF','Model Seed'])
-    df.to_csv(save_dir/f'{key}_table.csv', index=False)
-    str_df = df.to_latex(escape=False, index=False)
+    str_df = df.to_latex(escape=False, index=False, multicolumn_format='c')
     with open(save_dir/f'{key}_table.txt','w') as f:
         f.writelines(str_df)
     return df
@@ -527,8 +533,7 @@ def end_table(run_dicts):
         })
     df = pd.DataFrame(runs)
     df = df.sort_values(by=['AF','Model Seed'])
-    df.to_csv(save_dir/f'end_iter_table.csv', index=False)
-    str_df = df.to_latex(escape=False, index=False)
+    str_df = df.to_latex(escape=False, index=False, multicolumn_format='c')
     with open(save_dir/f'end_iter_table.txt','w') as f:
         f.writelines(str_df)
     return df
@@ -546,7 +551,7 @@ def iter_table_means(key='hv_profile'):
         means = entry['mean']
         stds = entry['std']
         iter_info = {
-            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.3f}$' for i in range(len(means))
+            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.2f}$' for i in range(len(means))
         }
         runs.append({**run_info, **iter_info})
 
@@ -559,7 +564,7 @@ def iter_table_means(key='hv_profile'):
         means = entry['mean']
         stds = entry['std']
         iter_info = {
-            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.3f}$' for i in range(len(means))
+            f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.2f}$' for i in range(len(means))
         }
         runs.append({**run_info, **iter_info})
 
@@ -570,14 +575,13 @@ def iter_table_means(key='hv_profile'):
     means = rand_data['mean']
     stds = rand_data['std']
     iter_info = {
-        f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.3f}$' for i in range(len(means))
+        f'{i}': f'${means[i]:0.2f} \pm {stds[i]:0.2f}$' for i in range(len(means))
     }
     runs.append({**run_info, **iter_info})
         
     df = pd.DataFrame(runs)
     df = df.sort_values(by=['Acquisition Function'])
-    df.to_csv(save_dir/f'{key}_means.csv', index=False)
-    str_df = df.to_latex(escape=False, index=False)
+    str_df = df.to_latex(escape=False, index=False, multicolumn_format='c')
     with open(save_dir/f'{key}_means.txt','w') as f:
         f.writelines(str_df)
     return df
@@ -598,7 +602,7 @@ def end_table_means():
         entry['std'] = entry['std'][-1]    
 
     def f(m, std): 
-        return f'${m:0.2f} \pm {std:0.3f}$'
+        return f'${m:0.2f} \pm {std:0.2f}$'
     
     runs = []
     for acq in ['nds', 'ei', 'pi']:
@@ -633,30 +637,25 @@ def end_table_means():
 
     df = pd.DataFrame(runs)
     df = df.sort_values(by=['Acquisition Function'])
-    df.to_csv(save_dir/f'end_means_table.csv', index=False)
-    str_df = df.to_latex(escape=False, index=False)
+    str_df = df.to_latex(escape=False, index=False, multicolumn_format='c')
     with open(save_dir/f'end_means_table.txt','w') as f:
         f.writelines(str_df)
     return df
 
 if __name__ == '__main__': 
-    # scatter_top_1()
-    # hv_profile(run_dicts)
-    # igd(run_dicts)
+    scatter_top_1()
+    hv_profile(run_dicts)
+    igd(run_dicts)
     # moving_front(run_dicts, true_front, seed=47, model_seed=29)
     # number_pf_points(run_dicts)
-    # fraction_top_1_profile(run_dicts)
-    # final_front(run_dicts, true_front, seed=47, model_seed=29, scal_metric='greedy', pareto_metric='pi',)
-    # final_front(run_dicts, true_front, seed=47, model_seed=29, scal_metric='ei', pareto_metric='ei',)
-    # final_front(run_dicts, true_front, pareto_metric='ei', scal_metric='pi', seed=47, model_seed=29)
-    # final_top_1(run_dicts)
-    # fraction_true_front(run_dicts, true_front)
-    # final_front(run_dicts, true_front, seed=61, model_seed=41, pareto_metric='ei', scal_metric='ei')
-    # iter_table(run_dicts, key='hv_profile')
-    # iter_table(run_dicts, key='top-k-profile')
-    # end_table(run_dicts)
+    fraction_top_1_profile(run_dicts)
+    final_front(run_dicts, true_front, seed=53, model_seed=31, scal_metric='greedy', pareto_metric='pi',)
+    final_front(run_dicts, true_front, seed=53, model_seed=31, scal_metric='ei', pareto_metric='pi',)
+    final_top_1(run_dicts)
+    fraction_true_front(run_dicts, true_front)
+    iter_table(run_dicts, key='hv_profile')
+    iter_table(run_dicts, key='top-k-profile')
+    end_table(run_dicts)
     iter_table_means(key='hv_profile')
     iter_table_means(key='top-k-profile')
-    end_table_means()
-
 

@@ -55,7 +55,7 @@ def create_run_dicts(base_dir, obj_configs, k=0.01, pool_sep=','):
     for run_folder in tqdm(sorted(list(base_dir.glob('seed*'))), desc='Reading Results'): 
         tags = parse_config(run_folder/'config.ini') 
         all_scores, all_acquired, explored_smis = get_scores(run_folder, objs)
-        hv_fracs = get_hvs(all_scores, reference_min, objs)/true_hv
+        hv_fracs = get_hvs(all_scores, reference_min)/true_hv
         fronts, final_front, final_gd, all_gd, final_igd, all_igd = pareto_profile(all_scores, reference_min, true_front)
         top_k_profile = get_top_k_profile(explored_smis, top_k_smis)
         run_dict = {

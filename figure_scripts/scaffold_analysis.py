@@ -1,6 +1,8 @@
 from pathlib import Path
 import numpy as np 
 import matplotlib.pyplot as plt 
+from matplotlib.ticker import EngFormatter
+
 from read_results_utils import  calc_true_hv, true_pf
 from organize_results import scaffold_storage
 from plot_utils import set_size, set_style, it_colors, shapes, cluster_colors, cluster_labels
@@ -65,17 +67,20 @@ def generic_scaffold_number_profile(run_dicts):
 
     x = range(len(data['None']['mean']))
     fig, ax = plt.subplots(1,1)
+    formatter0 = EngFormatter(sep="")
+    ax.yaxis.set_major_formatter(formatter0)
 
     for c_type, entry in data.items(): 
-        ax.plot(x, entry['mean']/1000, label=cluster_labels[c_type], color=cluster_colors[c_type],)
-        ax.fill_between(x, (entry['mean'] - entry['std'])/1000, (entry['mean'] + entry['std'])/1000, 
+        ax.plot(x, entry['mean'], label=cluster_labels[c_type], color=cluster_colors[c_type],)
+        ax.fill_between(x, entry['mean'] - entry['std'], entry['mean'] + entry['std'], 
                 facecolor = cluster_colors[c_type], alpha=0.3
             )
     
     legend = ax.legend(frameon=False, facecolor="none", fancybox=False, loc='upper left', labelspacing=0.3)
     ylim = ax.get_ylim()
-    ax.set_ylabel('Thousands of scaffolds')
+    ax.set_ylabel('Number of scaffolds')
     ax.locator_params(axis='y', nbins=5)
+    ax.set_yticks([2000, 4000, 6000, 8000, 10000])
     ax.set_xticks(x)
     set_size(1.5,1.5, ax=ax)    
     fig.savefig(save_dir/f'num_generic_scaffold{filetype}',bbox_inches='tight', dpi=200, transparent=False)
