@@ -6,6 +6,7 @@ from typing import Dict, Iterable, Optional
 import numpy as np
 
 from molpal.objectives.base import Objective
+from configargparse import ArgumentParser
 
 import pyscreener as ps
 
@@ -41,11 +42,11 @@ class DockingObjective(Objective):
         objective_config: str,
         path: str = ".",
         verbose: int = 0,
-        minimize: bool = True,
         **kwargs,
     ):
 
         args = ps.args.gen_args(f"--config {objective_config}")
+        minimize = parse_docking_config(objective_config)
 
         metadata_template = ps.build_metadata(args.screen_type, args.metadata_template)
         self.virtual_screen = ps.virtual_screen(
@@ -100,3 +101,26 @@ class DockingObjective(Objective):
             writer = csv.writer(fid)
             writer.writerow(field.name for field in dataclasses.fields(results[0]))
             writer.writerows(dataclasses.astuple(r) for r in results)
+
+
+def parse_docking_config(config: str):
+    """parse a docking configuration file for whether objective is minimized
+
+    Parameters
+    ----------
+    config : str
+        the config file to parse
+
+    Returns
+    -------
+    minimize: bool
+        whether the objective is maximized or minimized 
+    """
+    parser = ArgumentParser()
+    parser.add_argument('config', is_config_file=True)
+    parser.add_argument('--minimize', action='store_true', default=True)
+
+    args, _ = parser.parse_known_args(str(config))
+
+    return args.minimize
+    
