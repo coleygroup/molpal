@@ -1,15 +1,9 @@
 from datetime import datetime
-import os
-import signal
-import sys
-from timeit import default_timer as time
-import ray
-from molpal import args, Explorer
 from pathlib import Path
 import subprocess
 
-base_config = Path('moo_runs/config/JAK2_LCK_selectivity.ini')
-timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
+base_config = Path('moo_runs/config/JAK2_LCK_selectivity.ini') # change to correct config file 
+timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M') 
 out_dir = Path(f'results/selective_JAK2')
 
 seeds = [61, 67, 47, 53, 59] 

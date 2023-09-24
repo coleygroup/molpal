@@ -1,10 +1,4 @@
 from datetime import datetime
-import os
-import signal
-import sys
-from timeit import default_timer as time
-import ray
-from molpal import args, Explorer
 from pathlib import Path
 import subprocess
 
@@ -13,8 +7,8 @@ timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
 out_dir = Path(f'results/IGF1R_clustering_dockinglookup_objs')
 
 seeds = [61, 67, 47, 53, 59] 
-model_seeds = [41, 43, 29, 31, 37] #,
-cluster_types = ['both'] # ['fps',  'objs'] #, 
+model_seeds = [41, 43, 29, 31, 37]
+cluster_types = ['both', 'fps', 'objs']
 cmds = []
 acq = 'pi'
 
