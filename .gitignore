@@ -5,10 +5,14 @@ data
 notebooks/
 void/
 
-# results files 
+# results files and data analysis files
 results/
 lightning_logs/
 checkpoints/
+*.pickle
+*.pkl
+*.txt
+!requirements.txt
 # *.json
 # *.data*
 # *.index
@@ -17,6 +21,7 @@ checkpoints/
 # figures 
 *.pdf 
 *.png
+!molpal_multi_overview.png
 
 # miscellaneous 
 FILE
