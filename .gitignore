@@ -26,6 +26,7 @@ checkpoints/
 # miscellaneous 
 FILE
 .vscode/
+.idea/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
