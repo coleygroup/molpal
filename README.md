@@ -66,7 +66,7 @@ Alternatively, you may use a configuration file to run MolPAL, like so:
 
 `python run.py --config <path/to/config_file>`
 
-Sample configuration files, used to generate the data in the publication, can be found [here](molpal/tree/moo-jenna/dev/moo_runs/config).
+Sample configuration files, used to generate the data in the publication, can be found [here](moo_runs/config/).
 
 Configuration files accept the following syntaxes:
 - `--arg value` (argparse)
@@ -102,7 +102,7 @@ The primary purpose of MolPAL is to accelerate virtual screens in a prospective 
 - `--metric`: the acquisition function to use. Multi-objective options include `pi` (applies probability of hypervolume improvement), `ei` (applies expected hypervolume improvement), and `nds`. If scalarization is used, single-objective acquisition functions including `greedy`, `ucb`, `pi`, and `ei` can be used. 
 - `--scalarize`: a flag to scalarize the objectives. If included, objectives are scalarized using equal weights. By default, `pi` and `ei`apply hypervolume metrics. If `--scalarize` is included, single-objective expected improvement and probability of improvement are used. 
 - `--fps`: the filepath of an hdf5 file containing the precomputed fingerprints of your virtual library. MolPAL relies on the assumption that the ordering of the fingerprints in this file is exactly the same as that of the library file and that the encoder used to generate these fingerprints is exactly the same as the one used for model training. MolPAL handles writing this file for you if unspecified, so this option is mostly useful for avoiding the overhead at startup of running MolPAL again with the same library/featurizer settings.
-- `--invalid-idxs`: unless MolPAl prepares your fingerprints file for you, it must validate each SMILES string in the library and determine the set of invalid indices in the virtual library. This can be time-consuming for large virtual libraries, so passing this set to MolPAL, if known, can save time. Preparing the fingerprints file as in the [Preprocessing](#preprocessing) section will output this set for you.
+- `--invalid-idxs`: unless MolPAl prepares your fingerprints file for you, it must validate each SMILES string in the library and determine the set of invalid indices in the virtual library. This can be time-consuming for large virtual libraries, so passing this set to MolPAL, if known, can save time. 
 - `--max-iters`: the maximum number of iterations of exploration. (Default = 50)
 - `--budget`: Alternatively, if you would like to limit MolPAL to exploring a fixed fraction of the libary or number of inputs, you can specify that by setting this value. (Default = 1.0)
 - `--model`: the type of models to use. Collects entries as a list, which must equal the number of objectives optimized. If `--scalarize` is used, the first model listed will be applied. 
@@ -115,6 +115,6 @@ The primary purpose of MolPAL is to accelerate virtual screens in a prospective 
 
 ## Reproducing Experimental Results
 
-All data in the preprint were generated using files in the [scripts](molpal/tree/moo-jenna/dev/scripts) folder using configuration files in the [moo_runs](molpal/tree/moo-jenna/dev/moo_runs) folder. Molecular fingerprints for the libraries were produced first with the [fingerprints script](molpal/blob/moo-jenna/dev/scripts/fingerprints.py). The DOCKSTRING library with docking scores is available [here](https://figshare.com/articles/dataset/dockstring_dataset/16511577?file=35948138). Docking scores to Enamine's screening library to CYP3A4, EGFR, and IGF1R are available here [here](https://figshare.com/articles/dataset/Enamine_screen_CYP3A4_EGFR_IGF1R_zip/23978547). Data analysis was performed using files in the [figure_scripts](molpal/tree/moo-jenna/dev/figure_scripts) folder. 
+All data in the preprint were generated using files in the [scripts](scripts/) folder using configuration files in the [moo_runs](moo_runs/) folder. Molecular fingerprints for the libraries were produced first with the [fingerprints script](scripts/fingerprints.py). The DOCKSTRING library with docking scores is available [here](https://figshare.com/articles/dataset/dockstring_dataset/16511577?file=35948138). Docking scores to Enamine's screening library to CYP3A4, EGFR, and IGF1R are available here [here](https://figshare.com/articles/dataset/Enamine_screen_CYP3A4_EGFR_IGF1R_zip/23978547). Data analysis was performed using files in the [figure_scripts](figure_scripts/) folder. 
 
 
