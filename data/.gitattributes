@@ -1,5 +1,0 @@
-dockstring-dataset.tsv filter=lfs diff=lfs merge=lfs -text
-Enamine_screening.csv filter=lfs diff=lfs merge=lfs -text
-all_scores_CYP3A4.csv filter=lfs diff=lfs merge=lfs -text
-all_scores_EGFR.csv filter=lfs diff=lfs merge=lfs -text
-all_scores_IGF1R.csv filter=lfs diff=lfs merge=lfs -text
