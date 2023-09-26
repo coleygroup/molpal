@@ -16,6 +16,7 @@ This repository contains the source of the multi-objective extension of MolPAL f
   * [Required Settings](#required-settings)
   * [Optional Settings](#optional-settings)
 - [Reproducing Experimental Results](#reproducing-experimental-results)
+- [Future Goals](#future-goals)
 
 ## Installation
 The first step in installing MolPAL is to clone this repository: `git clone <this_repo>`
@@ -118,3 +119,10 @@ The primary purpose of MolPAL is to accelerate virtual screens in a prospective 
 All data in the preprint were generated using files in the [scripts](scripts/) folder using configuration files in the [moo_runs](moo_runs/) folder. Molecular fingerprints for the libraries were produced first with the [fingerprints script](scripts/fingerprints.py). The DOCKSTRING library with docking scores is available [here](https://figshare.com/articles/dataset/dockstring_dataset/16511577?file=35948138). Docking scores to Enamine's screening library to CYP3A4, EGFR, and IGF1R are available here [here](https://figshare.com/articles/dataset/Enamine_screen_CYP3A4_EGFR_IGF1R_zip/23978547). Data analysis was performed using files in the [figure_scripts](figure_scripts/) folder. 
 
 
+## Future Goals
+
+While the multi-objective extension of MolPAL in this branch is usable, we have outlined some next steps and future goals here: 
+
+1. Integration into the main branch of MolPAL 
+2. Incorporate random scalarization and Chebyshev scalarization as acquisition strategies 
+3. Explore alternative diversity-enhanced acquisition strategies 
