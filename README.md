@@ -33,6 +33,8 @@ The following packages are _optional_ to install before running MolPAL:
 #### setup via mamba
 __NOTE__: the `environment.yml` must be edited to reflect your machine's setup. To do this, uncomment out the appropriate line depending on your CUDA version or if you lack a GPU entirely. If you need a lower CUDA version than those specified in the environment YAML file, comment out the PyTorch line as well and go to the [pytorch wesbite](https://pytorch.org/get-started/locally/) to set the channels and versions of both the pytorch and cudatoolkit packages properly.
 
+We use [mamba](https://mamba.readthedocs.io/en/latest/user_guide/mamba.html) to manage environments, but to instead use conda, simply replace `mamba` with `conda` below. 
+
 0. (if necessary) [install mamba](https://mamba.readthedocs.io/en/latest/installation.html)
 1. `cd /path/to/molpal`
 2. `mamba env create -f environment.yml`
@@ -114,7 +116,7 @@ The primary purpose of MolPAL is to accelerate virtual screens in a prospective 
 
 
 
-## Reproducing Experimental Results
+## Reproducing Results
 
 All data in the preprint were generated using files in the [scripts](scripts/) folder using configuration files in the [moo_runs](moo_runs/) folder. Molecular fingerprints for the libraries were produced first with the [fingerprints script](scripts/fingerprints.py) using the following command after loading the DOCKSTRING dataset: 
 `python scripts/fingerprints.py --library PATH_TO_DOCKSTRING --smiles-col 1 --delimiter \\t`
