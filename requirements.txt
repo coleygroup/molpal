@@ -4,7 +4,7 @@ numpy
 ray[default]==1.12.1
 pytorch-lightning==1.6.3
 scikit-learn
-tensorflow
+tensorflow==2.10
 tensorflow-addons
 tqdm
 pygmo
