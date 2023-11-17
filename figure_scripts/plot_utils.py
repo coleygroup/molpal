@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 labels = {'ei': 'EI', 'pi': 'PI', 'nds': 'NDS', 'greedy': 'Greedy'}
-acq_labels = {'ei': ['EHI', 'EI'], 'pi': ['PHI', 'PI'], 'nds': ['NDS'],'greedy': ['Greedy'], 'random': ['Random']}
+acq_labels = {'ei': ['EHI', 'EI'], 'pi': ['PHI', 'PI'], 'nds': ['NDS'],'greedy': ['Greedy'], 'random': ['Random'], 'mo-memes': ['MO-MEMES']}
 method_colors = {
     'ei':'#405E90',
     'pi':'#D45127',

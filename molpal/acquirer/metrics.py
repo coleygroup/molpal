@@ -54,6 +54,7 @@ def get_needs(metric: str) -> Set[str]:
         'ts': {'means', 'vars'},
         'threshold': {'means'},
         'nds': {'means'},
+        'mo-memes': {'means','vars'},
     }.get(metric, set())
 
 
@@ -70,6 +71,7 @@ def get_multiobjective(metric: str) -> bool:
         'ts': False,
         'threshold': False, 
         'nds': True,
+        'mo-memes': True, 
     }.get(metric, set())
 
 
@@ -102,6 +104,8 @@ def calc(
         return pi(Y_means, Y_vars, current_max, xi, pareto_front=pareto_front)
     if metric == 'nds':
         return nds(Y_means, top_n_scored)
+    if metric == 'mo-memes': 
+        return mo_memes(Y_means, Y_vars, pareto_front)
 
     raise ValueError(f'Unrecognized metric: "{metric}"')
 
@@ -588,5 +592,15 @@ def chunked_pi(Y_means, Y_vars, pareto_front: Pareto, batch_size: int=1000):
     acq_scores = [ray.get(stat) for stat in tqdm(stats, desc='Calculating PHI', unit='chunk')]
     
     return np.concatenate(acq_scores)
+
+def mo_memes(Y_means, Y_vars, pareto_front: Pareto): 
+    """ Acquisition function used in MO-MEMES (Mehta et al, doi: 10.3389/fmed.2022.916481)"""
+    
+    front, _ = pareto_front.export_front()
+    current_maxs = np.max(front, axis=0)
+    ei_all = [ei(Y_means[:,i], Y_vars[:,i], current_max=current_maxs[i], xi=0.05) for i in range(len(current_maxs))]
+    scores = np.product(np.array(ei_all).transpose(), axis=1)
+    return scores 
+
 
 

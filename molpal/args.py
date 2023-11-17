@@ -100,7 +100,7 @@ def add_pool_args(parser: ArgumentParser) -> None:
 def add_acquisition_args(parser: ArgumentParser) -> None:
     parser.add_argument('--metric', '--alpha', default='random',
                         choices={'random', 'greedy', 'threshold', 'ts',
-                                 'ucb', 'ei', 'pi', 'thompson', 'nds'},
+                                 'ucb', 'ei', 'pi', 'thompson', 'nds', 'mo-memes'},
                         help='the acquisition metric to use')
 
     parser.add_argument('--init-size',

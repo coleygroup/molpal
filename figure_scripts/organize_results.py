@@ -80,8 +80,12 @@ def create_run_dicts(base_dir, obj_configs, k=0.01, pool_sep=','):
     
     return run_dicts, true_front
 
-def extract_data(run_dicts, key: str):
-    pareto_data = {label: {'all': [], 'mean': [], 'std': [], 'model_seeds': [], 'seeds': []} for label in ['nds', 'ei', 'pi', ]}
+def extract_data(run_dicts, key: str, include_mo_memes=False):
+    if include_mo_memes:
+        pareto_data = {label: {'all': [], 'mean': [], 'std': [], 'model_seeds': [], 'seeds': []} for label in ['nds', 'ei', 'pi', 'mo-memes']}
+    else:
+        pareto_data = {label: {'all': [], 'mean': [], 'std': [], 'model_seeds': [], 'seeds': []} for label in ['nds', 'ei', 'pi']}
+
     scal_data = {label: {'all': [], 'mean': [], 'std': [], 'model_seeds': [], 'seeds': []} for label in ['greedy', 'ei', 'pi', ]}
     rand_data = {'all': [], 'mean': [], 'std': [], 'seeds': [], 'model_seeds': []}
 

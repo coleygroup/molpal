@@ -539,7 +539,7 @@ def end_table(run_dicts):
     return df
 
 def iter_table_means(key='hv_profile'): 
-    pareto_data, scal_data, rand_data = extract_data(run_dicts, key=key)
+    pareto_data, scal_data, rand_data = extract_data(run_dicts, key=key, include_mo_memes=True)
     
     runs = []
 
@@ -592,10 +592,10 @@ def end_table_means():
         frac = sum([point.tolist() in true_front.tolist() for point in pf])/len(true_front)
         entry['fraction_first_rank'] = frac
 
-    igd_pareto, igd_scal, igd_rand = extract_data(run_dicts, 'overall_igd')
-    fracnd_pareto, fracnd_scal, fracnd_rand = extract_data(run_dicts, 'fraction_first_rank')
-    topk_pareto, topk_scal, topk_rand = extract_data(run_dicts, 'top-k-profile')
-    hv_pareto, hv_scal, hv_rand = extract_data(run_dicts, key='hv_profile')
+    igd_pareto, igd_scal, igd_rand = extract_data(run_dicts, 'overall_igd', include_mo_memes=True)
+    fracnd_pareto, fracnd_scal, fracnd_rand = extract_data(run_dicts, 'fraction_first_rank', include_mo_memes=True)
+    topk_pareto, topk_scal, topk_rand = extract_data(run_dicts, 'top-k-profile', include_mo_memes=True)
+    hv_pareto, hv_scal, hv_rand = extract_data(run_dicts, key='hv_profile', include_mo_memes=True)
     for entry in [*topk_pareto.values(), *topk_scal.values(), topk_rand, *hv_pareto.values(), *hv_scal.values(), hv_rand]: 
         entry['all'] = [profile[-1] for profile in entry['all']]
         entry['mean'] = entry['mean'][-1]
@@ -605,7 +605,7 @@ def end_table_means():
         return f'${m:0.2f} \pm {std:0.2f}$'
     
     runs = []
-    for acq in ['nds', 'ei', 'pi']:
+    for acq in ['nds', 'ei', 'pi', 'mo-memes']:
         runs.append({
             'Case': cases[target],
             'Acquisition Function': acq_labels[acq][0],
@@ -643,19 +643,20 @@ def end_table_means():
     return df
 
 if __name__ == '__main__': 
-    scatter_top_1()
-    hv_profile(run_dicts)
-    igd(run_dicts)
+    # scatter_top_1()
+    # hv_profile(run_dicts)
+    # igd(run_dicts)
     # moving_front(run_dicts, true_front, seed=47, model_seed=29)
     # number_pf_points(run_dicts)
-    fraction_top_1_profile(run_dicts)
-    final_front(run_dicts, true_front, seed=53, model_seed=31, scal_metric='greedy', pareto_metric='pi',)
-    final_front(run_dicts, true_front, seed=53, model_seed=31, scal_metric='ei', pareto_metric='pi',)
-    final_top_1(run_dicts)
-    fraction_true_front(run_dicts, true_front)
+    # fraction_top_1_profile(run_dicts)
+    # final_front(run_dicts, true_front, seed=53, model_seed=31, scal_metric='greedy', pareto_metric='pi',)
+    # final_front(run_dicts, true_front, seed=53, model_seed=31, scal_metric='ei', pareto_metric='pi',)
+    # final_top_1(run_dicts)
+    # fraction_true_front(run_dicts, true_front)
     iter_table(run_dicts, key='hv_profile')
     iter_table(run_dicts, key='top-k-profile')
     end_table(run_dicts)
     iter_table_means(key='hv_profile')
     iter_table_means(key='top-k-profile')
+    end_table_means()
 

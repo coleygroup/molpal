@@ -4,7 +4,7 @@ import subprocess
 
 base_config = Path('moo_runs/config/JAK2_LCK_selectivity.ini') # change to correct config file 
 timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M') 
-out_dir = Path(f'results/selective_JAK2')
+out_dir = Path(f'results/selective_JAK2') # change to directory for results
 
 seeds = [61, 67, 47, 53, 59] 
 model_seeds = [41, 43, 29, 31, 37] #, 
@@ -20,7 +20,7 @@ for acq in ['ei', 'pi', 'greedy']:
         cmds.append(cmd)
 
 # Pareto AFs
-for acq in ['ei', 'pi', 'nds']: 
+for acq in ['ei', 'pi', 'nds', 'mo-memes']: 
     for seed, model_seed in zip(seeds, model_seeds):
         tags = [f'seed-{seed}-{model_seed}', acq]
         out_folder = out_dir / '_'.join(tags)
