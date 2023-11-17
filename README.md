@@ -38,7 +38,7 @@ We use [mamba](https://mamba.readthedocs.io/en/latest/user_guide/mamba.html) to 
 0. (if necessary) [install mamba](https://mamba.readthedocs.io/en/latest/installation.html)
 1. `cd /path/to/molpal`
 2. `mamba env create -f environment.yml`
-3. `mamba activate molpalx`
+3. `conda activate molpalx`
 4. `pip install -r requirements.txt`
 5. `python setup.py develop`
 
