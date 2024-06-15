@@ -141,7 +141,7 @@ class MolGraph:
         :param mol: A SMILES or an RDKit molecule.
         """
         # Convert SMILES to RDKit molecule if necessary
-        if type(mol) == str:
+        if isinstance(mol, str):
             mol = Chem.MolFromSmiles(mol)
 
         self.n_atoms = 0  # number of atoms

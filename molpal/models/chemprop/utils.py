@@ -116,7 +116,7 @@ def accuracy(
     :param threshold: The threshold above which a prediction is a 1 and below which (inclusive) a prediction is a 0.
     :return: The computed accuracy.
     """
-    if type(preds[0]) == list:  # multiclass
+    if isinstance(preds[0], list):  # multiclass
         hard_preds = [p.index(max(p)) for p in preds]
     else:
         hard_preds = [1 if p > threshold else 0 for p in preds]  # binary prediction

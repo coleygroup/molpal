@@ -25,7 +25,7 @@ def preprocess_smiles_columns(
     :return: The preprocessed version of :code:`smiles_column` which is guaranteed to be a list.
     """
     smiles_columns = smiles_columns if smiles_columns is not None else [None]
-    smiles_columns = [smiles_columns] if type(smiles_columns) != list else smiles_columns
+    smiles_columns = [smiles_columns] if not isinstance(smiles_columns, list) else smiles_columns
 
     return smiles_columns
 
