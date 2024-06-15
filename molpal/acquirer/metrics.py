@@ -227,7 +227,7 @@ def ei(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.
     E_imp : np.ndarray
         the expected improvement acquisition scores
     """
-    I = Y_mean - current_max + xi
+    I = Y_mean - current_max - xi
     Y_sd = np.sqrt(Y_var)
     with np.errstate(divide="ignore", invalid="ignore"):
         Z = I / Y_sd
@@ -255,7 +255,7 @@ def pi(Y_mean: np.ndarray, Y_var: np.ndarray, current_max: float, xi: float = 0.
     P_imp : np.ndarray
         the probability of improvement acquisition scores
     """
-    I = Y_mean - current_max + xi
+    I = Y_mean - current_max - xi
     with np.errstate(divide="ignore"):
         Z = I / np.sqrt(Y_var)
     P_imp = norm.cdf(Z)

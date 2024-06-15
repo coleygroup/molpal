@@ -82,14 +82,14 @@ def test_thompson(Y_mean, Y_var, stochastic):
 def test_ei(Y_mean: np.ndarray, Y_var_0: np.ndarray, xi, curr_max):
     U = metrics.ei(Y_mean, Y_var_0, curr_max, xi)
 
-    np.testing.assert_array_less(0, U[Y_mean + xi > curr_max])
-    np.testing.assert_array_less(U[Y_mean + xi <= curr_max], 0)
+    np.testing.assert_array_less(0, U[Y_mean - xi > curr_max])
+    np.testing.assert_array_less(U[Y_mean - xi <= curr_max], 0)
 
 def test_pi(Y_mean: np.ndarray, Y_var_0: np.ndarray, xi, curr_max):
     U = metrics.pi(Y_mean, Y_var_0, curr_max, xi)
 
-    np.testing.assert_array_equal(1, U[Y_mean + xi > curr_max])
-    np.testing.assert_array_equal(0, U[Y_mean + xi <= curr_max])
+    np.testing.assert_array_equal(1, U[Y_mean - xi > curr_max])
+    np.testing.assert_array_equal(0, U[Y_mean - xi <= curr_max])
 
 def test_threshold(Y_mean: np.ndarray, threshold: float):
     U = metrics.threshold(Y_mean, threshold)
